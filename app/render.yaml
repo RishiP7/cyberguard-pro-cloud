@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: cyberguardpro-api
+    env: node
+    plan: standard
+    region: oregon
+    rootDir: app
+    buildCommand: npm ci
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: RATE_LIMIT_PER_MIN
+        value: "180"
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /health
+
+  - type: static
+    name: cyberguardpro-web
+    rootDir: web-ready
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE
+        # Fill this AFTER the API deploys, e.g. https://cyberguardpro-api.onrender.com
+        value: ""

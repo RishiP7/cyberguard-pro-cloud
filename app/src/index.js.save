@@ -1,0 +1,238 @@
+import 'dotenv/config';
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import pkg from 'pg';
+import { v4 as uuidv4 } from 'uuid';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import EventEmitter from 'eventemitter3';
+
+const BRAND = process.env.BRAND_NAME || 'CyberGuard Pro';
+const { Pool } = pkg;
+const app = express();
+const bus = new EventEmitter();
+app.use(cors()); // open for local dev
+app.use(bodyParser.json({ limit:'4mb' }));
+
+const PORT = process.env.PORT || 8080;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+
+const pool = new Pool({
+  host: process.env.PGHOST, port: Number(process.env.PGPORT||5432),
+  database: process.env.PGDATABASE, user: process.env.PGUSER, password: process.env.PGPASSWORD,
+  ssl: (process.env.PGSSL||'').toLowerCase()==='true' ? { rejectUnauthorized:false } : undefined,
+});
+async function q(text,params=[]) { return await pool.query(text,params); }
+
+const PLANS = {
+  basic:   { price: 299, features: { email_monitor: true } },
+  pro:     { price: 599, features: { email_monitor: true, full_stack: true } },
+  pro_plus:{ price: 999, features: { email_monitor: true, full_stack: true, edr: true, dns: true, ueba: true, soar: true } }
+};
+
+// utils
+function clamp(n,min,max){ return Math.max(min, Math.min(n,max)); }
+function sev(score){ if(score<=-0.9) return 'critical'; if(score<=-0.7) return 'high'; if(score<=-0.4) return 'medium'; return 'low'; }
+function signJwt(payload){ return jwt.sign(payload, JWT_SECRET, { expiresIn:'12h' }); }
+function verifyJwt(token){ return jwt.verify(token, JWT_SECRET); }
+
+async function authMiddleware(req,res,next){
+  try {
+    const h=req.headers.authorization||''; if(!h.startsWith('Bearer ')) return res.status(401).json({error:'Missing Bearer token'});
+    req.user=verifyJwt(h.substring(7)); next();
+  } catch { return res.status(401).json({error:'Invalid token'}); }
+}
+async function apikeyMiddleware(req,res,next){
+  const key = req.headers['x-api-key']; if(!key) return res.status(401).json({ error:'x-api-key required' });
+  const r = await q('SELECT tenant_id FROM api_keys WHERE api_key=$1 AND active=true LIMIT 1',[key]);
+  if(!r.rowCount) return res.status(401).json({ error:'Invalid API key' });
+  req.tenant_id = r.rows[0].tenant_id; next();
+}
+async function getTenantPlan(tenantId){
+  const r=await q("SELECT plan FROM tenant_subscriptions WHERE tenant_id=$1 AND status='active' LIMIT 1",[tenantId]);
+  return r.rowCount ? r.rows[0].plan : null;
+}
+async function requireFeature(tenantId, feature){
+  const planId = await getTenantPlan(tenantId);
+  if (!planId) return { ok:false, error:'No active plan' };
+  const plan = PLANS[planId]; if (!plan) return { ok:false, error:'Unknown plan' };
+  if (!plan.features[feature]) return { ok:false, error:`Feature not in ${planId} plan` };
+  return { ok:true };
+}
+
+// health
+app.get('/', (_req,res)=>res.json({ ok:true, service:`${BRAND} Cloud API`, version:'2.0.0-phase2-stubs' }));
+// --- Live Alerts (SSE) and Recent Alerts ---
+// Helper: verify JWT from Authorization header OR ?token=... query
+function tryVerifyToken(req) {
+  const h = req.headers.authorization || '';
+  const fromHeader = h.startsWith('Bearer ') ? h.substring(7) : null;
+  const tok = req.query.token || fromHeader;
+  if (!tok) throw new Error('no token');
+  return verifyJwt(tok);
+}
+
+// Get last 100 alerts for this tenant
+app.get('/alerts/recent', async (req, res) => {
+  try {
+    const user = tryVerifyToken(req);
+    const r = await q(
+      "SELECT id, tenant_id, event_json, score, status, created_at FROM alerts WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100",
+      [user.tenant_id]
+    );
+    const alerts = r.rows.map(row => ({
+      id: row.id,
+      tenant_id: row.tenant_id,
+      event: JSON.parse(row.event_json),
+      score: row.score,
+      status: row.status,
+      created_at: row.created_at
+    }));
+    res.json({ alerts });
+  } catch (e) {
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+});
+
+// Live stream of alerts via SSE
+app.get('/alerts/stream', async (req, res) => {
+  let user;
+  try {
+    user = tryVerifyToken(req);
+  } catch {
+    return res.status(401).end();
+  }
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const tenantId = user.tenant_id;
+  const ch = (payload) => {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  // heartbeat every 25s to keep connection alive
+  const heartbeat = setInterval(() => res.write(':ping\n\n'), 25000);
+
+  // subscribe to alert bus
+  const key = `alert:${tenantId}`;
+  bus.on(key, ch);
+
+  // cleanup on client disconnect
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    bus.off(key, ch);
+  });
+
+  // optional hello event
+  res.write(`data: ${JSON.stringify({ hello: true, tenant_id: tenantId })}\n\n`);
+});
+// Auth & Billing
+app.post('/auth/register', async (req,res)=>{
+  const { tenant_id, email, password } = req.body||{};
+  if(!tenant_id||!email||!password) return res.status(400).json({ error:'tenant_id, email, password required' });
+  const hash = await bcrypt.hash(password,10);
+  await q('INSERT INTO users(email, tenant_id, passhash) VALUES($1,$2,$3) ON CONFLICT (email) DO NOTHING',[email, tenant_id, hash]);
+  res.json({ ok:true });
+});
+app.post('/auth/login', async (req,res)=>{
+  const { email, password } = req.body||{};
+  const r = await q('SELECT tenant_id, passhash FROM users WHERE email=$1',[email]);
+  if(!r.rowCount) return res.status(401).json({ error:'invalid credentials' });
+  const ok = await bcrypt.compare(password, r.rows[0].passhash);
+  if(!ok) return res.status(401).json({ error:'invalid credentials' });
+  res.json({ token: signJwt({ tenant_id: r.rows[0].tenant_id, email }) });
+});
+app.post('/billing/mock-activate', authMiddleware, async (req,res)=>{
+  const { plan='pro' } = req.body||{};
+  await q("INSERT INTO tenant_subscriptions(tenant_id, plan, status, updated_at) VALUES($1,$2,'active', NOW()) ON CONFLICT (tenant_id) DO UPDATE SET plan=$2, status='active', updated_at=NOW()", [req.user.tenant_id, plan]);
+  res.json({ ok:true, plan });
+});
+app.post('/apikeys', authMiddleware, async (req,res)=>{
+  const key = uuidv4();
+  await q('INSERT INTO api_keys(api_key, tenant_id, active, created_at) VALUES($1,$2,true,EXTRACT(EPOCH FROM NOW()))',[key, req.user.tenant_id]);
+  res.json({ api_key:key });
+});
+
+// Scorers (stubs)
+function scoreEDR(ev){ let r=0; if(/powershell\.exe|cmd\.exe|wscript\.exe/i.test(ev.process||'')) r+=1; if(/-enc|FromBase64String/i.test(ev.cmdline||'')) r+=2; if((ev.file_ops?.burst)||0>500) r+=3; if(ev.hash_reputation==='malicious') r+=3; const s=-clamp(r,0,10)/10; return { score:s, anomaly:r>=3 }; }
+function scoreDNS(ev){ let r=0; if(/\.(zip|top|tk|ru|cn)$/i.test(ev.qname||'')) r+=1; if(ev.newly_registered) r+=2; if(/dns-tunnel|iodine|dnscat/i.test(ev.verdict||'')) r+=3; const s=-clamp(r,0,6)/6; return { score:s, anomaly:r>=2 }; }
+function scoreUEBA(ev){ let r=0; if(ev.anomaly==='impossible_travel') r+=3; if(ev.off_hours) r+=1; if(ev.mass_download) r+=2; const s=-clamp(r,0,6)/6; return { score:s, anomaly:r>=2 }; }
+
+async function saveAlert(tenantId, eventObj, score){
+  const id = uuidv4();
+  await q("INSERT INTO alerts(id, tenant_id, event_json, score, status, created_at) VALUES($1,$2,$3,$4,'new',EXTRACT(EPOCH FROM NOW()))",[id, tenantId, JSON.stringify(eventObj), score]);
+  bus.emit(`alert:${tenantId}`, { id, tenant_id: tenantId, event: eventObj, score, created_at: Math.floor(Date.now()/1000), status:'new' });
+  return id;
+}
+async function saveEvent(table, fields, values){
+  const cols = fields.join(',');
+  const placeholders = fields.map((_,i)=>`$${i+1}`).join(',');
+  await q(`INSERT INTO ${table} (${cols}) VALUES (${placeholders})`, values);
+}
+
+// New ingest endpoints (Pro+ features)
+app.post('/edr/ingest', apikeyMiddleware, async (req,res)=>{
+  const tenant_id = req.tenant_id;
+  const f = await requireFeature(tenant_id,'edr'); if(!f.ok) return res.status(403).json({ error:f.error });
+  const results=[];
+  for(const ev of (req.body?.events||[])){
+    const r=scoreEDR(ev); results.push({ score:r.score, anomaly:r.anomaly });
+    const id = uuidv4();
+    await saveEvent('edr_events',['id','tenant_id','host','process','cmdline','hash','file_ops','sev','ts'],
+      [id, tenant_id, ev.host||null, ev.process||null, ev.cmdline||null, ev.hash||null, JSON.stringify(ev.file_ops||{}), sev(r.score), Math.floor(Date.now()/1000)]);
+    if(r.anomaly) await saveAlert(tenant_id,{ type:'edr', ...ev }, r.score);
+  }
+  res.json({ tenant_id, results });
+});
+
+app.post('/dns/ingest', apikeyMiddleware, async (req,res)=>{
+  const tenant_id = req.tenant_id;
+  const f = await requireFeature(tenant_id,'dns'); if(!f.ok) return res.status(403).json({ error:f.error });
+  const results=[];
+  for(const ev of (req.body?.events||[])){
+    const r=scoreDNS(ev); results.push({ score:r.score, anomaly:r.anomaly });
+    const id=uuidv4();
+    await saveEvent('dns_events',['id','tenant_id','qname','qtype','resolved_ip','verdict','sev','ts'],
+      [id, tenant_id, ev.qname||null, ev.qtype||null, ev.resolved_ip||null, ev.verdict||null, sev(r.score), Math.floor(Date.now()/1000)]);
+    if(r.anomaly) await saveAlert(tenant_id,{ type:'dns', ...ev }, r.score);
+  }
+  res.json({ tenant_id, results });
+});
+
+app.post('/logs/ingest', apikeyMiddleware, async (req,res)=>{
+  const tenant_id = req.tenant_id;
+  const f = await requireFeature(tenant_id,'ueba'); if(!f.ok) return res.status(403).json({ error:f.error });
+  const results=[];
+  for(const ev of (req.body?.events||[])){
+    const r=scoreUEBA(ev); results.push({ score:r.score, anomaly:r.anomaly });
+    const id=uuidv4();
+    await saveEvent('log_events',['id','tenant_id','source','principal','action','ip','geo','sev','ts','raw_json'],
+      [id, tenant_id, ev.source||null, ev.principal||null, ev.action||null, ev.ip||null, ev.geo||null, sev(r.score), Math.floor(Date.now()/1000), JSON.stringify(ev)]);
+    if(r.anomaly) await saveAlert(tenant_id,{ type:'ueba', ...ev }, r.score);
+  }
+  res.json({ tenant_id, results });
+});
+
+// SOAR manual run (stub)
+app.post('/soar/run', authMiddleware, async (req,res)=>{
+  const { playbook='quarantine_endpoint', target_kind='host', target='UNKNOWN', params={} } = req.body||{};
+  const id = uuidv4();
+  await q("INSERT INTO actions(id, alert_id, tenant_id, action, mode, target_kind, playbook, result_json, created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,EXTRACT(EPOCH FROM NOW()))",
+    [id, params.alert_id||'manual', req.user.tenant_id, 'run_playbook', 'manual', target_kind, playbook, JSON.stringify({ ok:true })]);
+  res.json({ ok:true, action_id:id, playbook });
+});
+
+// Webhooks config (stub)
+app.post('/webhooks', authMiddleware, async (req,res)=>{
+  const { kind, url, secret } = req.body||{};
+  if(!kind||!url) return res.status(400).json({ error:'kind and url required' });
+  const id = uuidv4();
+  await q("INSERT INTO webhooks(id, tenant_id, kind, url, secret, enabled, created_at) VALUES($1,$2,$3,$4,$5,true,EXTRACT(EPOCH FROM NOW()))",
+    [id, req.user.tenant_id, kind, url, secret||null]);
+  res.json({ ok:true, id });
+});
+
+app.listen(PORT, ()=>console.log(`${BRAND} Cloud API (Phase 2 stubs) listening on :${PORT}`));

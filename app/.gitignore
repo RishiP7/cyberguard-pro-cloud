@@ -1,0 +1,13 @@
+
+node_modules/
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+.env
+.env.*
+open_env.sh
+reset_env.sh
+dist/
+build/
+.DS_Store
+*.swp

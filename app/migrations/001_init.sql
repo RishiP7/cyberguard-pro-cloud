@@ -1,0 +1,65 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS tenants(
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  plan TEXT NOT NULL DEFAULT 'trial',
+  contact_email TEXT,
+  created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())),
+  updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()))
+);
+
+CREATE TABLE IF NOT EXISTS users(
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT,
+  pass_hash TEXT,
+  role TEXT NOT NULL DEFAULT 'member',
+  created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()))
+);
+CREATE INDEX IF NOT EXISTS users_tenant_idx ON users(tenant_id);
+
+CREATE TABLE IF NOT EXISTS apikeys(
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  api_key TEXT UNIQUE NOT NULL,
+  revoked BOOLEAN NOT NULL DEFAULT false,
+  created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()))
+);
+CREATE INDEX IF NOT EXISTS apikeys_tenant_idx ON apikeys(tenant_id);
+CREATE INDEX IF NOT EXISTS apikeys_revoked_idx ON apikeys(revoked);
+
+CREATE TABLE IF NOT EXISTS alerts(
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  event JSONB NOT NULL,
+  score NUMERIC NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'new',
+  created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()))
+);
+CREATE INDEX IF NOT EXISTS alerts_tenant_idx ON alerts(tenant_id);
+CREATE INDEX IF NOT EXISTS alerts_created_idx ON alerts(created_at);
+
+CREATE TABLE IF NOT EXISTS policy(
+  tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  threshold NUMERIC NOT NULL DEFAULT 0.5
+);
+ALTER TABLE policy ADD COLUMN IF NOT EXISTS allow_quarantine BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE policy ADD COLUMN IF NOT EXISTS allow_dns_deny BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE policy ADD COLUMN IF NOT EXISTS allow_disable_account BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE policy ADD COLUMN IF NOT EXISTS dry_run BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE policy ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()));
+
+CREATE TABLE IF NOT EXISTS request_logs(
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id TEXT,
+  route TEXT,
+  ts BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()))
+);
+CREATE INDEX IF NOT EXISTS request_logs_tenant_ts_idx ON request_logs(tenant_id, ts);
+
+INSERT INTO policy(tenant_id)
+SELECT t.id FROM tenants t
+WHERE NOT EXISTS (SELECT 1 FROM policy p WHERE p.tenant_id = t.id);

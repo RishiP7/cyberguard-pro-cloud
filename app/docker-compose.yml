@@ -1,0 +1,32 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:15
+    container_name: cybermon-pg
+    environment:
+      POSTGRES_USER: cybermon
+      POSTGRES_PASSWORD: cyberpass
+      POSTGRES_DB: cyberguardpro
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybermon -d cyberguardpro"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ./app
+    container_name: cgp-api
+    env_file: ./app/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
