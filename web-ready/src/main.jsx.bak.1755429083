@@ -1,0 +1,658 @@
+import React, { useEffect, useState, useMemo } from "react";
+const card={padding:16,border:"1px solid rgba(255,255,255,.12)",borderRadius:12,background:"rgba(255,255,255,.04)"};
+const btn={padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"};
+const pre={whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)",marginTop:12};
+const errBox={padding:"10px 12px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10,margin:"10px 0"};
+import ReactDOM from "react-dom/client";
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
+
+function authHeaders() {
+  const t = localStorage.getItem("token");
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+async function parse(r){ try { return await r.json(); } catch { return { ok:false, error:`HTTP ${r.status}` }; } }
+async function apiGet(path){
+  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders() }});
+  if(!r.ok) throw await parse(r);
+  return parse(r);
+}
+async function apiPost(path, body){
+  const r = await fetch(`${API_BASE}${path}`, { method:"POST", headers:{ "Content-Type":"application/json", ...authHeaders() }, body: JSON.stringify(body||{}) });
+  if(!r.ok) throw await parse(r);
+  return parse(r);
+}
+async function adminGet(path){
+  const r = await fetch(`${API_BASE}${path}`, { headers: { "x-admin-key":"dev_admin_key" }});
+  if(!r.ok) throw await parse(r);
+  return parse(r);
+}
+
+function ErrorBoundary({children}){
+  const [err,setErr] = useState(null);
+  return err
+    ? <div style={{padding:16}}><h2>Something went wrong</h2><pre style={pre}>{String(err)}</pre></div>
+    : <ErrorCatcher onError={setErr}>{children}</ErrorCatcher>;
+}
+class ErrorCatcher extends React.Component{
+  constructor(p){ super(p); this.state={}; }
+  componentDidCatch(e,info){ console.error("ErrorBoundary", e, info); this.props.onError(e); }
+  render(){ return this.props.children; }
+}
+
+// ---------- Layout ----------
+function Layout({children}){
+  const nav = useNav();
+  const me = nav.me;
+  return (
+    <div>
+      <div style={bar}>
+        <div style={left}>
+          <img src="/logo-cgp.png" alt="Logo" style={{height: 60, marginRight: 10}}/>
+        </div>
+        <div style={navRow}>
+          <N to="/">Dashboard</N>
+          <N to="/integrations">Integrations</N>
+          <N to="/policy">Policy</N>
+          <N to="/account">Account</N>
+          <N to="/admin">Admin</N>
+          <N to="/test">Test</N>
+        </div>
+        <div>
+          {me ? (
+            <button style={btnGhost} onClick={()=>{ localStorage.removeItem("token"); location.href="/login"; }}>
+              Logout
+            </button>
+          ) : (
+            <Link to="/login" style={btnGhost}>Login</Link>
+          )}
+        </div>
+      </div>
+      <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>{children}</div>
+    </div>
+  );
+}
+function N({to,children}){ return <Link to={to} style={navItem}>{children}</Link>; }
+const bar   ={display:"grid",gridTemplateColumns:"220px 1fr auto",gap:12,alignItems:"center",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,.12)",background:"rgba(10,12,16,.7)",backdropFilter:"blur(8px)",position:"sticky",top:0,zIndex:10};
+const left  ={display:"flex",alignItems:"center"};
+const navRow={display:"flex",gap:10,flexWrap:"wrap"};
+const navItem={padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",textDecoration:"none",color:"#e6e9ef",background:"rgba(255,255,255,.05)"};
+const btnGhost={padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"transparent",color:"#e6e9ef",textDecoration:"none",cursor:"pointer"};
+const th    ={textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8};
+const td    ={padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"};
+
+// ---------- Auth helpers ----------
+function useNav(){
+  const [me,setMe]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{
+    let mounted=true;
+    (async()=>{
+      try{
+        if(!localStorage.getItem("token")){ setMe(null); setLoading(false); return; }
+        const m=await apiGet("/me");
+        if(mounted) setMe(m);
+      }catch(e){ if(mounted) setErr(e.error||"API error"); }
+      finally{ if(mounted) setLoading(false); }
+    })();
+    return ()=>{ mounted=false; };
+  },[]);
+  return { me, loading, err };
+}
+function RequireAuth({children}){
+  const { me, loading } = useNav();
+  if(loading) return <div style={{padding:16}}>Loading…</div>;
+  if(!me) return <Navigate to="/login" replace />;
+  return children;
+}
+
+// ---------- Pages ----------
+function Login(){
+  const [email,setEmail]=useState("hello@freshprintslondon.com");
+  const [password,setPassword]=useState("test123");
+  const [msg,setMsg]=useState("");
+  const nav=useNavigate();
+  async function submit(e){
+    e.preventDefault();
+    setMsg("");
+    try{
+      const r = await fetch(`${API_BASE}/auth/login`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({email,password}) });
+      const j = await r.json();
+      if(!r.ok || !j.token) throw new Error(j.error||"login failed");
+      localStorage.setItem("token", j.token);
+      nav("/");
+    }catch(e){ setMsg(String(e.message||e)); }
+  }
+  return (
+    <div style={{maxWidth:380, margin:"40px auto"}}>
+      <div style={card}>
+        <h2 style={{marginTop:0}}>Login</h2>
+        <form onSubmit={submit}>
+          <input style={inp} value={email} onChange={e=>setEmail(e.target.value)} placeholder="email"/>
+          <input style={inp} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="password"/>
+          <button style={btn} type="submit">Sign in</button>
+        </form>
+        {msg && <div style={{marginTop:8, color:"#ff8a8a"}}>{msg}</div>}
+      </div>
+    </div>
+  );
+}
+const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"inherit",marginBottom:10};
+
+function Dashboard(){
+  const [me,setMe]=useState(null);
+  const [stats,setStats]=useState(null);
+  const [alerts,setAlerts]=useState([]);
+  const [err,setErr]=useState(null);
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const m = await apiGet("/me"); setMe(m);
+        const u = await apiGet("/usage"); setStats(u);
+        const a = await apiGet("/alerts"); setAlerts(a.alerts||[]);
+      }catch(e){ setErr(e.error||"API error"); }
+    })();
+  },[]);
+  if(err) return <div style={{padding:16}}>{err}</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Dashboard</h1>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4, minmax(180px,1fr))",gap:12}}>
+        <Stat title="Tenant" value={me.name}/>
+        <Stat title="Plan" value={me.plan}/>
+        <Stat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? "-"}/>
+        <Stat title="Alerts (24h)" value={stats?.alerts_24h ?? "-"}/>
+      </div>
+
+      <div style={{marginTop:16}}>
+        <div style={{fontWeight:700, marginBottom:8}}>Recent alerts</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>
+              <th style={th}>When</th><th style={th}>Type</th><th style={th}>Score</th><th style={th}>Status</th>
+            </tr></thead>
+            <tbody>
+              {(alerts||[]).slice(0,10).map(a=>(
+                <tr key={a.id}>
+                  <td style={td}>{new Date(Number(a.created_at)*1000).toLocaleString()}</td>
+                  <td style={td}>{a?.event?.type || "-"}</td>
+                  <td style={td}>{a?.score}</td>
+                  <td style={td}>{a?.status}</td>
+                </tr>
+              ))}
+              {(!alerts || alerts.length===0) && <tr><td style={td} colSpan={4}>No alerts yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+function Stat({title,value}){ return <div style={card}><div style={{opacity:.75,fontSize:13}}>{title}</div><div style={{fontSize:22,fontWeight:700,marginTop:6}}>{value}</div></div>; }
+
+function Integrations(){
+  const [me,setMe] = React.useState(null);
+  const [err,setErr] = React.useState("");
+  const [apiKey,setApiKey] = React.useState(localStorage.getItem("api_key")||"");
+  const [out,setOut] = React.useState("");
+
+  React.useEffect(()=>{(async()=>{
+    try{ setErr(""); const m = await apiGet("/me"); setMe(m); }
+    catch(e){ console.error(e); setErr(e?.error||"Failed to load"); }
+  })();},[]);
+
+  function saveKey(){
+    localStorage.setItem("api_key", apiKey.trim());
+    setOut("Saved API key to localStorage");
+  }
+
+  async function send(route, body){
+    setOut("Sending…");
+    try{
+      const ak = (apiKey||"").trim();
+      if(!ak) throw new Error("No API key");
+      const r = await fetch(`${API_BASE}${route}`,{
+        method:"POST",
+        headers:{"x-api-key":ak,"Content-Type":"application/json"},
+        body: JSON.stringify(body||{})
+      });
+      const txt = await r.text();
+      setOut(r.ok ? (txt||"OK") : `HTTP ${r.status}: ${txt}`);
+    }catch(e){ setOut(String(e)); }
+  }
+
+  if(err) return <div style={errBox}>{err}</div>;
+  if(!me) return <div>Loading…</div>;
+
+  const proPlus = me.plan === 'pro_plus' || me.plan === 'enterprise';
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Integrations</h1>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(280px,1fr))",gap:12}}>
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:8}}>API Key</div>
+          <div style={{opacity:.8,fontSize:13,marginBottom:8}}>Used for Email / EDR / DNS endpoints.</div>
+          <input value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="paste API key"
+                 style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"inherit"}}/>
+          <div style={{marginTop:8,display:"flex",gap:8}}>
+            <button style={btn} onClick={saveKey}>Save</button>
+            <button style={btnGhost} onClick={()=>{localStorage.removeItem('api_key'); setApiKey('');}}>Clear</button>
+          </div>
+          <Small>Current: <code>{localStorage.getItem('api_key')||'— none —'}</code></Small>
+        </div>
+
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:8}}>Plan</div>
+          <div>Tenant: <b>{me.name}</b></div>
+          <div>Plan: <span className="pill">{me.plan}</span></div>
+          {!proPlus && <Small>Advanced sources (UEBA/Cloud) are disabled on this plan.</Small>}
+        </div>
+      </div>
+
+      <div style={{marginTop:12,display:"grid",gridTemplateColumns:"repeat(2,minmax(280px,1fr))",gap:12}}>
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:6}}>Email scanner (Web API)</div>
+          <Small>POST /email/scan with batched emails.</Small>
+          <button style={btn}
+                  onClick={()=>send("/email/scan",{emails:[{from:"Support <help@paypa1.com>",subject:"Urgent: verify your account"}]})}>
+            Send sample
+          </button>
+          <Code>{`curl -s -H "x-api-key: <API_KEY>" -H "Content-Type: application/json" -X POST ${API_BASE}/email/scan -d '{"emails":[{"from":"Support <help@paypa1.com>","subject":"Urgent: verify your account"}]}'`}</Code>
+        </div>
+
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:6}}>EDR (agent logs)</div>
+          <Small>POST /edr/ingest with endpoint events.</Small>
+          <button style={btn}
+                  onClick={()=>send("/edr/ingest",{events:[{host:"FINANCE-LAPTOP-7",process:"powershell.exe",cmdline:"powershell -enc SQBFAE4A...",file_ops:{burst:1200}}]})}>
+            Send sample
+          </button>
+          <Code>{`curl -s -H "x-api-key: <API_KEY>" -H "Content-Type: application/json" -X POST ${API_BASE}/edr/ingest -d '{"events":[{"host":"FINANCE-LAPTOP-7","process":"powershell.exe","cmdline":"powershell -enc SQBFAE4A...","file_ops":{"burst":1200}}]}'`}</Code>
+        </div>
+
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:6}}>DNS (resolver logs)</div>
+          <Small>POST /dns/ingest for suspicious domains / tunnels.</Small>
+          <button style={btn}
+                  onClick={()=>send("/dns/ingest",{events:[{qname:"evil-top-domain.top",qtype:"A",newly_registered:true,verdict:"dns-tunnel"}]})}>
+            Send sample
+          </button>
+          <Code>{`curl -s -H "x-api-key: <API_KEY>" -H "Content-Type: application/json" -X POST ${API_BASE}/dns/ingest -d '{"events":[{"qname":"evil-top-domain.top","qtype":"A","newly_registered":true,"verdict":"dns-tunnel"}]}'`}</Code>
+        </div>
+
+        <div style={{...card, opacity: proPlus?1:.6}}>
+          <div style={{fontWeight:700,marginBottom:6}}>UEBA (M365 audit) {!proPlus && <span style={{opacity:.8,fontSize:12}}>(Pro+)</span>}</div>
+          <Small>Configure Graph audit export/webhook (docs).</Small>
+          <button style={btn} disabled={!proPlus} onClick={()=>alert("See docs: Graph audit permissions + webhook URL")}>View setup instructions</button>
+        </div>
+
+        <div style={{...card, opacity: proPlus?1:.6}}>
+          <div style={{fontWeight:700,marginBottom:6}}>Cloud (CloudTrail/Defender) {!proPlus && <span style={{opacity:.8,fontSize:12}}>(Pro+)</span>}</div>
+          <Small>Forward cloud security findings to /cloud/ingest.</Small>
+          <button style={btn} disabled={!proPlus} onClick={()=>alert("See docs: CloudTrail/Defender forwarding")}>View setup instructions</button>
+        </div>
+      </div>
+
+      <pre style={pre}>{out || "— output —"}</pre>
+    </div>
+  );
+}function Small({children}){ return <div style={{opacity:.8,fontSize:13,marginTop:6}}>{children}</div>; }
+function Block({title,children,disabled}){ return <div style={{...card, opacity:disabled?.8:1}}><div style={{fontWeight:700,marginBottom:6}}>{title}</div>{children}</div>; }
+function Code({children}){ return <pre style={pre}>{children}</pre>; }
+
+function Policy(){
+  const [p,setP]=useState(null);
+  const [msg,setMsg]=useState("");
+  const [err,setErr]=useState("");
+  useEffect(()=>{ apiGet("/policy").then(setP).catch(e=>setErr(e.error||"API error")); },[]);
+  async function save(){
+    try{
+      const r = await apiPost("/policy", p);
+      setP(r); setMsg("Saved");
+      setTimeout(()=>setMsg(""),1500);
+    }catch(e){ setErr(e.error||"Save failed"); }
+  }
+  if(err) return <div>{err}</div>;
+  if(!p) return <div>Loading…</div>;
+  const row={display:"grid",gridTemplateColumns:"1fr 200px",alignItems:"center",gap:10,margin:"8px 0"};
+  const field={padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"inherit"};
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Policy</h1>
+      <div style={card}>
+        <div style={row}><div>Enabled</div><input type="checkbox" checked={!!p.enabled} onChange={e=>setP({...p,enabled:e.target.checked})}/></div>
+        <div style={row}><div>Threshold</div><input className="field" style={field} type="number" step="0.1" value={p.threshold} onChange={e=>setP({...p,threshold:parseFloat(e.target.value)})}/></div>
+        <div style={row}><div>Allow quarantine</div><input type="checkbox" checked={!!p.allow_quarantine} onChange={e=>setP({...p,allow_quarantine:e.target.checked})}/></div>
+        <div style={row}><div>Allow DNS deny</div><input type="checkbox" checked={!!p.allow_dns_deny} onChange={e=>setP({...p,allow_dns_deny:e.target.checked})}/></div>
+        <div style={row}><div>Allow disable account</div><input type="checkbox" checked={!!p.allow_disable_account} onChange={e=>setP({...p,allow_disable_account:e.target.checked})}/></div>
+        <div style={row}><div>Dry-run (audit only)</div><input type="checkbox" checked={!!p.dry_run} onChange={e=>setP({...p,dry_run:e.target.checked})}/></div>
+        <div style={{marginTop:12}}>
+          <button style={btn} onClick={save}>Save</button>
+          <span style={{marginLeft:10,opacity:.85}}>{msg}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Account(){
+  const [me,setMe]=useState(null);
+  const [msg,setMsg]=useState("");
+  useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
+  if(!me) return <div>Loading…</div>;
+  const paid = me.plan !== "trial";
+  async function activate(plan){
+    try{ const r = await apiPost("/billing/mock-activate", { plan }); setMe({...me, plan:r.plan}); setMsg(`Plan set to ${r.plan}`); }
+    catch(e){ setMsg(e.error||"activation failed"); }
+  }
+  async function createKey(){
+    try{
+      const r=await apiPost("/apikeys",{});
+      localStorage.setItem("api_key", r.api_key);
+      setMsg("API key created and stored in localStorage.api_key");
+    }catch(e){ setMsg(e.error||"key create failed"); }
+  }
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Account</h1>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(280px,1fr))",gap:12}}>
+        <div style={card}>
+          <div style={{marginBottom:8}}><b>Current plan</b>: {me.plan}</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button style={btn} onClick={()=>activate("basic")}>Choose Basic</button>
+            <button style={btn} onClick={()=>activate("pro")}>Choose Pro</button>
+            <button style={btn} onClick={()=>activate("pro_plus")}>Choose Pro+</button>
+          </div>
+        </div>
+        <div style={card}>
+          <div style={{marginBottom:8}}><b>API Key</b></div>
+          {!paid ? (
+            <div>Activate a paid plan to enable API keys.</div>
+          ) : (
+            <>
+              <div style={{marginBottom:8}}>Current (localStorage): <code>{localStorage.getItem("api_key") || "— none —"}</code></div>
+              <button style={btn} onClick={createKey}>Create API Key</button>
+            </>
+          )}
+        </div>
+      </div>
+      {msg && <div style={{marginTop:10}}>{msg}</div>}
+    </div>
+  );
+}
+
+function Admin(){
+  const [items,setItems]=useState(null);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{ adminGet("/admin/tenants").then(setItems).catch(e=>setErr(e.error||"API error")); },[]);
+  if(err) return <div style={{padding:16}}>{err}</div>;
+  if(!items) return <div style={{padding:16}}>Loading…</div>;
+  const list = items?.tenants || items || [];
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Admin</h1>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr><th style={th}>Tenant</th><th style={th}>Plan</th><th style={th}>Users</th><th style={th}>Active keys</th><th style={th}>Last alert</th></tr></thead>
+          <tbody>
+            {list.length===0 && <tr><td style={td} colSpan={5}>No tenants</td></tr>}
+            {list.map((t,i)=>(
+              <tr key={i}>
+                <td style={td}>{t.name||t.id}</td>
+                <td style={td}>{t.plan||"-"}</td>
+                <td style={td}>{t.users ?? "-"}</td>
+                <td style={td}>{t.active_keys ?? "-"}</td>
+                <td style={td}>{t.last_alert ? new Date(Number(t.last_alert)*1000).toLocaleString() : "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TestEvents(){
+  const [apiKey,setApiKey] = React.useState(localStorage.getItem('api_key')||'');
+  const [out,setOut] = React.useState('');
+
+  function saveKey(){ localStorage.setItem('api_key', apiKey.trim()); }
+
+  async function send(route, body){
+    setOut('Sending…');
+    try{
+      const ak = (apiKey||'').trim();
+      if(!ak) throw new Error('No API key');
+      const r = await fetch(`${API_BASE}${route}`,{
+        method:'POST',
+        headers:{'x-api-key':ak,'Content-Type':'application/json'},
+        body: JSON.stringify(body||{})
+      });
+      const txt = await r.text();
+      setOut(r.ok ? (txt||'OK') : `HTTP ${r.status}: ${txt}`);
+    }catch(e){ setOut(String(e)); }
+  }
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Test Events</h1>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(280px,1fr))',gap:12}}>
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:6}}>API Key</div>
+          <input value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="paste API key"
+                 style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.05)',color:'inherit'}} />
+          <div style={{marginTop:8,display:'flex',gap:8}}>
+            <button style={btn} onClick={saveKey}>Save</button>
+            <button style={btnGhost} onClick={()=>{localStorage.removeItem('api_key'); setApiKey('');}}>Clear</button>
+          </div>
+        </div>
+
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:6}}>Email (phish)</div>
+          <button style={btn} onClick={()=>send('/email/scan',{emails:[{from:'Support <help@paypa1.com>',subject:'Urgent: verify your account'}]})}>Send sample</button>
+        </div>
+
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:6}}>EDR (PowerShell suspicious)</div>
+          <button style={btn} onClick={()=>send('/edr/ingest',{events:[{host:'FINANCE-LAPTOP-7',process:'powershell.exe',cmdline:'powershell -enc SQBFAE4A...',file_ops:{burst:1200}}]})}>Send sample</button>
+        </div>
+
+        <div style={card}>
+          <div style={{fontWeight:700,marginBottom:6}}>DNS (DNS tunnel)</div>
+          <button style={btn} onClick={()=>send('/dns/ingest',{events:[{qname:'evil-top-domain.top',qtype:'A',newly_registered:true,verdict:'dns-tunnel'}]})}>Send sample</button>
+        </div>
+      </div>
+
+      <pre style={pre}>{out || '— output —'}</pre>
+    </div>
+  );
+}
+// ---------- App ----------
+function App(){
+  return (
+    <ErrorBoundary>
+      <Layout>
+        <Routes>
+        <Route path="/test" element={<RequireAuth><TestEvents api={API}/></RequireAuth>} />
+        <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>} />
+          <Route path="/login" element={<Login/>}/>
+          <Route path="/" element={<RequireAuth><Dashboard/></RequireAuth>}/>
+          <Route path="/integrations" element={<RequireAuth><Integrations/></RequireAuth>}/>
+          <Route path="/policy" element={<RequireAuth><Policy/></RequireAuth>}/>
+          <Route path="/account" element={<RequireAuth><Account/></RequireAuth>}/>
+          <Route path="/admin" element={<RequireAuth><Admin/></RequireAuth>}/>
+          <Route path="/test" element={<RequireAuth><TestEvents/></RequireAuth>}/>
+          <Route path="*" element={<Navigate to="/" replace/>}/>
+        </Routes>
+      </Layout>
+    </ErrorBoundary>
+  );
+}
+
+function Integrations({ api }){
+  const [out, setOut] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || "http://localhost:8080";
+  const apiKey = (typeof localStorage !== "undefined" && localStorage.getItem("api_key")) || "";
+
+  const styles = {
+    card:{border:"1px solid rgba(255,255,255,.12)",borderRadius:12,padding:16,background:"rgba(255,255,255,.04)"},
+    grid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px,1fr))",gap:12},
+    btn:{padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"},
+    pre:{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"},
+    warn:{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10},
+    err :{margin:"10px 0",padding:"10px 12px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10},
+    muted:{opacity:.8}
+  };
+
+  async function send(path, payload){
+    setErr(""); setOut("Sending…");
+    try{
+      const r = await fetch(`${API_BASE}/${path}`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "x-api-key": apiKey },
+        body: JSON.stringify(payload||{})
+      });
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok){ setErr(j?.error || `HTTP ${r.status}`); setOut(""); }
+      else { setOut(JSON.stringify(j,null,2)); }
+    }catch(e){ setErr(String(e)); setOut(""); }
+  }
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Integrations</h1>
+      {!apiKey && (
+        <div style={styles.warn}>
+          No API key set. Create one in <a href="/account">Account</a>, then it will be read from <code>localStorage.api_key</code>.
+        </div>
+      )}
+      <div style={styles.grid}>
+        <div style={styles.card}>
+          <div style={{fontWeight:700,marginBottom:6}}>Email scanner (Web API)</div>
+          <div style={styles.muted}>POST <code>/email/scan</code> with batched emails.</div>
+          <div style={{marginTop:8}}>
+            <button style={styles.btn} disabled={!apiKey} onClick={()=>send("email/scan",{
+              emails:[{from:"Support <help@paypa1.com>",subject:"Urgent: verify your account"}]
+            })}>Send sample</button>
+          </div>
+          <div style={{marginTop:8}}>
+            <pre style={styles.pre}>{`curl -s -H "x-api-key: ${apiKey || "<API_KEY>"}" -H "Content-Type: application/json" -X POST ${API_BASE}/email/scan -d '{\"emails\":[{\"from\":\"Support <help@paypa1.com>\",\"subject\":\"Urgent: verify your account\"}]}'`}</pre>
+          </div>
+        </div>
+
+        <div style={styles.card}>
+          <div style={{fontWeight:700,marginBottom:6}}>EDR (agent logs)</div>
+          <div style={styles.muted}>POST <code>/edr/ingest</code> with telemetry.</div>
+          <div style={{marginTop:8}}>
+            <button style={styles.btn} disabled={!apiKey} onClick={()=>send("edr/ingest",{
+              events:[{host:"FINANCE-LAPTOP-7",process:"powershell.exe",cmdline:"powershell -enc SQBFAE4A...",file_ops:{burst:1200}}]
+            })}>Send sample</button>
+          </div>
+          <div style={{marginTop:8}}>
+            <pre style={styles.pre}>{`curl -s -H "x-api-key: ${apiKey || "<API_KEY>"}" -H "Content-Type: application/json" -X POST ${API_BASE}/edr/ingest -d '{\"events\":[{\"host\":\"FINANCE-LAPTOP-7\",\"process\":\"powershell.exe\",\"cmdline\":\"powershell -enc SQBFAE4A...\",\"file_ops\":{\"burst\":1200}}]}'`}</pre>
+          </div>
+        </div>
+
+        <div style={styles.card}>
+          <div style={{fontWeight:700,marginBottom:6}}>DNS (resolver logs)</div>
+          <div style={styles.muted}>POST <code>/dns/ingest</code> with DNS query events.</div>
+          <div style={{marginTop:8}}>
+            <button style={styles.btn} disabled={!apiKey} onClick={()=>send("dns/ingest",{
+              events:[{qname:"evil-top-domain.top",qtype:"A",newly_registered:true,verdict:"dns-tunnel"}]
+            })}>Send sample</button>
+          </div>
+          <div style={{marginTop:8}}>
+            <pre style={styles.pre}>{`curl -s -H "x-api-key: ${apiKey || "<API_KEY>"}" -H "Content-Type: application/json" -X POST ${API_BASE}/dns/ingest -d '{\"events\":[{\"qname\":\"evil-top-domain.top\",\"qtype\":\"A\",\"newly_registered\":true,\"verdict\":\"dns-tunnel\"}]}'`}</pre>
+          </div>
+        </div>
+      </div>
+
+      {(out||err) && (
+        <div style={{marginTop:12}}>
+          {err && <div style={styles.err}>Error: {err}</div>}
+          {out && <pre style={styles.pre}>{out}</pre>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TestEvents({ api }){
+  const [out, setOut] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || "http://localhost:8080";
+  const apiKey = (typeof localStorage !== "undefined" && localStorage.getItem("api_key")) || "";
+
+  const styles = {
+    row:{display:"flex",alignItems:"center",gap:12,margin:"10px 0"},
+    btn:{padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"},
+    pre:{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)",marginTop:12},
+    warn:{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10},
+    err :{margin:"10px 0",padding:"10px 12px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10}
+  };
+
+  async function send(path, payload){
+    setErr(""); setOut("Sending…");
+    try{
+      const r = await fetch(`${API_BASE}/${path}`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "x-api-key": apiKey },
+        body: JSON.stringify(payload||{})
+      });
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok){ setErr(j?.error || `HTTP ${r.status}`); setOut(""); }
+      else { setOut(JSON.stringify(j,null,2)); }
+    }catch(e){ setErr(String(e)); setOut(""); }
+  }
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Test Events</h1>
+      {!apiKey && (
+        <div style={styles.warn}>
+          No API key set. Create one in <a href="/account">Account</a>, then it will be read from <code>localStorage.api_key</code>.
+        </div>
+      )}
+
+      <div style={styles.row}>
+        <b>Email</b>
+        <button style={styles.btn} disabled={!apiKey} onClick={()=>send("email/scan",{
+          emails:[{from:"Support <help@paypa1.com>",subject:"Urgent: verify your account"}]
+        })}>Send sample</button>
+      </div>
+
+      <div style={styles.row}>
+        <b>EDR</b>
+        <button style={styles.btn} disabled={!apiKey} onClick={()=>send("edr/ingest",{
+          events:[{host:"FINANCE-LAPTOP-7",process:"powershell.exe",cmdline:"powershell -enc SQBFAE4A...",file_ops:{burst:1200}}]
+        })}>Send sample</button>
+      </div>
+
+      <div style={styles.row}>
+        <b>DNS</b>
+        <button style={styles.btn} disabled={!apiKey} onClick={()=>send("dns/ingest",{
+          events:[{qname:"evil-top-domain.top",qtype:"A",newly_registered:true,verdict:"dns-tunnel"}]
+        })}>Send sample</button>
+      </div>
+
+      {(out||err) && (
+        <div>
+          {err && <div style={styles.err}>Error: {err}</div>}
+          {out && <pre style={styles.pre}>{out}</pre>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode><BrowserRouter><App/></BrowserRouter></React.StrictMode>
+);

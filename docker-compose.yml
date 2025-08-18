@@ -1,0 +1,52 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:15
+    container_name: cybermon-pg
+    environment:
+      POSTGRES_USER: cybermon
+      POSTGRES_PASSWORD: cyberpass
+      POSTGRES_DB: cyberguardpro
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cybermon -d cyberguardpro"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: app/Dockerfile.api
+    container_name: cybermon-api
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://cybermon:cyberpass@db:5432/cyberguardpro"
+      JWT_SECRET: "${JWT_SECRET:-dev_secret_key}"
+      ADMIN_KEY:  "${ADMIN_KEY:-dev_admin_key}"
+      NODE_ENV: "production"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web-ready/Dockerfile.web
+      args:
+        VITE_API_BASE: "/api"
+    container_name: cybermon-web
+    depends_on:
+      - api
+    ports:
+      - "5176:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

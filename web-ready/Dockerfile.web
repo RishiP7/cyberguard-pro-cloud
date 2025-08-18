@@ -1,0 +1,15 @@
+# Build stage
+FROM node:20-alpine AS build
+WORKDIR /web
+COPY web-ready/package*.json ./
+RUN npm ci
+ARG VITE_API_BASE=/api
+ENV VITE_API_BASE=$VITE_API_BASE
+COPY web-ready/ .
+RUN npm run build
+
+# Runtime: Nginx serving the built app + proxy /api -> api:8080
+FROM nginx:alpine
+COPY web-ready/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /web/dist /usr/share/nginx/html
+EXPOSE 80
