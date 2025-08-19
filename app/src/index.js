@@ -34,48 +34,42 @@ const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
+// ----- CORS (explicit allowlist) -----
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || (
+  'https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173'
+)).split(/[,\s]+/).filter(Boolean);
+
+function corsOrigin(origin, cb){
+  // Allow same-origin or non-browser requests (no Origin header)
+  if (!origin) return cb(null, true);
+  if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+  return cb(new Error('CORS: origin not allowed: ' + origin));
+}
+
 app.use(cors({
-  origin: (_o, cb) => cb(null, true),
+  origin: corsOrigin,
   credentials: true,
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   allowedHeaders: [
-    "Origin",
-    "X-Requested-With",
-    "Content-Type",
-    "Accept",
-    "Authorization",
-    "x-api-key",
-    "x-admin-key",
-    "x-plan-preview",
-    "x-admin-override"
+    "Origin","X-Requested-With","Content-Type","Accept","Authorization",
+    "x-api-key","x-admin-key","x-plan-preview","x-admin-override"
   ],
   exposedHeaders: [
-    "RateLimit-Policy",
-    "RateLimit-Limit",
-    "RateLimit-Remaining",
-    "RateLimit-Reset"
+    "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
   ]
 }));
+
+// Preflight
 app.options("*", cors({
-  origin: (_o, cb) => cb(null, true),
+  origin: corsOrigin,
   credentials: true,
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   allowedHeaders: [
-    "Origin",
-    "X-Requested-With",
-    "Content-Type",
-    "Accept",
-    "Authorization",
-    "x-api-key",
-    "x-admin-key",
-    "x-plan-preview",
-    "x-admin-override"
+    "Origin","X-Requested-With","Content-Type","Accept","Authorization",
+    "x-api-key","x-admin-key","x-plan-preview","x-admin-override"
   ],
   exposedHeaders: [
-    "RateLimit-Policy",
-    "RateLimit-Limit",
-    "RateLimit-Remaining",
-    "RateLimit-Reset"
+    "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
   ],
   optionsSuccessStatus: 204
 }));
