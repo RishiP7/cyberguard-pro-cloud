@@ -197,18 +197,42 @@ app.get("/health",async (_req,res)=>{
 });
 
 // ---------- auth ----------
-app.post("/auth/login",async (req,res)=>{
-  try{
-    const {email,password}=req.body||{};
-    if(!email||!password) return res.status(400).json({error:"missing"});
-    const {rows}=await q("SELECT email,password_hash,tenant_id FROM users WHERE email=$1",[email]);
-    if(!rows.length) return res.status(401).json({error:"login failed"});
-    // dev: accept test123 without bcrypt to keep simple locally
-    const ok = rows[0].password_hash && await bcrypt.compare(password, rows[0].password_hash);
-if(!ok) return res.status(401).json({error:"login failed"});
-    const tok=jwt.sign({tenant_id:rows[0].tenant_id,email},JWT_SECRET,{expiresIn:"12h"});
-    res.json({ok:true,token:tok});
-  }catch(e){ res.status(500).json({error:"login failed"}); }
+app.post("/auth/login", async (req, res) => {
+  try {
+    let { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: "missing email or password" });
+    }
+
+    email = String(email).toLowerCase().trim();
+
+    // Look up user by lowercase email
+    const { rows } = await q(
+      `SELECT id, email, password_hash, tenant_id FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+      [email]
+    );
+    if (!rows.length) {
+      return res.status(401).json({ error: "invalid credentials" });
+    }
+    const user = rows[0];
+
+    // Compare password safely
+    const ok = await bcrypt.compare(String(password), user.password_hash || "");
+    if (!ok) {
+      return res.status(401).json({ error: "invalid credentials" });
+    }
+
+    // Issue JWT
+    const token = jwt.sign(
+      { tenant_id: user.tenant_id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.json({ ok: true, token });
+  } catch (e) {
+    return res.status(500).json({ error: "login failed" });
+  }
 });
 
 app.post("/auth/register",async (req,res)=>{
