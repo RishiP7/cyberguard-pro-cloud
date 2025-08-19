@@ -12,6 +12,17 @@ function authHeaders(){
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+function adminPreviewHeaders(){
+  const h = {};
+  try{
+    const lp = localStorage.getItem('admin_plan_preview');
+    const or = localStorage.getItem('admin_override');
+    if(lp) h['x-plan-preview'] = lp;
+    if(or === '1') h['x-admin-override'] = '1';
+  }catch(_e){}
+  return h;
+}
+
 async function parse(r){
   const ct = r.headers.get("content-type")||"";
   if (ct.includes("application/json")) return r.json();
@@ -19,14 +30,14 @@ async function parse(r){
 }
 
 async function apiGet(path){
-  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders() } });
+  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders(), ...adminPreviewHeaders() } });
   if (!r.ok) throw await parse(r);
   return parse(r);
 }
 async function apiPost(path, body){
   const r = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type":"application/json", ...authHeaders() },
+    headers: { "Content-Type":"application/json", ...authHeaders(), ...adminPreviewHeaders() },
     body: JSON.stringify(body||{})
   });
   if (!r.ok) throw await parse(r);
@@ -50,7 +61,8 @@ async function apiPostWithKey(path, body, apiKey){
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { "x-api-key": apiKey } : {}),
-      ...authHeaders() // will add Authorization if present; harmless for key-based endpoints
+      ...authHeaders(),
+      ...adminPreviewHeaders()
     },
     body: JSON.stringify(body || {})
   });
@@ -64,6 +76,7 @@ const card={padding:16,border:"1px solid rgba(255,255,255,.12)",borderRadius:12,
 const btn={padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"};
 const pre={whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)",marginTop:12};
 const errBox={padding:"10px 12px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10,margin:"10px 0"};
+const badgeSA={marginRight:8,padding:'4px 8px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:999,fontSize:12};
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Register from "./pages/Register.jsx";
@@ -106,7 +119,8 @@ function Layout({children}){
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           <N to="/test">Test</N>
         </div>
-        <div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
           {authed ? (
             <button
               style={btnGhost}
@@ -123,7 +137,18 @@ function Layout({children}){
           )}
         </div>
       </div>
-      <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>{children}</div>
+      <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>
+        {!me?.is_super && typeof localStorage!=='undefined' && localStorage.getItem('admin_token_backup') && (
+          <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div><b>Impersonating tenant</b> — you’re viewing the app as a customer.</div>
+            <button
+              onClick={()=>{ const b=localStorage.getItem('admin_token_backup'); if(b){ localStorage.setItem('token', b); localStorage.removeItem('admin_token_backup'); location.reload(); } }}
+              style={{padding:'6px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',cursor:'pointer'}}
+            >Exit impersonation</button>
+          </div>
+        )}
+        {children}
+      </div>
     </div>
   );
 }
@@ -452,8 +477,10 @@ function Admin(){
   }
 
   async function impersonate(tid){
+    const adminTok = localStorage.getItem('token');
     const j = await apiPost('/admin/impersonate', { tenant_id: tid });
     if(j?.token){
+      if(adminTok) localStorage.setItem('admin_token_backup', adminTok);
       localStorage.setItem('token', j.token);
       alert('Impersonation token stored. Reloading as tenant…');
       location.href = '/';
@@ -489,6 +516,25 @@ function Admin(){
       <div style={s.header}>
         <div style={{fontWeight:700}}>Admin</div>
         <div style={{opacity:.8,fontSize:13}}>Super-admin tools</div>
+      </div>
+
+      <div style={{display:'flex',gap:8,alignItems:'center',margin:'6px 0 12px'}}>
+        <div style={{fontSize:12,opacity:.8}}>Preview plan as:</div>
+        <select
+          defaultValue={typeof localStorage!=='undefined' ? (localStorage.getItem('admin_plan_preview')||'') : ''}
+          onChange={e=>{ const v=e.target.value; if(typeof localStorage!=='undefined'){ if(v) localStorage.setItem('admin_plan_preview', v); else localStorage.removeItem('admin_plan_preview'); } alert('Plan preview set. Reloading…'); location.reload(); }}
+          style={{padding:'6px 8px',borderRadius:8,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.14)',color:'#e6e9ef'}}
+        >
+          <option value="">(tenant actual)</option>
+          <option value="trial">trial</option>
+          <option value="basic">basic</option>
+          <option value="pro">pro</option>
+          <option value="pro_plus">pro+</option>
+        </select>
+        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
+          <input type="checkbox" defaultChecked={typeof localStorage!=='undefined' && localStorage.getItem('admin_override')==='1'} onChange={e=>{ if(typeof localStorage!=='undefined'){ if(e.target.checked) localStorage.setItem('admin_override','1'); else localStorage.removeItem('admin_override'); } alert('Override updated. Reloading…'); location.reload(); }} />
+          Bypass paywall (override)
+        </label>
       </div>
 
       {err && <div style={s.err}>{err}</div>}
@@ -553,6 +599,18 @@ function Admin(){
                       <div>{m.body}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div style={s.card}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div style={{fontWeight:600}}>AI Admin Assistant</div>
+                </div>
+                <div style={{marginTop:8}}>
+                  <form onSubmit={async (e)=>{ e.preventDefault(); const q = e.target.q.value.trim(); if(!q) return; try{ const r = await apiPost('/admin/ai/ask', { question: q, tenant_id: selected }); alert(r?.answer || 'No answer'); e.target.reset(); }catch(_e){ alert('Assistant failed'); } }}>
+                    <input name="q" placeholder="Ask about configuration, errors, or how to…" style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,.14)',background:'rgba(255,255,255,.06)',color:'#e6e9ef'}} />
+                    <div style={{marginTop:8}}><button style={s.btn}>Ask</button></div>
+                  </form>
                 </div>
               </div>
             </div>
