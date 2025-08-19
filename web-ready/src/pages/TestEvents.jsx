@@ -4,6 +4,9 @@ import { API_BASE } from "../api";
 export default function TestEvents(){
   const [out,setOut] = useState("");
   const apiKey = localStorage.getItem("api_key") || "";
+  const me = JSON.parse(localStorage.getItem("me") || "{}");
+  const isTrial = (me?.plan || "trial") === "trial" && me?.trial?.active;
+  const trialDays = me?.trial?.days_left ?? null;
 
   async function send(path, body){
     setOut("Sending…");
@@ -23,6 +26,11 @@ export default function TestEvents(){
   return (
     <div style={{padding:16}}>
       <h1>Test Events</h1>
+      {isTrial && (
+        <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10}}>
+          Trial active — <b>{trialDays}</b> day{trialDays===1?'':'s'} left. Upgrade to keep protection after your trial.
+        </div>
+      )}
       <div style={{margin:"8px 0",opacity:.85}}>API key: <code>{apiKey || "— none — (create in Account)"}</code></div>
 
       <Row><b>Email</b>

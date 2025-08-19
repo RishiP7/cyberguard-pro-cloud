@@ -55,7 +55,7 @@ async function apiPostWithKey(path, body, apiKey){
   return parse(r);
 }
 
-const API = { get: apiGet, post: apiPost, admin: adminGet, postWithKey: apiPostWithKey };
+export const API = { get: apiGet, post: apiPost, admin: adminGet, postWithKey: apiPostWithKey };
 // ===== End minimal API wrapper =====
 const card={padding:16,border:"1px solid rgba(255,255,255,.12)",borderRadius:12,background:"rgba(255,255,255,.04)"};
 const btn={padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"};
@@ -63,6 +63,7 @@ const pre={whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.
 const errBox={padding:"10px 12px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10,margin:"10px 0"};
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import Register from "./pages/Register.jsx";
 
 function ErrorBoundary({children}){
   const [err,setErr] = useState(null);
@@ -75,7 +76,14 @@ class ErrorCatcher extends React.Component{
   componentDidCatch(e,info){ console.error("ErrorBoundary", e, info); this.props.onError(e); }
   render(){ return this.props.children; }
 }
-
+// Compute trial info from server fields (trial_ends_at epoch seconds)
+function trialInfo(me){
+  const ends = Number(me?.trial_ends_at || 0);
+  if (!ends) return { active:false, days_left:0, ends_at:null };
+  const now = Math.floor(Date.now()/1000);
+  const left = Math.max(0, ends - now);
+  return { active: left > 0, days_left: Math.ceil(left/86400), ends_at: ends };
+}
 // ---------- Layout ----------
 function Layout({children}){
   const nav = useNav();
@@ -177,10 +185,11 @@ function useNav(){
     let mounted=true;
     (async()=>{
       try{
-        if(!localStorage.getItem("token")){ setMe(null); setLoading(false); return; }
-        const m=await apiGet("/me");
-        if(mounted) setMe(m);
-      }catch(e){ if(mounted) setErr(e.error||"API error"); }
+  if(!localStorage.getItem("token")){ setMe(null); setLoading(false); return; }
+  const m = await apiGet("/me");
+  const withTrial = { ...m, trial: trialInfo(m) };
+  if(mounted) setMe(withTrial);
+}catch(e){ if(mounted) setErr(e.error||"API error"); }
       finally{ if(mounted) setLoading(false); }
     })();
     return ()=>{ mounted=false; };
@@ -222,6 +231,9 @@ function Login(){
           <button style={btn} type="submit">Sign in</button>
         </form>
         {msg && <div style={{marginTop:8, color:"#ff8a8a"}}>{msg}</div>}
+        <div style={{marginTop:10, opacity:.9}}>
+          New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
+        </div>
       </div>
     </div>
   );
@@ -452,6 +464,7 @@ function App(){
       <Layout>
         <Routes>
   <Route path="/login" element={<Login/>}/>
+  <Route path="/register" element={<Register/>}/>
   <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>}/>
   <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>}/>
   <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
@@ -473,8 +486,8 @@ function Integrations({ api }){
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
   const caps = planCapabilities(me?.plan || "trial", me);
-  const isTrial = (me?.plan || "trial") === "trial";
-  const trialDays = me?.trial?.days_left ?? null;
+const isTrial = (me?.plan || "trial") === "trial" && me?.trial?.active;
+const trialDays = me?.trial?.days_left ?? null;
 
   const styles = {
     card:{border:"1px solid rgba(255,255,255,.12)",borderRadius:12,padding:16,background:"rgba(255,255,255,.04)"},
