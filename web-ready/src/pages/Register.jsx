@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API } from "../api";
+import { API } from "../main.jsx";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -18,10 +18,10 @@ export default function Register() {
         setMsg(j.error);
         return;
       }
-      setMsg("Account created! Please login.");
-      navigate("/login");
+      setMsg("🎉 Account created successfully! Redirecting you to login...");
+      setTimeout(() => navigate("/login"), 1500);
     } catch (err) {
-      setMsg("Network error, please try again.");
+      setMsg("⚠️ Something went wrong while registering. Please try again.");
     }
   };
 
