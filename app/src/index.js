@@ -45,7 +45,9 @@ app.use(cors({
     "Accept",
     "Authorization",
     "x-api-key",
-    "x-admin-key"
+    "x-admin-key",
+    "x-plan-preview",
+    "x-admin-override"
   ],
   exposedHeaders: [
     "RateLimit-Policy",
@@ -65,7 +67,9 @@ app.options("*", cors({
     "Accept",
     "Authorization",
     "x-api-key",
-    "x-admin-key"
+    "x-admin-key",
+    "x-plan-preview",
+    "x-admin-override"
   ],
   exposedHeaders: [
     "RateLimit-Policy",
@@ -110,21 +114,71 @@ const adminMiddleware=(req,res,next)=>{
 const requirePaid=plan=>{
   return ["basic","pro","pro_plus"].includes(plan);
 };
-function enforceActive(req, res, next) {
-  q(`SELECT plan, trial_ends_at FROM tenants WHERE id=$1`, [req.user.tenant_id])
-    .then(({ rows }) => {
-      if (!rows.length) return res.status(403).json({ error: 'tenant not found' });
-      const t = rows[0];
-      const nowEpoch = now();
-      const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : true;
-      const allowed = (t.plan && t.plan !== 'suspended') && (t.plan !== 'trial' ? true : trialActive);
-      if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
-      next();
-    })
-    .catch(() => res.status(500).json({ error: 'billing check failed' }));
+async function enforceActive(req, res, next){
+  try{
+    const flags = readAdminFlags(req);
+    if(req.user?.is_super && flags.override){ return next(); }
+    const t = await getEffectivePlan(req.user.tenant_id, req);
+    const nowEpoch = now();
+    const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : true;
+    const plan = t.effective || t.plan;
+    const allowed = (plan && plan !== 'suspended') && (plan !== 'trial' ? true : trialActive);
+    if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
+    next();
+  }catch(e){
+    console.error('enforceActive error', e);
+    return res.status(500).json({ error: 'billing check failed' });
+  }
 }
 function requireSuper(req, res, next) { if (!req.user?.is_super) return res.status(403).json({ error: 'forbidden' }); next(); }
 function requireOwner(req, res, next) { if (!(req.user?.is_super || (req.user?.role === 'owner'))) return res.status(403).json({ error: 'forbidden' }); next(); }
+
+function readAdminFlags(req){
+  const preview = req.headers['x-plan-preview']; // 'trial'|'basic'|'pro'|'pro+'
+  const override = req.headers['x-admin-override'] === '1';
+  return { preview, override };
+}
+
+async function getEffectivePlan(tenant_id, req){
+  const { rows } = await q(`SELECT plan, trial_ends_at FROM tenants WHERE id=$1`, [tenant_id]);
+  if(!rows.length) return { plan:null, trial_ends_at:null, effective:'none' };
+  const t = rows[0];
+  const flags = readAdminFlags(req);
+  if(req.user?.is_super && flags.preview){
+    return { ...t, effective: flags.preview };
+  }
+  return { ...t, effective: t.plan };
+}
+
+async function aiReply(tenant_id, prompt){
+  try{
+    const key = process.env.OPENAI_API_KEY;
+    if(!key){
+      if(/how|why|help|error|fix|configure/i.test(prompt||'')){
+        return 'Troubleshooting steps: 1) Verify API key in Account. 2) Confirm subscription or trial is active. 3) Test your ingest endpoint with curl. 4) Check Admin > Tenants > Logs. Paste error messages for specific guidance.';
+      }
+      return 'Thanks for your message. An admin will respond shortly.';
+    }
+    const r = await fetch('https://api.openai.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages:[
+          {role:'system', content:`You are the CyberGuard Pro Admin Assistant. You know product features, plans (Basic, Pro, Pro+), trial flow, endpoints (/email/ingest, /endpoint/ingest, /network/ingest, /cloud/ingest), alert SSE (/alerts/stream), account/billing, admin tools (suspend, rotate key, impersonate), and Render/Node/Postgres basics. Give concise, actionable steps.`},
+          {role:'user', content: String(prompt||'')}
+        ],
+        temperature: 0.3,
+        max_tokens: 400
+      })
+    });
+    const j = await r.json();
+    return j.choices?.[0]?.message?.content || 'I have noted your message.';
+  }catch(e){
+    console.error('aiReply error', e);
+    return 'Assistant is unavailable right now. An admin will reply shortly.';
+  }
+}
 // ---------- DB bootstrap (idempotent) ----------
 (async ()=>{
   await q(`
@@ -368,6 +422,30 @@ app.post('/admin/chat/reply', authMiddleware, requireSuper, async (req,res)=>{
     );
     res.json({ok:true});
   }catch(e){ res.status(500).json({error:'reply failed'}); }
+});
+
+app.post('/chat/send', authMiddleware, async (req,res)=>{
+  try{
+    const { body } = req.body||{};
+    if(!body) return res.status(400).json({error:'missing body'});
+    const msg_id = `m_${uuidv4()}`;
+    const t = now();
+    // use tenant_id as chat_id grouping key (no separate chats table needed)
+    await q(`INSERT INTO chat_messages(id,chat_id,tenant_id,author,body,created_at) VALUES($1,$2,$3,'user',$4,$5)`,[msg_id, req.user.tenant_id, req.user.tenant_id, body, t]);
+    const aiText = await aiReply(req.user.tenant_id, body);
+    const ai_id = `m_${uuidv4()}`;
+    await q(`INSERT INTO chat_messages(id,chat_id,tenant_id,author,body,created_at) VALUES($1,$2,$3,'ai',$4,$5)`,[ai_id, req.user.tenant_id, req.user.tenant_id, aiText, now()]);
+    res.json({ok:true});
+  }catch(e){ res.status(500).json({error:'chat failed'}); }
+});
+
+app.post('/admin/ai/ask', authMiddleware, requireSuper, async (req,res)=>{
+  try{
+    const { question, tenant_id } = req.body||{};
+    const context = `Tenant: ${tenant_id||req.user.tenant_id}. Provide steps, relevant endpoints, and quick checks.`;
+    const a = await aiReply(tenant_id||req.user.tenant_id, `${context}\n\nQ: ${question}`);
+    res.json({ok:true, answer:a});
+  }catch(e){ console.error(e); res.status(500).json({error:'ai failed'}); }
 });
 // ---------- billing mocks ----------
 app.post("/billing/mock-activate",authMiddleware,async (req,res)=>{
