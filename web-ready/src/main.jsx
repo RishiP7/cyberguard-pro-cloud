@@ -813,142 +813,122 @@ function App(){
   );
 }
 
-function Integrations({ api }){
-  const [me,setMe]=React.useState(null);
+// --- Integrations Wizard UI ---
+function Integrations({ api }) {
+  const [busy, setBusy] = React.useState(false);
+  const [status, setStatus] = React.useState({});
   const [out, setOut] = React.useState("");
   const [err, setErr] = React.useState("");
-  const apiKey = (typeof localStorage !== "undefined" && localStorage.getItem("api_key")) || "";
+  const [toast, setToast] = React.useState("");
 
-  React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
-  const caps = planCapabilities(me?.plan || "trial", me);
-const isTrial = (me?.plan || "trial") === "trial" && me?.trial?.active;
-const trialDays = me?.trial?.days_left ?? null;
-
+  // Styles for cards and ghost buttons (reusing existing style objects)
   const styles = {
-    card:{border:"1px solid rgba(255,255,255,.12)",borderRadius:12,padding:16,background:"rgba(255,255,255,.04)"},
-    grid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px,1fr))",gap:12},
-    btn:{padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"},
-    pre:{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"},
-    warn:{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10},
-    err :{margin:"10px 0",padding:"10px 12px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10},
-    muted:{opacity:.8}
+    card: { padding: 16, border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, background: "rgba(255,255,255,.04)" },
+    ghost: { padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.2)", background: "transparent", color: "#e6e9ef", cursor: "pointer", fontSize: 12 }
   };
 
-  async function send(path, payload){
-    setErr(""); setOut("Sending…");
-    try{
-      const j = await api.postWithKey(path, payload, apiKey);
-      setOut(JSON.stringify(j, null, 2));
-    }catch(e){
-      setErr(e?.error ? String(e.error) : String(e));
-      setOut("");
+  async function refresh() {
+    try {
+      let r = await api("GET", "/integrations/status");
+      if (r.ok) setStatus(r);
+    } catch (e) { console.error(e); }
+  }
+  React.useEffect(() => { refresh(); }, []);
+  React.useEffect(() => {
+    const id = setInterval(() => refresh(), 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function send(type, action, body) {
+    setBusy(true); setErr(""); setOut("");
+    try {
+      let r = await api("POST", "/integrations/" + type + "/" + action, body);
+      if (!r.ok) throw new Error(r.error || "failed");
+      setOut(JSON.stringify(r, null, 2));
+      refresh();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  async function copy(text) {
+    try {
+      await navigator.clipboard.writeText(String(text));
+      setToast("Copied to clipboard");
+      setTimeout(() => setToast(""), 1200);
+    } catch (_e) {
+      setToast("Copy failed");
+      setTimeout(() => setToast(""), 1200);
     }
   }
 
+  const edrToken = status.edr?.token;
+  const dnsInfo = status.dns;
+
   return (
-    <div style={{padding:16}}>
-      <h1 style={{marginTop:0}}>Integrations</h1>
-      {isTrial && (
-        <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10}}>
-          Trial {me?.trial?.active ? `— ${trialDays} day${trialDays===1?'':'s'} left` : 'expired'}. {me?.trial?.active ? 'Enjoy preview access to AI features.' : 'Upgrade to Pro+ to continue using AI.'}
-        </div>
-      )}
-      {!apiKey && (
-        <div style={styles.warn}>
-          No API key set. Create one in <a href="/account">Account</a>, then it will be read from <code>localStorage.api_key</code>.
-        </div>
-      )}
-      <div style={styles.grid}>
-        {/* Email — always available */}
+    <div style={{ padding: 20 }}>
+      <h2>Integrations Wizard</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 20 }}>
+
         <div style={styles.card}>
-          <div style={{fontWeight:700,marginBottom:6}}>Email scanner (Web API)</div>
-          <div style={styles.muted}>POST <code>/email/scan</code> with batched emails.</div>
-          <div style={{marginTop:8}}>
-            <button style={styles.btn} disabled={!apiKey} onClick={()=>send("email/scan",{
-              emails:[{from:"Support <help@paypa1.com>",subject:"Urgent: verify your account"}]
-            })}>Send sample</button>
-          </div>
+          <h3>Email Scanner</h3>
+          <p>Connect your mailbox for phishing and malware detection.</p>
+          <button disabled={busy} onClick={() => send("email", "connect", { provider: "imap" })}>Connect IMAP</button>
         </div>
 
-        {/* EDR */}
-        {caps.edr ? (
-          <div style={styles.card}>
-            <div style={{fontWeight:700,marginBottom:6}}>EDR (agent logs)</div>
-            <div style={styles.muted}>POST <code>/edr/ingest</code> with telemetry.</div>
-            <div style={{marginTop:8}}>
-              <button style={styles.btn} disabled={!apiKey} onClick={()=>send("edr/ingest",{
-                events:[{host:"FINANCE-LAPTOP-7",process:"powershell.exe",cmdline:"powershell -enc SQBFAE4A...",file_ops:{burst:1200}}]
-              })}>Send sample</button>
-            </div>
-          </div>
-        ) : (
-          <LockedTile title="EDR (agent logs)" reason="Available on Pro and Pro+ plans."/>
-        )}
+        <div style={styles.card}>
+          <h3>EDR Agent</h3>
+          <p>Download and install the endpoint agent.</p>
+          <button disabled={busy} onClick={() => send("edr", "enroll", {})}>Generate Enrollment Token</button>
+          {edrToken && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <code style={{ opacity: .9 }}>{edrToken}</code>
+              <button style={styles.ghost} onClick={() => copy(edrToken)}>Copy</button>
+            </span>
+          )}
+        </div>
 
-        {/* DNS */}
-        {caps.dns ? (
-          <div style={styles.card}>
-            <div style={{fontWeight:700,marginBottom:6}}>DNS (resolver logs)</div>
-            <div style={styles.muted}>POST <code>/dns/ingest</code> with DNS query events.</div>
-            <div style={{marginTop:8}}>
-              <button style={styles.btn} disabled={!apiKey} onClick={()=>send("dns/ingest",{
-                events:[{qname:"evil-top-domain.top",qtype:"A",newly_registered:true,verdict:"dns-tunnel"}]
-              })}>Send sample</button>
-            </div>
-          </div>
-        ) : (
-          <LockedTile title="DNS (resolver logs)" reason="Available on Pro and Pro+ plans."/>
-        )}
+        <div style={styles.card}>
+          <h3>DNS Resolver</h3>
+          <p>Protect DNS traffic with our secure resolvers.</p>
+          <button disabled={busy} onClick={() => send("dns", "activate", {})}>Activate DNS Protection</button>
+          {dnsInfo && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>Resolvers: <code>{(dnsInfo.resolver_ips || []).join(', ')}</code></span>
+              <span>• Token: <code>{dnsInfo.token}</code></span>
+              <button style={styles.ghost} onClick={() => copy(dnsInfo.token)}>Copy</button>
+            </span>
+          )}
+        </div>
 
-        {/* UEBA */}
-        {caps.ueba ? (
-          <div style={styles.card}>
-            <div style={{fontWeight:700,marginBottom:6}}>UEBA (M365 Audit)</div>
-            <div style={styles.muted}>Monitor sign‑in anomalies, mass downloads, impossible travel.</div>
-            <div style={{marginTop:8}}>
-              <button style={styles.btn} onClick={()=>alert("Setup in docs: M365 Graph audit permissions + webhook URL to /ueba/ingest (coming soon)")}>View setup instructions</button>
-            </div>
-          </div>
-        ) : (
-          <LockedTile title="UEBA (M365 Audit)" reason="Available on Pro+ plan."/>
-        )}
+        <div style={styles.card}>
+          <h3>UEBA</h3>
+          <p>Enable user/entity behavior analytics.</p>
+          <button disabled={busy} onClick={() => send("ueba", "enable", {})}>Enable UEBA</button>
+        </div>
 
-        {/* Cloud */}
-        {caps.cloud ? (
-          <div style={styles.card}>
-            <div style={{fontWeight:700,marginBottom:6}}>Cloud (CloudTrail/Defender)</div>
-            <div style={styles.muted}>Forward cloud security logs for high‑severity detections.</div>
-            <div style={{marginTop:8}}>
-              <button style={styles.btn} onClick={()=>alert("Setup in docs: CloudTrail/Defender forwarding to /cloud/ingest (coming soon)")}>View setup instructions</button>
-            </div>
-          </div>
-        ) : (
-          <LockedTile title="Cloud (CloudTrail/Defender)" reason="Available on Pro+ plan."/>
-        )}
+        <div style={styles.card}>
+          <h3>Cloud Security</h3>
+          <p>Connect AWS or Azure for cloud security scanning.</p>
+          <button disabled={busy} onClick={() => send("cloud", "connect", { provider: "aws" })}>Connect AWS</button>
+          <button disabled={busy} onClick={() => send("cloud", "connect", { provider: "azure" })}>Connect Azure</button>
+        </div>
 
-        {/* AI Security Assistant */}
-        {caps.ai ? (
-          <div style={styles.card}>
-            <div style={{fontWeight:700,marginBottom:6}}>AI Security Assistant</div>
-            <div style={styles.muted}>Natural-language investigations, continuous correlation, and auto-summaries.</div>
-            <div style={{marginTop:8}}>
-              <button
-                style={styles.btn}
-                onClick={()=>alert(isTrial
-                  ? "Trial preview: The AI assistant will triage alerts, summarize incidents, and answer questions. Full access on Pro+."
-                  : "Preview: The AI assistant will triage alerts, summarize incidents, and answer questions. Endpoints will be /ai/ask and /ai/summarize.")}
-              >{isTrial ? "Preview (trial)" : "Preview"}</button>
-            </div>
-          </div>
-        ) : (
-          <LockedTile title="AI Security Assistant" reason="Available on Pro+ plan."/>
-        )}
+        <div style={styles.card}>
+          <h3>AI Security Assistant</h3>
+          <p>Ask questions, get troubleshooting help and diagnostics.</p>
+          <button disabled={busy} onClick={() => send("ai", "chat", { msg: "hello" })}>Open Assistant</button>
+        </div>
       </div>
 
-      {(out||err) && (
-        <div style={{marginTop:12}}>
-          {err && <div style={styles.err}>Error: {err}</div>}
-          {out && <pre style={styles.pre}>{out}</pre>}
+      {(out || err) && (
+        <pre style={{ marginTop: 20, padding: 10, background: '#111', color: err ? 'tomato' : '#0f0' }}>
+          {err || out}
+        </pre>
+      )}
+
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', padding: '8px 12px', border: '1px solid rgba(255,255,255,.2)', background: 'rgba(0,0,0,.7)', borderRadius: 8, zIndex: 1000 }}>
+          {toast}
         </div>
       )}
     </div>
