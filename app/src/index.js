@@ -18,8 +18,12 @@ const PORT=process.env.PORT||8080;
 const BRAND="CyberGuard Pro Cloud API";
 const JWT_SECRET=process.env.JWT_SECRET||"dev_secret_key";
 const ADMIN_KEY=process.env.ADMIN_KEY||"dev_admin_key";
-const DATABASE_URL=process.env.DATABASE_URL||"postgres://cybermon:cyberpass@localhost:5432/cyberguardpro";
-const pool=new pg.Pool({connectionString:DATABASE_URL,ssl:false});
+const DATABASE_URL = process.env.DATABASE_URL || "postgres://cybermon:cyberpass@localhost:5432/cyberguardpro";
+const isRender = !!process.env.RENDER || /render\.com/.test(DATABASE_URL);
+const pool = new pg.Pool({
+  connectionString: DATABASE_URL,
+  ssl: isRender ? { rejectUnauthorized: false } : false,
+});
 const q=(sql,vals=[])=>pool.query(sql,vals);
 const bus = new EventEmitter();
 
