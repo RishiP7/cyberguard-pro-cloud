@@ -17,16 +17,9 @@ export default function Register(){
     setLoading(true);
     try{
       const payload = { company: company.trim(), email: email.trim(), password };
-      const r = await fetch(`${API}/auth/register`,{
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-      let j = {};
-      try { j = await r.json(); } catch(_e) { /* non-JSON response */ }
-      if(!r.ok){
-        const msg = j?.error || `Register failed (HTTP ${r.status})`;
-        setErr(msg);
+      const j = await API.post("/auth/register", payload);
+      if(j?.error){
+        setErr(j.error);
         return;
       }
       setOk(true);
