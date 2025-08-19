@@ -530,6 +530,9 @@ app.post('/apikeys', authMiddleware, enforceActive, async (req,res)=>{
     return res.json({ ok:true, api_key: key });
   }catch(e){
     console.error('apikeys create failed', e);
+    if (req.user?.is_super) {
+      return res.status(500).json({ error: 'key create failed', code: e.code||null, detail: String(e.message||e) });
+    }
     return res.status(500).json({ error: 'key create failed' });
   }
 });
@@ -545,6 +548,9 @@ app.post('/apikeys/create', authMiddleware, enforceActive, async (req,res)=>{
     return res.json({ ok:true, api_key: key });
   }catch(e){
     console.error('apikeys create (alias) failed', e);
+    if (req.user?.is_super) {
+      return res.status(500).json({ error: 'key create failed', code: e.code||null, detail: String(e.message||e) });
+    }
     return res.status(500).json({ error: 'key create failed' });
   }
 });
@@ -777,3 +783,15 @@ setInterval(async ()=>{
 
 // ---------- start ----------
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
+
+// ---------- Super Admin DB diagnostics ----------
+app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
+  try{
+    const t = await q(`SELECT to_regclass('public.apikeys') IS NOT NULL AS apikeys_exists`);
+    const c = await q(`SELECT COUNT(*)::int AS cnt FROM apikeys`);
+    return res.json({ ok:true, apikeys_table: t.rows[0]?.apikeys_exists===true, apikey_count: c.rows[0]?.cnt||0 });
+  }catch(e){
+    console.error('db diag failed', e);
+    return res.status(500).json({ ok:false, error: String(e.message||e) });
+  }
+});
