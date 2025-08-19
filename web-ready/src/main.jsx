@@ -570,6 +570,22 @@ function Account(){
 
   const paid = me.plan !== "trial";
 
+  async function createAccountKey(){
+    setMsg("");
+    try{
+      let r;
+      try{ r = await apiPost("/apikeys", {}); }
+      catch(_e){ r = await apiPost("/apikeys/create", {}); }
+      if(!r?.api_key) throw new Error(r?.error || "No key returned");
+      localStorage.setItem("api_key", r.api_key);
+      setMsg("API key created and stored in localStorage.api_key");
+    }catch(e){
+      const base = e?.error || e?.message || "key create failed";
+      const hint = (me?.plan === 'trial') ? " — API keys require a paid plan (Basic/Pro)." : "";
+      setMsg(base + hint);
+    }
+  }
+
   async function activate(plan){
     try{
       // Backend may ignore coupon, that's fine — we persist for checkout handoff later.
