@@ -140,7 +140,7 @@ function readAdminFlags(req){
 }
 
 async function getEffectivePlan(tenant_id, req){
-  const { rows } = await q(`SELECT plan, trial_ends_at FROM tenants WHERE id=$1`, [tenant_id]);
+  const { rows } = await q(`SELECT plan, trial_ends_at FROM tenants WHERE tenant_id=$1`, [tenant_id]);
   if(!rows.length) return { plan:null, trial_ends_at:null, effective:'none' };
   const t = rows[0];
   const flags = readAdminFlags(req);
@@ -184,7 +184,8 @@ async function aiReply(tenant_id, prompt){
   await q(`
   CREATE EXTENSION IF NOT EXISTS pgcrypto;
   CREATE TABLE IF NOT EXISTS tenants(
-    id TEXT PRIMARY KEY,
+    tenant_id TEXT PRIMARY KEY,
+    id TEXT,
     name TEXT NOT NULL,
     plan TEXT NOT NULL DEFAULT 'trial',
     contact_email TEXT,
@@ -193,6 +194,11 @@ async function aiReply(tenant_id, prompt){
     created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
     updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
   );
+  -- Backward compatibility for older schemas
+  ALTER TABLE tenants ADD COLUMN IF NOT EXISTS id TEXT;
+  ALTER TABLE tenants ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+  UPDATE tenants SET tenant_id = COALESCE(tenant_id, id);
+  UPDATE tenants SET id = COALESCE(id, tenant_id);
   ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_started_at BIGINT;
   ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at BIGINT;
   ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_status TEXT;
@@ -336,12 +342,12 @@ app.post("/auth/register",async (req,res)=>{
     const nowEpoch = now();
     const endsEpoch = nowEpoch + 7*24*3600; // 7-day trial
 
-    await q(`INSERT INTO tenants(id,name,plan,trial_started_at,trial_ends_at,trial_status,created_at,updated_at)
-             VALUES($1,$1,'trial',$2,$3,'active',$4,$4)
-             ON CONFLICT (id) DO UPDATE SET
+    await q(`INSERT INTO tenants(tenant_id,id,name,plan,trial_started_at,trial_ends_at,trial_status,created_at,updated_at)
+             VALUES($1,$1,$2,'trial',$3,$4,'active',$5,$5)
+             ON CONFLICT (tenant_id) DO UPDATE SET
                name=EXCLUDED.name,
                updated_at=EXCLUDED.updated_at`,
-      [company, nowEpoch, endsEpoch, nowEpoch]
+      [company, company, nowEpoch, endsEpoch, nowEpoch]
     );
 
     const hash = await bcrypt.hash(password, 10);
@@ -358,12 +364,12 @@ app.post("/auth/register",async (req,res)=>{
 // ---------- me / usage ----------
 app.get("/me",authMiddleware,async (req,res)=>{
   try{
-    const {rows}=await q(`SELECT id AS tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at FROM tenants WHERE id=$1`,[req.user.tenant_id]);
+    const {rows}=await q(`SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
     if(!rows.length) return res.status(404).json({error:"tenant not found"});
     const me = rows[0];
-me.role = req.user.role || 'member';
-me.is_super = !!req.user.is_super;
-res.json({ ok: true, ...me });
+    me.role = req.user.role || 'member';
+    me.is_super = !!req.user.is_super;
+    res.json({ ok: true, ...me });
   }catch(e){ res.status(500).json({error:"me failed"}); }
 });
 
@@ -388,7 +394,7 @@ app.post('/admin/tenants/suspend', authMiddleware, requireSuper, async (req,res)
        SET plan = CASE WHEN $2 THEN 'suspended'
                        ELSE COALESCE(NULLIF(plan,'suspended'),'basic') END,
            updated_at = EXTRACT(EPOCH FROM NOW())
-     WHERE id=$1`,
+     WHERE tenant_id=$1`,
     [tenant_id, !!suspend]
   );
   res.json({ok:true});
@@ -452,7 +458,7 @@ app.post("/billing/mock-activate",authMiddleware,async (req,res)=>{
   try{
     const plan=(req.body?.plan||"").toLowerCase();
     if(!["basic","pro","pro_plus"].includes(plan)) return res.status(400).json({error:"bad plan"});
-    await q(`UPDATE tenants SET plan=$1,updated_at=EXTRACT(EPOCH FROM NOW()) WHERE id=$2`,[plan,req.user.tenant_id]);
+    await q(`UPDATE tenants SET plan=$1,updated_at=EXTRACT(EPOCH FROM NOW()) WHERE tenant_id=$2`,[plan,req.user.tenant_id]);
     res.json({ok:true,plan});
   }catch(e){ res.status(500).json({error:"activate failed"}); }
 });
@@ -461,7 +467,7 @@ app.post("/billing/activate",authMiddleware,async (req,res)=>{
   try{
     const plan=(req.body?.plan||"").toLowerCase();
     if(!["basic","pro","pro_plus"].includes(plan)) return res.status(400).json({error:"bad plan"});
-    await q(`UPDATE tenants SET plan=$1,updated_at=EXTRACT(EPOCH FROM NOW()) WHERE id=$2`,[plan,req.user.tenant_id]);
+    await q(`UPDATE tenants SET plan=$1,updated_at=EXTRACT(EPOCH FROM NOW()) WHERE tenant_id=$2`,[plan,req.user.tenant_id]);
     res.json({ok:true,plan});
   }catch(e){ res.status(500).json({error:"activate failed"}); }
 });
@@ -502,7 +508,7 @@ app.post("/policy",authMiddleware,async (req,res)=>{
 
 // ---------- apikeys ----------
 app.post("/apikeys", authMiddleware, enforceActive, async (req,res)=>{
-  const {rows}=await q(`SELECT plan FROM tenants WHERE id=$1`,[req.user.tenant_id]);
+  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
   const plan=rows[0]?.plan||"trial";
   if(!requirePaid(plan)) return res.status(403).json({error:"plan not active"});
   const id=uuidv4();
@@ -601,7 +607,7 @@ async function writeAlert(tenant_id,ev){
 app.post("/email/scan",async (req,res)=>{
   try{
     const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-    const {rows}=await q(`SELECT plan FROM tenants WHERE id=$1`,[tenant_id]);
+    const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
     if(!requirePaid(rows[0]?.plan||"trial")) return res.status(403).json({error:"plan not active"});
     const emails=req.body?.emails||[];
     await saveUsage(tenant_id,"email");
@@ -617,7 +623,7 @@ app.post("/email/scan",async (req,res)=>{
 
 app.post("/edr/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE id=$1`,[tenant_id]);
+  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
   if(!["pro","pro_plus"].includes(rows[0]?.plan)) return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"edr");
   const events=req.body?.events||[];
@@ -632,7 +638,7 @@ app.post("/edr/ingest",async (req,res)=>{
 
 app.post("/dns/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE id=$1`,[tenant_id]);
+  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
   if(!["pro","pro_plus"].includes(rows[0]?.plan)) return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"dns");
   const events=req.body?.events||[];
@@ -647,7 +653,7 @@ app.post("/dns/ingest",async (req,res)=>{
 
 app.post("/logs/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE id=$1`,[tenant_id]);
+  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
   if(!["pro","pro_plus"].includes(rows[0]?.plan)) return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"logs");
   const events=req.body?.events||[];
@@ -662,7 +668,7 @@ app.post("/logs/ingest",async (req,res)=>{
 
 app.post("/cloud/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE id=$1`,[tenant_id]);
+  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
   if(rows[0]?.plan!=="pro_plus") return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"cloud");
   res.json({ok:true});
@@ -681,15 +687,15 @@ app.get("/actions",authMiddleware,async (req,res)=>{
 // ---------- admin (GDPR-aware) ----------
 app.get("/admin/tenants", authMiddleware, requireSuper, async (_req,res)=>{
   const {rows}=await q(`
-    SELECT t.id,t.name,t.plan,t.created_at,
-     (SELECT COUNT(*) FROM users u WHERE u.tenant_id=t.id) AS users,
-     (SELECT COUNT(*) FROM apikeys k WHERE k.tenant_id=t.id AND NOT k.revoked) AS active_keys,
-     (SELECT MAX(created_at) FROM alerts a WHERE a.tenant_id=t.id) AS last_alert
+    SELECT t.tenant_id AS id,t.name,t.plan,t.created_at,
+     (SELECT COUNT(*) FROM users u WHERE u.tenant_id=t.tenant_id) AS users,
+     (SELECT COUNT(*) FROM apikeys k WHERE k.tenant_id=t.tenant_id AND NOT k.revoked) AS active_keys,
+     (SELECT MAX(created_at) FROM alerts a WHERE a.tenant_id=t.tenant_id) AS last_alert
     FROM tenants t ORDER BY t.created_at DESC LIMIT 500`);
   res.json({ok:true,tenants:rows});
 });
 app.get("/admin/tenant/:id", authMiddleware, requireSuper, async (req,res)=>{
-  const {rows}=await q(`SELECT id,name,plan,contact_email,created_at,updated_at,is_demo FROM tenants WHERE id=$1`,[req.params.id]);
+  const {rows}=await q(`SELECT tenant_id AS id,name,plan,contact_email,created_at,updated_at,is_demo FROM tenants WHERE tenant_id=$1`,[req.params.id]);
   res.json({ok:true,tenant:rows[0]||null});
 });
 app.get("/admin/tenant/:id/keys", authMiddleware, requireSuper, async (req,res)=>{
@@ -702,7 +708,7 @@ app.post("/admin/revoke-key", authMiddleware, requireSuper, async (req,res)=>{
   res.json({ok:true});
 });
 app.get("/admin/sar.csv", authMiddleware, requireSuper, async (_req,res)=>{
-  const {rows}=await q(`SELECT id,name,plan,created_at,updated_at FROM tenants ORDER BY created_at`);
+  const {rows}=await q(`SELECT tenant_id AS id,name,plan,created_at,updated_at FROM tenants ORDER BY created_at`);
   const lines=["id,name,plan,created_at,updated_at",...rows.map(r=>`${JSON.stringify(r.id)},${JSON.stringify(r.name)},${r.plan},${r.created_at},${r.updated_at}`)];
   res.setHeader("Content-Type","text/csv"); res.send(lines.join("\n"));
 });
