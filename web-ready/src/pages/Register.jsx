@@ -5,7 +5,7 @@ import { API } from "../main.jsx";
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
   const [msg, setMsg] = useState("");
   const navigate = useNavigate();
 
@@ -13,7 +13,7 @@ export default function Register() {
     e.preventDefault();
     setMsg("");
     try {
-      const j = await API.post("/auth/register", { name, email, password });
+      const j = await API.post("/auth/register", { company, email, password });
       if (j?.error) {
         setMsg(j.error);
         return;
@@ -27,14 +27,13 @@ export default function Register() {
 
   return (
     <div>
-      <h1>Create an Account</h1>
       <form onSubmit={submit}>
         <div>
           <input
             type="text"
-            placeholder="Full Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            placeholder="Company"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
             required
           />
         </div>
