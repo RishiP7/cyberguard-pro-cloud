@@ -47,6 +47,23 @@ function KeysCard() {
       setErr(e.error || "revoke failed");
     } finally { setLoading(false); }
   }
+  // --- helper: createAccountKey ---
+  async function createAccountKey(){
+    setMsg("");
+    try{
+      let r;
+      try{ r = await apiPost("/apikeys", {}); }
+      catch(e1){ r = await apiPost("/apikeys/create", {}); }
+      if(!r?.api_key) throw new Error(r?.error || "No key returned");
+      localStorage.setItem("api_key", r.api_key);
+      setMsg("API key created and stored in localStorage.api_key");
+    }catch(e){
+      const base = e?.error || e?.message || "key create failed";
+      const planHint = (me?.plan === 'trial') ? " — Your plan is Trial. Upgrade to Basic/Pro to enable keys." : "";
+      setMsg(base + planHint);
+    }
+  }
+
   return (
     <div style={{ ...card, marginTop: 16 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>API Keys</div>
@@ -601,13 +618,7 @@ function Account(){
           ) : (
             <>
               <div style={{marginBottom:8}}>Current (localStorage): <code>{localStorage.getItem("api_key") || "— none —"}</code></div>
-              <button style={btn} onClick={async ()=>{
-                try{
-                  const r=await apiPost("/apikeys",{});
-                  localStorage.setItem("api_key", r.api_key);
-                  setMsg("API key created and stored in localStorage.api_key");
-                }catch(e){ setMsg(e.error||"key create failed"); }
-              }}>Create API Key</button>
+              <button style={btn} onClick={createAccountKey}>Create API Key</button>
             </>
           )}
         </div>
