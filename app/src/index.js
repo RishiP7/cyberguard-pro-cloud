@@ -35,9 +35,11 @@ app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
 // ----- CORS (explicit allowlist) -----
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || (
-  'https://cyberguard-pro-cloud.onrender.com,https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173'
-)).split(/[,\s]+/).filter(Boolean);
+const ALLOWED_ORIGINS = Array.from(new Set(
+  (`${process.env.CORS_ORIGINS||''},https://cyberguard-pro-cloud.onrender.com,https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173`)
+    .split(/[\,\s]+/)
+    .filter(Boolean)
+));
 
 function corsOrigin(origin, cb){
   // Allow same-origin or non-browser requests (no Origin header)
@@ -673,8 +675,17 @@ app.post("/policy",authMiddleware,async (req,res)=>{
 // ---------- apikeys ----------
 // New API key endpoints (string keys)
 import crypto from "crypto";
-app.post('/apikeys', authMiddleware, enforceActive, async (req,res)=>{
+app.post('/apikeys', authMiddleware, async (req,res)=>{
   try{
+    // Super Admin can always create (testing/impersonation)
+    if(!(req.user?.is_super)){
+      const t = await getEffectivePlan(req.user.tenant_id, req);
+      const nowEpoch = now();
+      const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : true;
+      const plan = t.effective || t.plan;
+      const allowed = (plan && plan !== 'suspended') && (plan !== 'trial' ? true : trialActive);
+      if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
+    }
     const key = 'key_' + crypto.randomUUID().replace(/-/g,'');
     await q(
       `INSERT INTO apikeys(id, tenant_id, revoked, created_at)
@@ -691,8 +702,17 @@ app.post('/apikeys', authMiddleware, enforceActive, async (req,res)=>{
   }
 });
 
-app.post('/apikeys/create', authMiddleware, enforceActive, async (req,res)=>{
+app.post('/apikeys/create', authMiddleware, async (req,res)=>{
   try{
+    // Super Admin can always create (testing/impersonation)
+    if(!(req.user?.is_super)){
+      const t = await getEffectivePlan(req.user.tenant_id, req);
+      const nowEpoch = now();
+      const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : true;
+      const plan = t.effective || t.plan;
+      const allowed = (plan && plan !== 'suspended') && (plan !== 'trial' ? true : trialActive);
+      if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
+    }
     const key = 'key_' + crypto.randomUUID().replace(/-/g,'');
     await q(
       `INSERT INTO apikeys(id, tenant_id, revoked, created_at)
