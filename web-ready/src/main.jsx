@@ -103,7 +103,7 @@ function Layout({children}){
           <N to="/integrations">Integrations</N>
           <N to="/policy">Policy</N>
           <N to="/account">Account</N>
-          <N to="/admin">Admin</N>
+          {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           <N to="/test">Test</N>
         </div>
         <div>
@@ -410,50 +410,156 @@ function Account(){
 }
 
 function Admin(){
-  const [items,setItems]=useState(null);
-  const [err,setErr]=useState(null);
-  const [adminKey, setAdminKey] = useState(localStorage.getItem("admin_key") || "");
-  function saveKey(){
-    localStorage.setItem("admin_key", adminKey);
-    setItems(null); setErr(null);
-    adminGet("/admin/tenants").then(setItems).catch(e=>setErr(e.error||"API error"));
+  const [me, setMe] = useState(null);
+  const [tenants, setTenants] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [keys, setKeys] = useState([]);
+  const [chat, setChat] = useState([]);
+
+  useEffect(()=>{ apiGet('/me').then(m=>setMe(m)).catch(()=>setMe(null)); },[]);
+
+  async function loadTenants(){
+    setErr(""); setLoading(true);
+    try{
+      const j = await apiGet('/admin/tenants');
+      if(!j?.ok) throw new Error('failed');
+      setTenants(j.tenants||[]);
+    }catch(e){ setErr('Failed to load tenants'); }
+    finally{ setLoading(false); }
   }
-  useEffect(()=>{ adminGet("/admin/tenants").then(setItems).catch(e=>setErr(e.error||"API error")); },[]);
-  if(err) return <div style={{padding:16}}>{err}</div>;
-  if(!items) return <div style={{padding:16}}>Loading…</div>;
-  const list = items?.tenants || items || [];
+
+  async function viewTenant(tid){
+    setSelected(tid);
+    try{
+      const k = await apiGet(`/admin/tenant/${encodeURIComponent(tid)}/keys`);
+      setKeys(k?.keys||[]);
+      const c = await apiGet(`/admin/chat/${encodeURIComponent(tid)}`);
+      setChat(c?.messages||[]);
+    }catch(_e){/* ignore */}
+  }
+
+  async function suspend(tid, suspend){
+    await apiPost('/admin/tenants/suspend', { tenant_id: tid, suspend: !!suspend });
+    await loadTenants();
+  }
+
+  async function rotateKey(tid){
+    const j = await apiPost('/admin/tenants/rotate-key', { tenant_id: tid });
+    alert(j?.api_key ? `New API key: ${j.api_key}` : 'Key rotated');
+    await viewTenant(tid);
+  }
+
+  async function impersonate(tid){
+    const j = await apiPost('/admin/impersonate', { tenant_id: tid });
+    if(j?.token){
+      localStorage.setItem('token', j.token);
+      alert('Impersonation token stored. Reloading as tenant…');
+      location.href = '/';
+    }
+  }
+
+  async function reply(tid){
+    const body = prompt('Reply as Admin:');
+    if(!body) return;
+    await apiPost('/admin/chat/reply', { tenant_id: tid, body });
+    await viewTenant(tid);
+  }
+
+  useEffect(()=>{ loadTenants(); },[]);
+
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
+
+  const s = {
+    wrap:{padding:16,color:'#e6e9ef'},
+    header:{display:'grid',gap:4,marginBottom:12},
+    grid:{display:'grid',gridTemplateColumns:'minmax(260px, 420px) 1fr',gap:12,alignItems:'start'},
+    card:{background:'rgba(24,26,34,.75)',border:'1px solid rgba(255,255,255,.08)',borderRadius:12,padding:12,backdropFilter:'blur(6px)'},
+    row:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,.06)'},
+    btn:{padding:'8px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',cursor:'pointer'},
+    warn:{padding:'8px 10px',borderRadius:8,border:'1px solid #ff6b6b55',background:'#ff6b6b',color:'#fff',cursor:'pointer'},
+    ghost:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'},
+    err:{padding:'10px 12px',border:'1px solid #ff6b6b',background:'#ff6b6b1a',borderRadius:8,marginBottom:10}
+  };
+
   return (
-    <div>
-      <h1 style={{marginTop:0}}>Admin</h1>
-      <div style={{...card, marginBottom:12}}>
-        <div style={{fontWeight:700, marginBottom:6}}>Admin key</div>
-        <div style={{display:"flex", gap:8, alignItems:"center", flexWrap:"wrap"}}>
-          <input
-            style={{padding:"8px 10px", borderRadius:8, border:"1px solid rgba(255,255,255,.2)", background:"rgba(255,255,255,.05)", color:"inherit", minWidth:320}}
-            placeholder="paste your ADMIN_KEY"
-            value={adminKey}
-            onChange={e=>setAdminKey(e.target.value)}
-          />
-          <button style={btn} onClick={saveKey}>Save</button>
-        </div>
-        <div style={{opacity:.8, marginTop:6}}>Stored in <code>localStorage.admin_key</code>. The Admin page uses it for <code>x-admin-key</code>.</div>
+    <div style={s.wrap}>
+      <div style={s.header}>
+        <div style={{fontWeight:700}}>Admin</div>
+        <div style={{opacity:.8,fontSize:13}}>Super-admin tools</div>
       </div>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr><th style={th}>Tenant</th><th style={th}>Plan</th><th style={th}>Users</th><th style={th}>Active keys</th><th style={th}>Last alert</th></tr></thead>
-          <tbody>
-            {list.length===0 && <tr><td style={td} colSpan={5}>No tenants</td></tr>}
-            {list.map((t,i)=>(
-              <tr key={i}>
-                <td style={td}>{t.name||t.id}</td>
-                <td style={td}>{t.plan||"-"}</td>
-                <td style={td}>{t.users ?? "-"}</td>
-                <td style={td}>{t.active_keys ?? "-"}</td>
-                <td style={td}>{t.last_alert ? new Date(Number(t.last_alert)*1000).toLocaleString() : "-"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      {err && <div style={s.err}>{err}</div>}
+
+      <div style={s.grid}>
+        <div>
+          <div style={s.card}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:600}}>Tenants</div>
+              <button onClick={loadTenants} style={s.ghost}>{loading? 'Loading…':'Refresh'}</button>
+            </div>
+            <div style={{marginTop:8}}>
+              {(!tenants||!tenants.length) && <div style={{opacity:.7}}>No tenants found.</div>}
+              {tenants && tenants.map(t=> (
+                <div key={t.id} style={s.row}>
+                  <div>
+                    <div style={{fontWeight:600}}>{t.name||t.id}</div>
+                    <div style={{fontSize:12,opacity:.7}}>plan: {t.plan||'trial'}</div>
+                  </div>
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>viewTenant(t.id)} style={s.btn}>Open</button>
+                    {t.plan==='suspended'
+                      ? <button onClick={()=>suspend(t.id,false)} style={s.btn}>Unsuspend</button>
+                      : <button onClick={()=>suspend(t.id,true)} style={s.warn}>Suspend</button>}
+                    <button onClick={()=>impersonate(t.id)} style={s.ghost}>Impersonate</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          {selected ? (
+            <div style={{display:'grid', gap:12}}>
+              <div style={s.card}>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <div style={{fontWeight:600}}>API Keys</div>
+                  <button onClick={()=>rotateKey(selected)} style={s.btn}>Rotate Key</button>
+                </div>
+                <div style={{marginTop:8}}>
+                  {(!keys||!keys.length) && <div style={{opacity:.7}}>No keys yet.</div>}
+                  {keys.map(k=> (
+                    <div key={k.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
+                      <div style={{fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace'}}>{k.id}</div>
+                      <div style={{fontSize:12,opacity:.7}}>{k.revoked? 'revoked':'active'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={s.card}>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <div style={{fontWeight:600}}>Support Chat</div>
+                  <button onClick={()=>reply(selected)} style={s.btn}>Reply</button>
+                </div>
+                <div style={{marginTop:8, maxHeight:300, overflow:'auto'}}>
+                  {(!chat||!chat.length) && <div style={{opacity:.7}}>No messages yet.</div>}
+                  {chat.map(m=> (
+                    <div key={m.id} style={{margin:'8px 0'}}>
+                      <div style={{fontSize:12,opacity:.7}}>{m.author} • {new Date((m.created_at||0)*1000).toLocaleString()}</div>
+                      <div>{m.body}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{opacity:.7}}>Select a tenant to view details.</div>
+          )}
+        </div>
       </div>
     </div>
   );
