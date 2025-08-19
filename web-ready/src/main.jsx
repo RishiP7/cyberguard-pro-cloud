@@ -1,3 +1,183 @@
+// ===== KeysCard component =====
+function KeysCard() {
+  const [keys, setKeys] = useState([]);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [justCreated, setJustCreated] = useState(null);
+  const [copied, setCopied] = useState(null);
+  // Success box style for green success messages
+  const successBox = {marginTop:8,padding:'8px 10px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:8};
+  useEffect(() => {
+    setLoading(true);
+    apiGet("/apikeys")
+      .then((j) => setKeys(j?.keys || []))
+      .catch((e) => setErr(e.error || "Failed to load keys"))
+      .finally(()=>setLoading(false));
+  }, []);
+  async function createKey() {
+    setMsg(""); setErr(""); setLoading(true);
+    try {
+      const r = await apiPost("/apikeys", {});
+      if(r?.api_key){
+        localStorage.setItem("api_key", r.api_key);
+        setMsg("API key created and saved to localStorage.api_key");
+        setJustCreated(r.api_key);
+        const j = await apiGet("/apikeys");
+        setKeys(j?.keys || []);
+        setTimeout(()=>setJustCreated(null), 2500);
+      } else {
+        throw new Error('Create returned no key');
+      }
+    } catch (e) {
+      setErr(e.error || "key create failed");
+    } finally { setLoading(false); }
+  }
+  async function revokeKey(id) {
+    setMsg(""); setErr(""); setLoading(true);
+    try {
+      await apiPost(`/apikeys/revoke`, { id });
+      setMsg("Key revoked");
+      const j = await apiGet("/apikeys");
+      setKeys(j?.keys || []);
+    } catch (e) {
+      setErr(e.error || "revoke failed");
+    } finally { setLoading(false); }
+  }
+  return (
+    <div style={{ ...card, marginTop: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>API Keys</div>
+      <button style={btn} onClick={createKey} disabled={loading}>{loading ? 'Please wait…' : 'Create API Key'}</button>
+      <div style={{ marginTop: 10 }}>
+        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</div>}
+        {msg && <div style={successBox}>{String(msg)}</div>}
+        <div>
+          {(keys || []).length === 0 && <div style={{ opacity: .7 }}>No keys yet.</div>}
+          {keys.map((k) => (
+            <div
+              key={k.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "6px 0",
+                borderBottom: "1px solid rgba(255,255,255,.06)",
+                background: (justCreated===k.id ? 'rgba(123,216,143,.12)' : 'transparent')
+              }}
+            >
+              <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{k.id}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, opacity: .7 }}>{k.revoked ? "revoked" : "active"}</span>
+                <button
+                  style={{...btn, padding:'4px 10px', fontSize:12}}
+                  disabled={loading}
+                  onClick={async()=>{
+                    try{
+                      await navigator.clipboard.writeText(k.id);
+                      setCopied(k.id);
+                      setTimeout(()=>setCopied(null),1500);
+                    }catch(_e){}
+                  }}
+                >Copy</button>
+                {copied===k.id && <span style={{fontSize:12, opacity:.8}}>Copied!</span>}
+                {!k.revoked && (
+                  <button style={{ ...btn, padding: "4px 10px", fontSize: 12 }} onClick={() => revokeKey(k.id)} disabled={loading}>
+                    Revoke
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ opacity: .8, fontSize: 13, marginTop: 8 }}>
+        API keys are used for authenticating integrations and automations.
+      </div>
+    </div>
+  );
+}
+
+// ===== AdminTenantKeys component =====
+function AdminTenantKeys({ selected }) {
+  const [keys, setKeys] = useState([]);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(null);
+  useEffect(() => {
+    if (!selected) return;
+    setLoading(true);
+    apiGet(`/admin/tenant/${encodeURIComponent(selected)}/keys`)
+      .then((j) => setKeys(j?.keys || []))
+      .catch((e) => setErr(e.error || "Failed to load keys"))
+      .finally(()=>setLoading(false));
+  }, [selected]);
+  async function rotateKey() {
+    setMsg(""); setErr(""); setLoading(true);
+    try {
+      const r = await apiPost('/admin/tenants/rotate-key', { tenant_id: selected });
+      setMsg(r?.api_key ? `New API key: ${r.api_key}` : 'Key rotated');
+      const j = await apiGet(`/admin/tenant/${encodeURIComponent(selected)}/keys`);
+      setKeys(j?.keys || []);
+    } catch (e) {
+      setErr(e.error || "rotate failed");
+    } finally { setLoading(false); }
+  }
+  async function revokeKey(id) {
+    setMsg(""); setErr(""); setLoading(true);
+    try {
+      await apiPost('/admin/revoke-key', { id });
+      setMsg("Key revoked");
+      const j = await apiGet(`/admin/tenant/${encodeURIComponent(selected)}/keys`);
+      setKeys(j?.keys || []);
+    } catch (e) {
+      setErr(e.error || "revoke failed");
+    } finally { setLoading(false); }
+  }
+  if (!selected) return null;
+  const successBox = {marginTop:8,padding:'8px 10px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:8};
+  return (
+    <div style={{ ...card }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 600 }}>API Keys</div>
+        <button onClick={rotateKey} style={btn} disabled={loading}>{loading ? 'Please wait…' : 'Rotate Key'}</button>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</div>}
+        {msg && <div style={successBox}>{String(msg)}</div>}
+        {(!keys || !keys.length) && <div style={{ opacity: .7 }}>No keys yet.</div>}
+        {keys.map(k => (
+          <div key={k.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: "center", padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
+            <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{k.id}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, opacity: .7 }}>{k.revoked ? 'revoked' : 'active'}</span>
+              <button
+                style={{...btn, padding:'4px 10px', fontSize:12}}
+                disabled={loading}
+                onClick={async()=>{
+                  try{
+                    await navigator.clipboard.writeText(k.id);
+                    setCopied(k.id);
+                    setTimeout(()=>setCopied(null),1500);
+                  }catch(_e){}
+                }}
+              >Copy</button>
+              {copied===k.id && <span style={{fontSize:12, opacity:.8}}>Copied!</span>}
+              {!k.revoked && (
+                <button style={{ ...btn, padding: "4px 10px", fontSize: 12 }} onClick={() => revokeKey(k.id)} disabled={loading}>
+                  Revoke
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ opacity: .8, fontSize: 13, marginTop: 8 }}>
+        Manage API keys for this tenant.
+      </div>
+    </div>
+  );
+}
 import React, { useEffect, useState, useMemo } from "react";
 
 
@@ -429,6 +609,8 @@ function Account(){
           )}
         </div>
       </div>
+      {/* API Keys card */}
+      <KeysCard />
       {msg && <div style={{marginTop:10}}>{msg}</div>}
     </div>
   );
@@ -570,21 +752,8 @@ function Admin(){
         <div>
           {selected ? (
             <div style={{display:'grid', gap:12}}>
-              <div style={s.card}>
-                <div style={{display:'flex',justifyContent:'space-between'}}>
-                  <div style={{fontWeight:600}}>API Keys</div>
-                  <button onClick={()=>rotateKey(selected)} style={s.btn}>Rotate Key</button>
-                </div>
-                <div style={{marginTop:8}}>
-                  {(!keys||!keys.length) && <div style={{opacity:.7}}>No keys yet.</div>}
-                  {keys.map(k=> (
-                    <div key={k.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
-                      <div style={{fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace'}}>{k.id}</div>
-                      <div style={{fontSize:12,opacity:.7}}>{k.revoked? 'revoked':'active'}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* AdminTenantKeys card */}
+              <AdminTenantKeys selected={selected} />
 
               <div style={s.card}>
                 <div style={{display:'flex',justifyContent:'space-between'}}>
