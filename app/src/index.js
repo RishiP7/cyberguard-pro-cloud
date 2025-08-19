@@ -36,14 +36,16 @@ app.disable("x-powered-by");
 
 // ----- CORS (explicit allowlist) -----
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || (
-  'https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173'
+  'https://cyberguard-pro-cloud.onrender.com,https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173'
 )).split(/[,\s]+/).filter(Boolean);
 
 function corsOrigin(origin, cb){
   // Allow same-origin or non-browser requests (no Origin header)
   if (!origin) return cb(null, true);
+  // Explicit allowlist
   if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-  return cb(new Error('CORS: origin not allowed: ' + origin));
+  // Gracefully disallow without throwing, so proxies don’t turn it into 502
+  return cb(null, false);
 }
 
 app.use(cors({
