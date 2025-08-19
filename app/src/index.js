@@ -672,6 +672,42 @@ app.post("/policy",authMiddleware,async (req,res)=>{
   res.json(rows[0]);
 });
 
+// ---------- helpers for apikeys schema normalization ----------
+async function ensureApikeysSchema(){
+  // Create table if missing and ensure an `id TEXT` column exists
+  await q(`
+    CREATE TABLE IF NOT EXISTS apikeys(
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      revoked BOOLEAN NOT NULL DEFAULT false,
+      created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
+    );
+  `);
+  // If some older deploy created the table without `id`, add it
+  await q(`ALTER TABLE apikeys ADD COLUMN IF NOT EXISTS id TEXT`);
+  // If the column exists but is UUID, convert to TEXT (idempotent)
+  await q(`DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='apikeys' AND column_name='id' AND data_type='uuid'
+    ) THEN
+      ALTER TABLE apikeys ALTER COLUMN id TYPE TEXT USING id::text;
+    END IF;
+  END $$;`);
+}
+
+async function withApikeysRetry(op){
+  try { return await op(); }
+  catch(e){
+    // If failure is due to missing column or bad type, fix and retry once
+    if(String(e?.message||'').match(/column\s+"?id"?\s+does\s+not\s+exist/i) || e?.code === '42703'){
+      await ensureApikeysSchema();
+      return await op();
+    }
+    throw e;
+  }
+}
+
 // ---------- apikeys ----------
 // New API key endpoints (string keys)
 import crypto from "crypto";
@@ -687,11 +723,11 @@ app.post('/apikeys', authMiddleware, async (req,res)=>{
       if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
     }
     const key = 'key_' + crypto.randomUUID().replace(/-/g,'');
-    await q(
+    await withApikeysRetry(()=> q(
       `INSERT INTO apikeys(id, tenant_id, revoked, created_at)
        VALUES($1,$2,false,EXTRACT(EPOCH FROM NOW()))`,
       [key, req.user.tenant_id]
-    );
+    ));
     return res.json({ ok:true, api_key: key });
   }catch(e){
     console.error('apikeys create failed', e);
@@ -714,11 +750,11 @@ app.post('/apikeys/create', authMiddleware, async (req,res)=>{
       if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
     }
     const key = 'key_' + crypto.randomUUID().replace(/-/g,'');
-    await q(
+    await withApikeysRetry(()=> q(
       `INSERT INTO apikeys(id, tenant_id, revoked, created_at)
        VALUES($1,$2,false,EXTRACT(EPOCH FROM NOW()))`,
       [key, req.user.tenant_id]
-    );
+    ));
     return res.json({ ok:true, api_key: key });
   }catch(e){
     console.error('apikeys create (alias) failed', e);
