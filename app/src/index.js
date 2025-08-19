@@ -26,7 +26,10 @@ const pool = new pg.Pool({
 });
 const q=(sql,vals=[])=>pool.query(sql,vals);
 const bus = new EventEmitter();
-
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
+  .split(/[\s,]+/)
+  .filter(Boolean)
+  .map(s => s.toLowerCase());
 const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
@@ -91,7 +94,12 @@ const authMiddleware=async (req,res,next)=>{
     const hdr=req.headers.authorization||"";
     const tok=hdr.startsWith("Bearer ")?hdr.slice(7):"";
     const dec=jwt.verify(tok,JWT_SECRET);
-    req.user={ email:dec.email, tenant_id:dec.tenant_id };
+    req.user = {
+  email: dec.email,
+  tenant_id: dec.tenant_id,
+  role: dec.role || 'member',
+  is_super: !!dec.is_super
+};
     next();
   }catch(e){ return res.status(401).json({error:"Invalid token"}); }
 };
@@ -102,7 +110,21 @@ const adminMiddleware=(req,res,next)=>{
 const requirePaid=plan=>{
   return ["basic","pro","pro_plus"].includes(plan);
 };
-
+function enforceActive(req, res, next) {
+  q(`SELECT plan, trial_ends_at FROM tenants WHERE id=$1`, [req.user.tenant_id])
+    .then(({ rows }) => {
+      if (!rows.length) return res.status(403).json({ error: 'tenant not found' });
+      const t = rows[0];
+      const nowEpoch = now();
+      const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : true;
+      const allowed = (t.plan && t.plan !== 'suspended') && (t.plan !== 'trial' ? true : trialActive);
+      if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
+      next();
+    })
+    .catch(() => res.status(500).json({ error: 'billing check failed' }));
+}
+function requireSuper(req, res, next) { if (!req.user?.is_super) return res.status(403).json({ error: 'forbidden' }); next(); }
+function requireOwner(req, res, next) { if (!(req.user?.is_super || (req.user?.role === 'owner'))) return res.status(403).json({ error: 'forbidden' }); next(); }
 // ---------- DB bootstrap (idempotent) ----------
 (async ()=>{
   await q(`
@@ -185,7 +207,18 @@ CREATE TABLE IF NOT EXISTS ai_summaries(
   );
   CREATE INDEX IF NOT EXISTS usage_month_idx ON usage_events(tenant_id,created_at);
   `);
-})().catch(console.error);
+  await q(`
+  CREATE TABLE IF NOT EXISTS chat_messages(
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    author TEXT NOT NULL, -- 'user' | 'admin' | 'ai'
+    body TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS chat_messages_tenant_idx ON chat_messages(tenant_id, created_at);
+  `);
+  })().catch(console.error);
 
 // ---------- rate limits ----------
 const authLimiter=rateLimit({windowMs:15*60*1000,max:50,standardHeaders:true,legacyHeaders:false});
@@ -212,7 +245,7 @@ app.post("/auth/login", async (req, res) => {
 
     // Look up user by lowercase email
     const { rows } = await q(
-      `SELECT id, email, password_hash, tenant_id FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+      `SELECT id, email, password_hash, tenant_id, role FROM users WHERE LOWER(email) = $1 LIMIT 1`,
       [email]
     );
     if (!rows.length) {
@@ -227,13 +260,13 @@ app.post("/auth/login", async (req, res) => {
     }
 
     // Issue JWT
-    const token = jwt.sign(
-      { tenant_id: user.tenant_id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    return res.json({ ok: true, token });
+    const is_super = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
+const token = jwt.sign(
+  { tenant_id: user.tenant_id, email: user.email, role: user.role || 'member', is_super },
+  JWT_SECRET,
+  { expiresIn: "7d" }
+);
+return res.json({ ok: true, token, role: user.role || 'member', is_super });
   } catch (e) {
     return res.status(500).json({ error: "login failed" });
   }
@@ -273,7 +306,10 @@ app.get("/me",authMiddleware,async (req,res)=>{
   try{
     const {rows}=await q(`SELECT id AS tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at FROM tenants WHERE id=$1`,[req.user.tenant_id]);
     if(!rows.length) return res.status(404).json({error:"tenant not found"});
-    res.json({ok:true,...rows[0]});
+    const me = rows[0];
+me.role = req.user.role || 'member';
+me.is_super = !!req.user.is_super;
+res.json({ ok: true, ...me });
   }catch(e){ res.status(500).json({error:"me failed"}); }
 });
 
@@ -283,7 +319,56 @@ app.get("/usage",authMiddleware,async (req,res)=>{
   const {rows}=await q(`SELECT COUNT(*)::int AS events FROM usage_events WHERE tenant_id=$1 AND created_at>=$2`,[req.user.tenant_id,startEpoch]);
   res.json({ok:true,month_events:rows[0]?.events||0,month_starts_at:startEpoch});
 });
+app.post('/admin/impersonate', authMiddleware, requireSuper, async (req,res)=>{
+  const { tenant_id } = req.body || {};
+  if(!tenant_id) return res.status(400).json({error:'missing tenant_id'});
+  const token = jwt.sign({ tenant_id, email: req.user.email, role:'owner', is_super:false }, JWT_SECRET, { expiresIn: '2h' });
+  res.json({ok:true, token});
+});
 
+app.post('/admin/tenants/suspend', authMiddleware, requireSuper, async (req,res)=>{
+  const { tenant_id, suspend } = req.body || {};
+  if(!tenant_id) return res.status(400).json({error:'missing tenant_id'});
+  await q(
+    `UPDATE tenants
+       SET plan = CASE WHEN $2 THEN 'suspended'
+                       ELSE COALESCE(NULLIF(plan,'suspended'),'basic') END,
+           updated_at = EXTRACT(EPOCH FROM NOW())
+     WHERE id=$1`,
+    [tenant_id, !!suspend]
+  );
+  res.json({ok:true});
+});
+
+app.post('/admin/tenants/rotate-key', authMiddleware, requireOwner, async (req,res)=>{
+  const { tenant_id } = req.body || {};
+  const tid = (req.user.is_super && tenant_id) ? tenant_id : req.user.tenant_id;
+  const newKey = uuidv4();
+  await q(`INSERT INTO apikeys(id,tenant_id,created_at,revoked) VALUES($1,$2,$3,false)`, [newKey, tid, now()]);
+  res.json({ok:true, api_key:newKey});
+});
+
+app.get('/admin/chat/:tenant_id', authMiddleware, requireSuper, async (req,res)=>{
+  try{
+    const { tenant_id } = req.params;
+    const { rows } = await q(`SELECT * FROM chat_messages WHERE tenant_id=$1 ORDER BY created_at ASC`, [tenant_id]);
+    res.json({ok:true, messages:rows});
+  }catch(e){ res.status(500).json({error:'chat load failed'}); }
+});
+
+app.post('/admin/chat/reply', authMiddleware, requireSuper, async (req,res)=>{
+  try{
+    const { tenant_id, body } = req.body || {};
+    if(!tenant_id || !body) return res.status(400).json({error:'missing fields'});
+    const msg_id = `m_${uuidv4()}`;
+    await q(
+      `INSERT INTO chat_messages(id,chat_id,tenant_id,author,body,created_at)
+       VALUES($1,$2,$3,'admin',$4,$5)`,
+      [msg_id, tenant_id, tenant_id, body, now()]
+    );
+    res.json({ok:true});
+  }catch(e){ res.status(500).json({error:'reply failed'}); }
+});
 // ---------- billing mocks ----------
 app.post("/billing/mock-activate",authMiddleware,async (req,res)=>{
   try{
@@ -338,7 +423,7 @@ app.post("/policy",authMiddleware,async (req,res)=>{
 });
 
 // ---------- apikeys ----------
-app.post("/apikeys",authMiddleware,async (req,res)=>{
+app.post("/apikeys", authMiddleware, enforceActive, async (req,res)=>{
   const {rows}=await q(`SELECT plan FROM tenants WHERE id=$1`,[req.user.tenant_id]);
   const plan=rows[0]?.plan||"trial";
   if(!requirePaid(plan)) return res.status(403).json({error:"plan not active"});
@@ -516,7 +601,7 @@ app.get("/actions",authMiddleware,async (req,res)=>{
 });
 
 // ---------- admin (GDPR-aware) ----------
-app.get("/admin/tenants",adminMiddleware,async (_req,res)=>{
+app.get("/admin/tenants", authMiddleware, requireSuper, async (_req,res)=>{
   const {rows}=await q(`
     SELECT t.id,t.name,t.plan,t.created_at,
      (SELECT COUNT(*) FROM users u WHERE u.tenant_id=t.id) AS users,
@@ -525,20 +610,20 @@ app.get("/admin/tenants",adminMiddleware,async (_req,res)=>{
     FROM tenants t ORDER BY t.created_at DESC LIMIT 500`);
   res.json({ok:true,tenants:rows});
 });
-app.get("/admin/tenant/:id",adminMiddleware,async (req,res)=>{
+app.get("/admin/tenant/:id", authMiddleware, requireSuper, async (req,res)=>{
   const {rows}=await q(`SELECT id,name,plan,contact_email,created_at,updated_at,is_demo FROM tenants WHERE id=$1`,[req.params.id]);
   res.json({ok:true,tenant:rows[0]||null});
 });
-app.get("/admin/tenant/:id/keys",adminMiddleware,async (req,res)=>{
+app.get("/admin/tenant/:id/keys", authMiddleware, requireSuper, async (req,res)=>{
   const {rows}=await q(`SELECT id,revoked,created_at FROM apikeys WHERE tenant_id=$1 ORDER BY created_at DESC`,[req.params.id]);
   res.json({ok:true,keys:rows});
 });
-app.post("/admin/revoke-key",adminMiddleware,async (req,res)=>{
+app.post("/admin/revoke-key", authMiddleware, requireSuper, async (req,res)=>{
   const {id}=req.body||{}; if(!id) return res.status(400).json({error:"id required"});
   await q(`UPDATE apikeys SET revoked=true WHERE id=$1`,[id]);
   res.json({ok:true});
 });
-app.get("/admin/sar.csv",adminMiddleware,async (_req,res)=>{
+app.get("/admin/sar.csv", authMiddleware, requireSuper, async (_req,res)=>{
   const {rows}=await q(`SELECT id,name,plan,created_at,updated_at FROM tenants ORDER BY created_at`);
   const lines=["id,name,plan,created_at,updated_at",...rows.map(r=>`${JSON.stringify(r.id)},${JSON.stringify(r.name)},${r.plan},${r.created_at},${r.updated_at}`)];
   res.setHeader("Content-Type","text/csv"); res.send(lines.join("\n"));
