@@ -2,7 +2,10 @@ import React, { useEffect, useState, useMemo } from "react";
 
 
 // ===== Minimal API wrapper (re-added) =====
-const API_BASE = (import.meta?.env?.VITE_API_BASE) || "http://localhost:8080";
+const API_BASE = (import.meta?.env?.VITE_API_BASE)
+  || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+        ? 'https://cyberguard-pro-cloud.onrender.com'
+        : 'http://localhost:8080');
 
 function authHeaders(){
   const t = localStorage.getItem("token");
@@ -213,13 +216,12 @@ function Login(){
     e.preventDefault();
     setMsg("");
     try{
-      const r = await fetch(`${API_BASE}/auth/login`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({email,password}) });
-      const j = await r.json();
-      if(!r.ok || !j.token) throw new Error(j.error||"login failed");
+      const j = await API.post("/auth/login", { email, password });
+      if(!j?.token){ setMsg(j?.error||"Login failed"); return; }
       localStorage.setItem("token", j.token);
       window.dispatchEvent(new Event('token-changed'));
       nav("/");
-    }catch(e){ setMsg(String(e.message||e)); }
+    }catch(e){ setMsg(e?.error || "Network error"); }
   }
   return (
     <div style={{maxWidth:380, margin:"40px auto"}}>
