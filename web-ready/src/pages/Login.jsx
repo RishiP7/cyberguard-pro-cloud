@@ -3,8 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { API, setToken } from "../main.jsx";
 
 export default function Login(){
-  const [email, setEmail] = useState("you3@example.com");
-  const [password, setPassword] = useState("test123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const navigate = useNavigate();
 
@@ -12,20 +12,15 @@ export default function Login(){
     e.preventDefault();
     setErr("");
     try{
-      const r = await fetch(`${API}/auth/login`, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      const j = await r.json();
-      if(!r.ok || !j?.token){
+      const j = await API.post("/auth/login", { email, password });
+      if(!j?.token){
         setErr(j?.error || "Login failed");
         return;
       }
       setToken(j.token);
       navigate("/");
     }catch(e){
-      setErr("Network error");
+      setErr(e?.error || "Network error");
     }
   }
 
@@ -36,10 +31,10 @@ export default function Login(){
         <p style={{opacity:.8,marginTop:-6}}>Sign in to continue</p>
         <form onSubmit={submit} style={{display:"grid",gap:10,marginTop:12}}>
           <label>Email
-            <input value={email} onChange={e=>setEmail(e.target.value)} style={inp}/>
+            <input type="email" required autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} style={inp}/>
           </label>
           <label>Password
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} style={inp}/>
+            <input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} style={inp}/>
           </label>
           {err && <div style={errBox}>{err}</div>}
           <button style={primary}>Sign in</button>
