@@ -179,6 +179,35 @@ async function aiReply(tenant_id, prompt){
     return 'Assistant is unavailable right now. An admin will reply shortly.';
   }
 }
+
+// ---- API key based auth for integrations & connector upsert helper ----
+async function tenantIdFromApiKey(key){
+  if(!key) return null;
+  try{
+    const { rows } = await q(`SELECT tenant_id FROM apikeys WHERE id=$1 AND revoked=false`, [key]);
+    return rows[0]?.tenant_id || null;
+  }catch(_e){ return null; }
+}
+function apiKeyAuth(req,res,next){
+  const key = req.headers['x-api-key'] || req.headers['x_api_key'];
+  if(!key) return res.status(401).json({ error: 'Missing x-api-key' });
+  tenantIdFromApiKey(key).then(tid=>{
+    if(!tid) return res.status(401).json({ error: 'Invalid API key' });
+    req.user = { tenant_id: tid, role: 'integration' };
+    next();
+  }).catch(()=>res.status(500).json({ error: 'api key check failed' }));
+}
+async function upsertConnector(tenant_id, type, provider, patch){
+  const id = `${type}:${tenant_id}`;
+  await q(`INSERT INTO connectors(id,tenant_id,type,provider,status,details,created_at,updated_at)
+           VALUES($1,$2,$3,$4,COALESCE($5,'connected'),COALESCE($6,'{}'::jsonb),EXTRACT(EPOCH FROM NOW()),EXTRACT(EPOCH FROM NOW()))
+           ON CONFLICT (id) DO UPDATE SET
+             provider=EXCLUDED.provider,
+             status=COALESCE(EXCLUDED.status,'connected'),
+             details=COALESCE(EXCLUDED.details,'{}'::jsonb),
+             updated_at=EXTRACT(EPOCH FROM NOW())`,
+           [id, tenant_id, type, provider||null, patch?.status||'connected', patch?.details? JSON.stringify(patch.details) : '{}']);
+}
 // ---------- DB bootstrap (idempotent) ----------
 (async ()=>{
   await q(`
@@ -278,6 +307,33 @@ CREATE TABLE IF NOT EXISTS ai_summaries(
   CREATE INDEX IF NOT EXISTS usage_month_idx ON usage_events(tenant_id,created_at);
   `);
   await q(`
+  -- Integrations / connectors state
+  CREATE TABLE IF NOT EXISTS connectors (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    type TEXT NOT NULL,            -- 'email','edr','dns','ueba','cloud'
+    provider TEXT,                 -- e.g. 'gmail','o365','aws','gcp','azure','imap'
+    status TEXT NOT NULL DEFAULT 'disconnected',  -- 'connected','pending','error','disconnected'
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+    updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
+  );
+  CREATE INDEX IF NOT EXISTS connectors_tenant_idx ON connectors(tenant_id);
+  CREATE INDEX IF NOT EXISTS connectors_type_idx ON connectors(type);
+
+  -- EDR agents registry
+  CREATE TABLE IF NOT EXISTS edr_agents (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    hostname TEXT,
+    platform TEXT,             -- 'windows','macos','linux'
+    enroll_token TEXT,
+    last_seen BIGINT,
+    created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
+  );
+  CREATE INDEX IF NOT EXISTS edr_agents_tenant_idx ON edr_agents(tenant_id);
+  `);
+  await q(`
   CREATE TABLE IF NOT EXISTS chat_messages(
     id TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL,
@@ -289,6 +345,108 @@ CREATE TABLE IF NOT EXISTS ai_summaries(
   CREATE INDEX IF NOT EXISTS chat_messages_tenant_idx ON chat_messages(tenant_id, created_at);
   `);
   })().catch(console.error);
+// ===== Integrations: Summary =====
+app.get('/integrations/status', authMiddleware, async (req,res)=>{
+  try{
+    const { rows } = await q(`SELECT type,provider,status,details,updated_at FROM connectors WHERE tenant_id=$1`, [req.user.tenant_id]);
+    return res.json({ ok:true, items: rows });
+  }catch(e){ return res.status(500).json({ error:'status failed' }); }
+});
+
+// ===== Integrations: Email =====
+app.get('/integrations/email/status', authMiddleware, async (req,res)=>{
+  try{
+    const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='email'`,[req.user.tenant_id]);
+    return res.json({ ok:true, connector: rows[0]||null });
+  }catch(e){ return res.status(500).json({ error: 'status failed' }); }
+});
+app.post('/integrations/email/connect', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    const { provider, settings } = req.body||{};
+    if(!provider) return res.status(400).json({ error:'missing provider' });
+    await upsertConnector(req.user.tenant_id, 'email', provider, { status:'connected', details: settings||{} });
+    return res.json({ ok:true });
+  }catch(e){ return res.status(500).json({ error:'connect failed' }); }
+});
+
+// ===== Integrations: EDR =====
+app.get('/integrations/edr/status', authMiddleware, async (req,res)=>{
+  try{
+    const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='edr'`,[req.user.tenant_id]);
+    return res.json({ ok:true, connector: rows[0]||null });
+  }catch(e){ return res.status(500).json({ error: 'status failed' }); }
+});
+app.post('/integrations/edr/enrollment-token', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    const enroll = 'enr_' + uuidv4().replace(/-/g,'');
+    await upsertConnector(req.user.tenant_id, 'edr', 'agent', { status:'connected' });
+    await q(`INSERT INTO edr_agents(id, tenant_id, enroll_token, created_at)
+             VALUES($1,$2,$3,EXTRACT(EPOCH FROM NOW()))
+             ON CONFLICT (id) DO NOTHING`,
+            ['tok:'+enroll, req.user.tenant_id, enroll]);
+    return res.json({ ok:true, token: enroll });
+  }catch(e){ return res.status(500).json({ error:'token failed' }); }
+});
+app.post('/edr/enroll', async (req,res)=>{
+  try{
+    const { token, hostname, platform } = req.body||{};
+    if(!token) return res.status(400).json({ error:'missing token' });
+    const rec = await q(`SELECT tenant_id FROM edr_agents WHERE id=$1 AND enroll_token=$2`, ['tok:'+token, token]).then(r=>r.rows[0]);
+    if(!rec) return res.status(401).json({ error:'invalid token' });
+    const agent_id = 'agt_' + uuidv4().replace(/-/g,'');
+    await q(`UPDATE edr_agents SET id=$1, hostname=$2, platform=$3, enroll_token=NULL, last_seen=EXTRACT(EPOCH FROM NOW()) WHERE id=$4`,
+            [agent_id, hostname||null, platform||null, 'tok:'+token]);
+    return res.json({ ok:true, agent_id });
+  }catch(e){ return res.status(500).json({ error:'enroll failed' }); }
+});
+
+// ===== Integrations: DNS =====
+app.get('/integrations/dns/status', authMiddleware, async (req,res)=>{
+  try{
+    const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='dns'`,[req.user.tenant_id]);
+    return res.json({ ok:true, connector: rows[0]||null });
+  }catch(e){ return res.status(500).json({ error: 'status failed' }); }
+});
+app.get('/integrations/dns/bootstrap', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    await upsertConnector(req.user.tenant_id, 'dns', 'resolver', { status:'connected' });
+    const resolver_ips = ['9.9.9.9', '149.112.112.112'];
+    const token = 'dns_' + uuidv4().slice(0,8);
+    return res.json({ ok:true, resolver_ips, token });
+  }catch(e){ return res.status(500).json({ error:'bootstrap failed' }); }
+});
+
+// ===== Integrations: UEBA =====
+app.get('/integrations/ueba/status', authMiddleware, async (req,res)=>{
+  try{
+    const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='ueba'`,[req.user.tenant_id]);
+    return res.json({ ok:true, connector: rows[0]||null });
+  }catch(e){ return res.status(500).json({ error: 'status failed' }); }
+});
+app.post('/integrations/ueba/connect', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    const { provider, settings } = req.body||{}; // 'm365'|'gworkspace'
+    if(!provider) return res.status(400).json({ error:'missing provider' });
+    await upsertConnector(req.user.tenant_id, 'ueba', provider, { status:'connected', details: settings||{} });
+    return res.json({ ok:true });
+  }catch(e){ return res.status(500).json({ error:'connect failed' }); }
+});
+
+// ===== Integrations: Cloud =====
+app.get('/integrations/cloud/status', authMiddleware, async (req,res)=>{
+  try{
+    const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='cloud'`,[req.user.tenant_id]);
+    return res.json({ ok:true, connector: rows[0]||null });
+  }catch(e){ return res.status(500).json({ error: 'status failed' }); }
+});
+app.post('/integrations/cloud/connect', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    const { provider, settings } = req.body||{}; // 'aws'|'gcp'|'azure'
+    if(!provider) return res.status(400).json({ error:'missing provider' });
+    await upsertConnector(req.user.tenant_id, 'cloud', provider, { status:'connected', details: settings||{} });
+    return res.json({ ok:true });
+  }catch(e){ return res.status(500).json({ error:'connect failed' }); }
+});
 
 // ---------- rate limits ----------
 const authLimiter=rateLimit({windowMs:15*60*1000,max:50,standardHeaders:true,legacyHeaders:false});
