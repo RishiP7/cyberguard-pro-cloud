@@ -211,13 +211,23 @@ async function aiReply(tenant_id, prompt){
     created_at BIGINT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS users_tenant_idx ON users(tenant_id);
+  -- API keys (single canonical schema: TEXT id)
   CREATE TABLE IF NOT EXISTS apikeys(
-    id UUID PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
-    created_at BIGINT NOT NULL,
-    revoked BOOLEAN NOT NULL DEFAULT false
+    revoked BOOLEAN NOT NULL DEFAULT false,
+    created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
   );
   CREATE INDEX IF NOT EXISTS apikeys_tenant_idx ON apikeys(tenant_id);
+  -- Migrate from older UUID-based id column to TEXT, if needed
+  DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_name='apikeys' AND column_name='id' AND data_type='uuid'
+    ) THEN
+      ALTER TABLE apikeys ALTER COLUMN id TYPE TEXT USING id::text;
+    END IF;
+  END $$;
 
   CREATE TABLE IF NOT EXISTS policy(
     tenant_id TEXT PRIMARY KEY,
@@ -507,13 +517,36 @@ app.post("/policy",authMiddleware,async (req,res)=>{
 });
 
 // ---------- apikeys ----------
-app.post("/apikeys", authMiddleware, enforceActive, async (req,res)=>{
-  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
-  const plan=rows[0]?.plan||"trial";
-  if(!requirePaid(plan)) return res.status(403).json({error:"plan not active"});
-  const id=uuidv4();
-  await q(`INSERT INTO apikeys(id,tenant_id,created_at) VALUES($1,$2,$3)`,[id,req.user.tenant_id,now()]);
-  res.json({ok:true,api_key:id});
+// New API key endpoints (string keys)
+import crypto from "crypto";
+app.post('/apikeys', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    const key = 'key_' + crypto.randomUUID().replace(/-/g,'');
+    await q(
+      `INSERT INTO apikeys(id, tenant_id, revoked, created_at)
+       VALUES($1,$2,false,EXTRACT(EPOCH FROM NOW()))`,
+      [key, req.user.tenant_id]
+    );
+    return res.json({ ok:true, api_key: key });
+  }catch(e){
+    console.error('apikeys create failed', e);
+    return res.status(500).json({ error: 'key create failed' });
+  }
+});
+
+app.post('/apikeys/create', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    const key = 'key_' + crypto.randomUUID().replace(/-/g,'');
+    await q(
+      `INSERT INTO apikeys(id, tenant_id, revoked, created_at)
+       VALUES($1,$2,false,EXTRACT(EPOCH FROM NOW()))`,
+      [key, req.user.tenant_id]
+    );
+    return res.json({ ok:true, api_key: key });
+  }catch(e){
+    console.error('apikeys create (alias) failed', e);
+    return res.status(500).json({ error: 'key create failed' });
+  }
 });
 app.get("/apikeys",authMiddleware,async (req,res)=>{
   const {rows}=await q(`SELECT id,revoked,created_at FROM apikeys WHERE tenant_id=$1 ORDER BY created_at DESC`,[req.user.tenant_id]);
@@ -701,6 +734,24 @@ app.get("/admin/tenant/:id", authMiddleware, requireSuper, async (req,res)=>{
 app.get("/admin/tenant/:id/keys", authMiddleware, requireSuper, async (req,res)=>{
   const {rows}=await q(`SELECT id,revoked,created_at FROM apikeys WHERE tenant_id=$1 ORDER BY created_at DESC`,[req.params.id]);
   res.json({ok:true,keys:rows});
+});
+
+// New admin route for listing keys (duplicate, for compatibility)
+app.get('/admin/tenant/:id/keys', authMiddleware, requireSuper, async (req,res)=>{
+  try{
+    const tid = req.params.id;
+    const { rows } = await q(
+      `SELECT id, revoked, created_at
+         FROM apikeys
+        WHERE tenant_id=$1
+        ORDER BY created_at DESC`,
+      [tid]
+    );
+    return res.json({ ok:true, keys: rows });
+  }catch(e){
+    console.error('admin keys list failed', e);
+    return res.status(500).json({ error: 'keys list failed' });
+  }
 });
 app.post("/admin/revoke-key", authMiddleware, requireSuper, async (req,res)=>{
   const {id}=req.body||{}; if(!id) return res.status(400).json({error:"id required"});
