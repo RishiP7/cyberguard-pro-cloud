@@ -17,20 +17,23 @@ function KeysCard() {
   }, []);
   async function createKey() {
     setMsg(""); setErr(""); setLoading(true);
+    async function tryCreate(path){
+      const r = await apiPost(path, {});
+      if(r?.api_key){ return r; }
+      throw new Error(r?.error || 'Create returned no key');
+    }
     try {
-      const r = await apiPost("/apikeys", {});
-      if(r?.api_key){
-        localStorage.setItem("api_key", r.api_key);
-        setMsg("API key created and saved to localStorage.api_key");
-        setJustCreated(r.api_key);
-        const j = await apiGet("/apikeys");
-        setKeys(j?.keys || []);
-        setTimeout(()=>setJustCreated(null), 2500);
-      } else {
-        throw new Error('Create returned no key');
-      }
+      let r;
+      try { r = await tryCreate("/apikeys"); }
+      catch(_e){ r = await tryCreate("/apikeys/create"); }
+      localStorage.setItem("api_key", r.api_key);
+      setMsg("API key created and saved to localStorage.api_key");
+      setJustCreated(r.api_key);
+      const j = await apiGet("/apikeys");
+      setKeys(j?.keys || []);
+      setTimeout(()=>setJustCreated(null), 2500);
     } catch (e) {
-      setErr(e.error || "key create failed");
+      setErr(e.error || e.message || "key create failed");
     } finally { setLoading(false); }
   }
   async function revokeKey(id) {
@@ -816,118 +819,149 @@ function App(){
 // --- Integrations Wizard UI ---
 function Integrations({ api }) {
   const [busy, setBusy] = React.useState(false);
-  const [status, setStatus] = React.useState({});
+  const [status, setStatus] = React.useState({ items: [] });
+  const [emailProvider, setEmailProvider] = React.useState('imap');
   const [out, setOut] = React.useState("");
   const [err, setErr] = React.useState("");
   const [toast, setToast] = React.useState("");
+  const [edrToken, setEdrToken] = React.useState("");
+  const [dnsInfo, setDnsInfo] = React.useState(null);
 
-  // Styles for cards and ghost buttons (reusing existing style objects)
   const styles = {
     card: { padding: 16, border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, background: "rgba(255,255,255,.04)" },
-    ghost: { padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.2)", background: "transparent", color: "#e6e9ef", cursor: "pointer", fontSize: 12 }
+    ghost: { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,.2)", background: "transparent", color: "#e6e9ef", cursor: "pointer" }
   };
 
   async function refresh() {
     try {
-      let r = await api("GET", "/integrations/status");
-      if (r.ok) setStatus(r);
+      const j = await api.get('/integrations/status');
+      setStatus(j || { items: [] });
     } catch (e) { console.error(e); }
   }
   React.useEffect(() => { refresh(); }, []);
-  React.useEffect(() => {
-    const id = setInterval(() => refresh(), 10000);
-    return () => clearInterval(id);
-  }, []);
+  React.useEffect(() => { const t = setInterval(refresh, 10000); return () => clearInterval(t); }, []);
 
-  async function send(type, action, body) {
+  function getState(type){
+    return (status.items||[]).find(s=>s.type===type) || { status:'disconnected' };
+  }
+
+  async function safe(fn){
     setBusy(true); setErr(""); setOut("");
-    try {
-      let r = await api("POST", "/integrations/" + type + "/" + action, body);
-      if (!r.ok) throw new Error(r.error || "failed");
-      setOut(JSON.stringify(r, null, 2));
-      refresh();
-    } catch (e) { setErr(e.message); }
-    setBusy(false);
+    try{ const r = await fn(); setOut(JSON.stringify(r,null,2)); await refresh(); }
+    catch(e){ setErr(e?.error ? String(e.error) : String(e)); }
+    finally{ setBusy(false); }
   }
 
-  async function copy(text) {
-    try {
-      await navigator.clipboard.writeText(String(text));
-      setToast("Copied to clipboard");
-      setTimeout(() => setToast(""), 1200);
-    } catch (_e) {
-      setToast("Copy failed");
-      setTimeout(() => setToast(""), 1200);
-    }
+  async function copy(text){
+    try{ await navigator.clipboard.writeText(String(text)); setToast('Copied to clipboard'); setTimeout(()=>setToast(''), 1200); }
+    catch(_e){ setToast('Copy failed'); setTimeout(()=>setToast(''), 1200); }
   }
-
-  const edrToken = status.edr?.token;
-  const dnsInfo = status.dns;
 
   return (
     <div style={{ padding: 20 }}>
-      <h2>Integrations Wizard</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 20 }}>
+      <h1 style={{marginTop:0}}>Integrations</h1>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12 }}>
 
+        {/* Email */}
         <div style={styles.card}>
-          <h3>Email Scanner</h3>
-          <p>Connect your mailbox for phishing and malware detection.</p>
-          <button disabled={busy} onClick={() => send("email", "connect", { provider: "imap" })}>Connect IMAP</button>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Email Security</div>
+            <span style={{opacity:.85,fontSize:12}}>{getState('email').status}</span>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>Connect your provider to scan for phishing/malware.</div>
+          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+            <select value={emailProvider} onChange={e=>setEmailProvider(e.target.value)} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
+              <option value="o365">Microsoft 365</option>
+              <option value="gmail">Google Workspace</option>
+              <option value="imap">Generic IMAP</option>
+            </select>
+            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/email/connect', { provider: emailProvider, settings:{} }))}>Connect</button>
+          </div>
         </div>
 
+        {/* EDR */}
         <div style={styles.card}>
-          <h3>EDR Agent</h3>
-          <p>Download and install the endpoint agent.</p>
-          <button disabled={busy} onClick={() => send("edr", "enroll", {})}>Generate Enrollment Token</button>
-          {edrToken && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <code style={{ opacity: .9 }}>{edrToken}</code>
-              <button style={styles.ghost} onClick={() => copy(edrToken)}>Copy</button>
-            </span>
-          )}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Endpoint (EDR)</div>
+            <span style={{opacity:.85,fontSize:12}}>{getState('edr').status}</span>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</div>
+          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+            <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.post('/integrations/edr/enrollment-token',{}); setEdrToken(j?.token||''); return j; })}>Get enrollment token</button>
+            {edrToken && (
+              <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                <code style={{opacity:.9}}>{edrToken}</code>
+                <button style={styles.ghost} onClick={()=>copy(edrToken)}>Copy</button>
+              </span>
+            )}
+          </div>
         </div>
 
+        {/* DNS */}
         <div style={styles.card}>
-          <h3>DNS Resolver</h3>
-          <p>Protect DNS traffic with our secure resolvers.</p>
-          <button disabled={busy} onClick={() => send("dns", "activate", {})}>Activate DNS Protection</button>
-          {dnsInfo && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span>Resolvers: <code>{(dnsInfo.resolver_ips || []).join(', ')}</code></span>
-              <span>• Token: <code>{dnsInfo.token}</code></span>
-              <button style={styles.ghost} onClick={() => copy(dnsInfo.token)}>Copy</button>
-            </span>
-          )}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>DNS Protection</div>
+            <span style={{opacity:.85,fontSize:12}}>{getState('dns').status}</span>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</div>
+          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+            <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.get('/integrations/dns/bootstrap'); setDnsInfo(j); return j; })}>Bootstrap</button>
+            {dnsInfo && (
+              <span style={{display:'inline-flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <span>Resolvers: <code>{(dnsInfo.resolver_ips||[]).join(', ')}</code></span>
+                <span>• Token: <code>{dnsInfo.token}</code></span>
+                <button style={styles.ghost} onClick={()=>copy(dnsInfo.token)}>Copy</button>
+              </span>
+            )}
+          </div>
         </div>
 
+        {/* UEBA */}
         <div style={styles.card}>
-          <h3>UEBA</h3>
-          <p>Enable user/entity behavior analytics.</p>
-          <button disabled={busy} onClick={() => send("ueba", "enable", {})}>Enable UEBA</button>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>UEBA</div>
+            <span style={{opacity:.85,fontSize:12}}>{getState('ueba').status}</span>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</div>
+          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'m365', settings:{} }))}>Connect M365</button>
+            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'gworkspace', settings:{} }))}>Connect GWS</button>
+          </div>
         </div>
 
+        {/* Cloud */}
         <div style={styles.card}>
-          <h3>Cloud Security</h3>
-          <p>Connect AWS or Azure for cloud security scanning.</p>
-          <button disabled={busy} onClick={() => send("cloud", "connect", { provider: "aws" })}>Connect AWS</button>
-          <button disabled={busy} onClick={() => send("cloud", "connect", { provider: "azure" })}>Connect Azure</button>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Cloud Security</div>
+            <span style={{opacity:.85,fontSize:12}}>{getState('cloud').status}</span>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</div>
+          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'aws', settings:{} }))}>Connect AWS</button>
+            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'azure', settings:{} }))}>Connect Azure</button>
+            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'gcp', settings:{} }))}>Connect GCP</button>
+          </div>
         </div>
 
+        {/* AI Assistant (placeholder) */}
         <div style={styles.card}>
-          <h3>AI Security Assistant</h3>
-          <p>Ask questions, get troubleshooting help and diagnostics.</p>
-          <button disabled={busy} onClick={() => send("ai", "chat", { msg: "hello" })}>Open Assistant</button>
+          <div style={{fontWeight:700}}>AI Security Assistant</div>
+          <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</div>
+          <div style={{marginTop:8}}>
+            <button style={btn} onClick={()=>alert('AI assistant preview. Full features on Pro+.')}>Open Assistant</button>
+          </div>
         </div>
       </div>
 
-      {(out || err) && (
-        <pre style={{ marginTop: 20, padding: 10, background: '#111', color: err ? 'tomato' : '#0f0' }}>
-          {err || out}
-        </pre>
+      {(out||err) && (
+        <div style={{marginTop:12}}>
+          {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</div>}
+          {out && <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{out}</pre>}
+        </div>
       )}
 
       {toast && (
-        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', padding: '8px 12px', border: '1px solid rgba(255,255,255,.2)', background: 'rgba(0,0,0,.7)', borderRadius: 8, zIndex: 1000 }}>
+        <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
           {toast}
         </div>
       )}
