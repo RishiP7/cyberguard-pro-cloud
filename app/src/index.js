@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import pg from "pg";
 import bcrypt from "bcryptjs";
 import OpenAI from "openai";
+import { EventEmitter } from "events";
 
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY||"";
 const AI_MODEL=process.env.AI_MODEL||"gpt-4o-mini";
@@ -20,6 +21,7 @@ const ADMIN_KEY=process.env.ADMIN_KEY||"dev_admin_key";
 const DATABASE_URL=process.env.DATABASE_URL||"postgres://cybermon:cyberpass@localhost:5432/cyberguardpro";
 const pool=new pg.Pool({connectionString:DATABASE_URL,ssl:false});
 const q=(sql,vals=[])=>pool.query(sql,vals);
+const bus = new EventEmitter();
 
 const app = express();
 app.set("trust proxy", 1);
@@ -111,6 +113,9 @@ const requirePaid=plan=>{
     created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
     updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
   );
+  ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_started_at BIGINT;
+  ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at BIGINT;
+  ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_status TEXT;
   CREATE TABLE IF NOT EXISTS users(
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,
@@ -206,18 +211,31 @@ if(!ok) return res.status(401).json({error:"login failed"});
   }catch(e){ res.status(500).json({error:"login failed"}); }
 });
 
-// mock register (dev only)
 app.post("/auth/register",async (req,res)=>{
   try{
-    const {company,email,password}=req.body||{};
+    let {company,email,password}=req.body||{};
     if(!company||!email||!password) return res.status(400).json({error:"missing"});
-    await q(`INSERT INTO tenants(id,name,plan,created_at,updated_at)
-             VALUES($1,$1,'trial',EXTRACT(EPOCH FROM NOW()),EXTRACT(EPOCH FROM NOW()))
-             ON CONFLICT (id) DO NOTHING`,[company]);
+    email = String(email).toLowerCase().trim();
+    company = String(company).trim();
+
+    const nowEpoch = now();
+    const endsEpoch = nowEpoch + 7*24*3600; // 7-day trial
+
+    await q(`INSERT INTO tenants(id,name,plan,trial_started_at,trial_ends_at,trial_status,created_at,updated_at)
+             VALUES($1,$1,'trial',$2,$3,'active',$4,$4)
+             ON CONFLICT (id) DO UPDATE SET
+               name=EXCLUDED.name,
+               updated_at=EXCLUDED.updated_at`,
+      [company, nowEpoch, endsEpoch, nowEpoch]
+    );
+
     const hash = await bcrypt.hash(password, 10);
-await q(`INSERT INTO users(email,password_hash,tenant_id,role,created_at)
-         VALUES($1,$2,$3,'member',EXTRACT(EPOCH FROM NOW()))
-         ON CONFLICT (email) DO NOTHING`,[email,hash,company]);
+    await q(`INSERT INTO users(email,password_hash,tenant_id,role,created_at)
+             VALUES($1,$2,$3,'member',$4)
+             ON CONFLICT (email) DO UPDATE SET tenant_id=EXCLUDED.tenant_id`,
+      [email,hash,company,nowEpoch]
+    );
+
     res.json({ok:true});
   }catch(e){ res.status(500).json({error:"register failed"}); }
 });
@@ -225,7 +243,7 @@ await q(`INSERT INTO users(email,password_hash,tenant_id,role,created_at)
 // ---------- me / usage ----------
 app.get("/me",authMiddleware,async (req,res)=>{
   try{
-    const {rows}=await q(`SELECT id AS tenant_id,name,plan,contact_email,created_at,updated_at FROM tenants WHERE id=$1`,[req.user.tenant_id]);
+    const {rows}=await q(`SELECT id AS tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at FROM tenants WHERE id=$1`,[req.user.tenant_id]);
     if(!rows.length) return res.status(404).json({error:"tenant not found"});
     res.json({ok:true,...rows[0]});
   }catch(e){ res.status(500).json({error:"me failed"}); }
@@ -240,6 +258,15 @@ app.get("/usage",authMiddleware,async (req,res)=>{
 
 // ---------- billing mocks ----------
 app.post("/billing/mock-activate",authMiddleware,async (req,res)=>{
+  try{
+    const plan=(req.body?.plan||"").toLowerCase();
+    if(!["basic","pro","pro_plus"].includes(plan)) return res.status(400).json({error:"bad plan"});
+    await q(`UPDATE tenants SET plan=$1,updated_at=EXTRACT(EPOCH FROM NOW()) WHERE id=$2`,[plan,req.user.tenant_id]);
+    res.json({ok:true,plan});
+  }catch(e){ res.status(500).json({error:"activate failed"}); }
+});
+
+app.post("/billing/activate",authMiddleware,async (req,res)=>{
   try{
     const plan=(req.body?.plan||"").toLowerCase();
     if(!["basic","pro","pro_plus"].includes(plan)) return res.status(400).json({error:"bad plan"});
@@ -301,6 +328,35 @@ app.post("/apikeys/revoke",authMiddleware,async (req,res)=>{
   res.json({ok:true});
 });
 
+app.get('/alerts/stream', async (req, res) => {
+  try {
+    let token = null;
+    const h = req.headers?.authorization || '';
+    if (h.startsWith('Bearer ')) token = h.slice(7);
+    if (!token && req.query && req.query.token) token = String(req.query.token);
+    if (!token) return res.status(401).end();
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = { tenant_id: decoded.tenant_id, email: decoded.email };
+  } catch (e) { return res.status(401).end(); }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const tenant = req.user.tenant_id;
+  const listener = (payload) => {
+    if (payload.tenant_id !== tenant) return;
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+  bus.on('alert', listener);
+
+  res.write(`event: ping\n`);
+  res.write(`data: {"ok":true}\n\n`);
+
+  req.on('close', () => bus.off('alert', listener));
+});
+
 // ---------- ingest helpers ----------
 async function checkKey(req){
   const key=(req.headers["x-api-key"]||"").trim();
@@ -346,6 +402,7 @@ async function writeAlert(tenant_id,ev){
            VALUES($1,$2,$3,$4,'new',$5)`,[id,tenant_id,ev,score,now()]);
   const alert={id,tenant_id,event_json:ev,score,status:'new',created_at:now()};
   await maybeAct(tenant_id,alert,p);
+  try { bus.emit('alert', { tenant_id, alert }); } catch(_e) {}
   return alert;
 }
 
