@@ -6,6 +6,7 @@ function KeysCard() {
   const [loading, setLoading] = useState(false);
   const [justCreated, setJustCreated] = useState(null);
   const [copied, setCopied] = useState(null);
+  const [toast, setToast] = useState("");
   // Success box style for green success messages
   const successBox = {marginTop:8,padding:'8px 10px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:8};
   useEffect(() => {
@@ -29,11 +30,15 @@ function KeysCard() {
       localStorage.setItem("api_key", r.api_key);
       setMsg("API key created and saved to localStorage.api_key");
       setJustCreated(r.api_key);
+      setToast("API key created");
+      setTimeout(()=>setToast(""), 1500);
       const j = await apiGet("/apikeys");
       setKeys(j?.keys || []);
       setTimeout(()=>setJustCreated(null), 2500);
     } catch (e) {
       setErr(e.error || e.message || "key create failed");
+      setToast("Key create failed");
+      setTimeout(()=>setToast(""), 1500);
     } finally { setLoading(false); }
   }
   async function revokeKey(id) {
@@ -41,10 +46,14 @@ function KeysCard() {
     try {
       await apiPost(`/apikeys/revoke`, { id });
       setMsg("Key revoked");
+      setToast("Key revoked");
+      setTimeout(()=>setToast(""), 1500);
       const j = await apiGet("/apikeys");
       setKeys(j?.keys || []);
     } catch (e) {
       setErr(e.error || "revoke failed");
+      setToast("Revoke failed");
+      setTimeout(()=>setToast(""), 1500);
     } finally { setLoading(false); }
   }
   // --- helper: createAccountKey ---
@@ -95,6 +104,8 @@ function KeysCard() {
                     try{
                       await navigator.clipboard.writeText(k.id);
                       setCopied(k.id);
+                      setToast("Copied");
+                      setTimeout(()=>setToast(""), 1200);
                       setTimeout(()=>setCopied(null),1500);
                     }catch(_e){}
                   }}
@@ -113,6 +124,11 @@ function KeysCard() {
       <div style={{ opacity: .8, fontSize: 13, marginTop: 8 }}>
         API keys are used for authenticating integrations and automations.
       </div>
+      {toast && (
+        <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -529,7 +545,7 @@ function Block({title,children,disabled}){
       {children}
     </div>
   );
-}>{title}</div>{children}</div>; }
+}
 function Code({children}){ return <pre style={pre}>{children}</pre>; }
 
 function Policy(){
