@@ -460,32 +460,44 @@ app.get("/auth/m365/diag", (req, res) => {
 app.get("/auth/m365/callback", async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query || {};
-    if (error) return res.status(400).send(String(error_description || error));
-    if (!code || !state) return res.status(400).send("missing code/state");
+    const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
+
+    // Helper to always redirect back to the integrations page with flags
+    function back(ok, errMsg) {
+      const base = `${FRONTEND}/integrations`;
+      const qp = new URLSearchParams({
+        connected: "m365",
+        ok: ok ? "1" : "0",
+      });
+      if (!ok && errMsg) qp.set("err", String(errMsg).slice(0, 300));
+      const to = `${base}?${qp.toString()}`;
+      return res.redirect(to);
+    }
+
+    if (error) return back(false, error_description || error);
+    if (!code || !state) return back(false, "missing code/state");
 
     // state is base64url(JSON) produced by /auth/m365/start
     let parsed;
     try {
       const json = Buffer.from(String(state), "base64url").toString("utf8");
-      parsed = JSON.parse(json);
+      parsed = JSON.parse(json || "{}");
     } catch (_e) {
-      return res.status(400).send("bad state");
+      return back(false, "bad state");
     }
 
-    const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
-    const returnTo = parsed?.r || (FRONTEND + "/integrations");
     const tok = parsed?.t;
-    if (!tok) return res.status(400).send("missing auth token");
+    if (!tok) return back(false, "missing auth token");
 
     // Verify the embedded user JWT to learn tenant_id
     let user;
     try {
       user = jwt.verify(tok, JWT_SECRET);
     } catch (_e) {
-      return res.status(401).send("invalid user token");
+      return back(false, "invalid user token");
     }
     const tenant_id = user?.tenant_id;
-    if (!tenant_id) return res.status(400).send("no tenant in token");
+    if (!tenant_id) return back(false, "no tenant in token");
 
     // Exchange the auth code for tokens
     const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
@@ -508,7 +520,7 @@ app.get("/auth/m365/callback", async (req, res) => {
 
     if (!tokenRes.ok) {
       const txt = await tokenRes.text().catch(() => "");
-      return res.status(500).send("token exchange failed: " + txt);
+      return back(false, "token exchange failed: " + txt);
     }
     const tokens = await tokenRes.json();
 
@@ -518,12 +530,13 @@ app.get("/auth/m365/callback", async (req, res) => {
       details: { tokens }
     });
 
-    // Redirect back to the app
-    const to = `${returnTo}${returnTo.includes("?") ? "&" : "?"}connected=m365`;
-    return res.redirect(to);
+    // Success
+    return back(true);
   } catch (e) {
     console.error("m365 callback error", e);
-    return res.status(500).send("callback failed");
+    const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
+    const to = `${FRONTEND}/integrations?connected=m365&ok=0&err=${encodeURIComponent("callback failed")}`;
+    return res.redirect(to);
   }
 });
 
