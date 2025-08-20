@@ -212,11 +212,11 @@ function apiKeyAuth(req,res,next){
 async function upsertConnector(tenant_id, type, provider, patch){
   const id = `${type}:${tenant_id}`;
   await q(`INSERT INTO connectors(id,tenant_id,type,provider,status,details,created_at,updated_at)
-           VALUES($1,$2,$3,$4,COALESCE($5,'connected'),COALESCE($6,'{}'::jsonb),EXTRACT(EPOCH FROM NOW()),EXTRACT(EPOCH FROM NOW()))
+           VALUES($1,$2,$3,$4,COALESCE($5,'connected'),COALESCE($6::jsonb,'{}'::jsonb),EXTRACT(EPOCH FROM NOW()),EXTRACT(EPOCH FROM NOW()))
            ON CONFLICT (id) DO UPDATE SET
              provider=EXCLUDED.provider,
              status=COALESCE(EXCLUDED.status,'connected'),
-             details=COALESCE(EXCLUDED.details,'{}'::jsonb),
+             details=COALESCE(connectors.details,'{}'::jsonb) || COALESCE(EXCLUDED.details,'{}'::jsonb),
              updated_at=EXTRACT(EPOCH FROM NOW())`,
            [id, tenant_id, type, provider||null, patch?.status||'connected', patch?.details? JSON.stringify(patch.details) : '{}']);
 }
