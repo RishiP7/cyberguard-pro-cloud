@@ -463,25 +463,42 @@ app.get("/auth/m365/callback", async (req, res) => {
     if (error) return res.status(400).send(String(error_description || error));
     if (!code || !state) return res.status(400).send("missing code/state");
 
-    let decoded;
+    // state is base64url(JSON) produced by /auth/m365/start
+    let parsed;
     try {
-      decoded = jwt.verify(String(state), JWT_SECRET);
-    } catch {
+      const json = Buffer.from(String(state), "base64url").toString("utf8");
+      parsed = JSON.parse(json);
+    } catch (_e) {
       return res.status(400).send("bad state");
     }
-    const tenant_id = decoded?.tenant_id;
-    if (!tenant_id) return res.status(400).send("bad state payload");
 
+    const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
+    const returnTo = parsed?.r || (FRONTEND + "/integrations");
+    const tok = parsed?.t;
+    if (!tok) return res.status(400).send("missing auth token");
+
+    // Verify the embedded user JWT to learn tenant_id
+    let user;
+    try {
+      user = jwt.verify(tok, JWT_SECRET);
+    } catch (_e) {
+      return res.status(401).send("invalid user token");
+    }
+    const tenant_id = user?.tenant_id;
+    if (!tenant_id) return res.status(400).send("no tenant in token");
+
+    // Exchange the auth code for tokens
+    const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
     const body = new URLSearchParams({
-      client_id: M365_CLIENT_ID,
-      client_secret: M365_CLIENT_SECRET,
+      client_id: process.env.M365_CLIENT_ID || "",
+      client_secret: process.env.M365_CLIENT_SECRET || "",
       grant_type: "authorization_code",
       code: String(code),
-      redirect_uri: M365_REDIRECT
+      redirect_uri: process.env.M365_REDIRECT_URI || (FRONTEND + "/auth/m365/callback")
     });
 
     const tokenRes = await fetch(
-      `https://login.microsoftonline.com/${encodeURIComponent(M365_TENANT)}/oauth2/v2.0/token`,
+      `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -495,12 +512,14 @@ app.get("/auth/m365/callback", async (req, res) => {
     }
     const tokens = await tokenRes.json();
 
+    // Save connector
     await upsertConnector(tenant_id, "email", "m365", {
       status: "connected",
       details: { tokens }
     });
 
-    const to = `${FRONTEND_URL.replace(/\/$/,"")}/integrations?connected=m365`;
+    // Redirect back to the app
+    const to = `${returnTo}${returnTo.includes("?") ? "&" : "?"}connected=m365`;
     return res.redirect(to);
   } catch (e) {
     console.error("m365 callback error", e);
