@@ -272,11 +272,49 @@ async function apiPostWithKey(path, body, apiKey){
 
 export const API = { get: apiGet, post: apiPost, admin: adminGet, postWithKey: apiPostWithKey };
 // ===== End minimal API wrapper =====
-const card={padding:16,border:"1px solid rgba(255,255,255,.12)",borderRadius:12,background:"rgba(255,255,255,.04)"};
-const btn={padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"};
-const pre={whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)",marginTop:12};
-const errBox={padding:"10px 12px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10,margin:"10px 0"};
-const badgeSA={marginRight:8,padding:'4px 8px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:999,fontSize:12};
+const card={
+  padding:16,
+  border:"1px solid rgba(255,255,255,.14)",
+  borderRadius:14,
+  background:"linear-gradient(180deg, rgba(28,30,38,.72), rgba(22,24,30,.64))",
+  boxShadow:"0 10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.06)",
+  backdropFilter:"blur(10px)"
+};
+const btn={
+  padding:"10px 14px",
+  borderRadius:12,
+  border:"1px solid #2b6dff66",
+  background:"linear-gradient(180deg, #3b82f6, #1f6feb)",
+  color:"#fff",
+  cursor:"pointer",
+  boxShadow:"0 8px 18px rgba(31,111,235,.28), inset 0 1px 0 rgba(255,255,255,.15)",
+  transition:"transform .06s ease, box-shadow .12s ease"
+};
+const pre={
+  whiteSpace:"pre-wrap",
+  padding:12,
+  border:"1px solid rgba(255,255,255,.14)",
+  borderRadius:12,
+  background:"linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.04))",
+  marginTop:12,
+  boxShadow:"inset 0 1px 0 rgba(255,255,255,.06)"
+};
+const errBox={
+  padding:"10px 12px",
+  border:"1px solid #ff6b6b99",
+  background:"linear-gradient(180deg, #ff6b6b22, #ff6b6b18)",
+  borderRadius:12,
+  margin:"10px 0"
+};
+const badgeSA={
+  marginRight:8,
+  padding:'4px 10px',
+  border:'1px solid #7bd88f66',
+  background:'linear-gradient(180deg, #7bd88f33, #7bd88f22)',
+  borderRadius:999,
+  fontSize:12,
+  boxShadow:"inset 0 1px 0 rgba(255,255,255,.1)"
+};
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Register from "./pages/Register.jsx";
@@ -353,11 +391,39 @@ function Layout({children}){
   );
 }
 function N({to,children}){ return <Link to={to} style={navItem}>{children}</Link>; }
-const bar   ={display:"grid",gridTemplateColumns:"220px 1fr auto",gap:12,alignItems:"center",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,.12)",background:"rgba(10,12,16,.7)",backdropFilter:"blur(8px)",position:"sticky",top:0,zIndex:10};
+const bar   ={
+  display:"grid",
+  gridTemplateColumns:"220px 1fr auto",
+  gap:12,alignItems:"center",
+  padding:"10px 14px",
+  borderBottom:"1px solid rgba(255,255,255,.12)",
+  background:"linear-gradient(180deg, rgba(12,14,18,.72), rgba(10,12,16,.64))",
+  backdropFilter:"blur(12px)",
+  position:"sticky",top:0,zIndex:10,
+  boxShadow:"0 8px 24px rgba(0,0,0,.28)"
+};
 const left  ={display:"flex",alignItems:"center"};
 const navRow={display:"flex",gap:10,flexWrap:"wrap"};
-const navItem={padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",textDecoration:"none",color:"#e6e9ef",background:"rgba(255,255,255,.05)"};
-const btnGhost={padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"transparent",color:"#e6e9ef",textDecoration:"none",cursor:"pointer"};
+const navItem={
+  padding:"8px 12px",
+  borderRadius:10,
+  border:"1px solid rgba(255,255,255,.18)",
+  textDecoration:"none",
+  color:"#e6e9ef",
+  background:"linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))",
+  boxShadow:"inset 0 1px 0 rgba(255,255,255,.06)"
+};
+const btnGhost={
+  padding:"8px 12px",
+  borderRadius:10,
+  border:"1px solid rgba(255,255,255,.22)",
+  background:"rgba(255,255,255,.04)",
+  color:"#e6e9ef",
+  textDecoration:"none",
+  cursor:"pointer",
+  backdropFilter:"blur(8px)",
+  boxShadow:"inset 0 1px 0 rgba(255,255,255,.06)"
+};
 const th    ={textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8};
 const td    ={padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"};
 
@@ -852,6 +918,26 @@ function App(){
 
 // --- Integrations Wizard UI ---
 function Integrations({ api }) {
+  // --- Helper functions for email provider normalization and OAuth ---
+  function normEmailProvider(p){
+    p = (p||'').toLowerCase();
+    if(p==='o365'||p==='m365'||p==='office365') return 'm365';
+    if(p==='gmail'||p==='google'||p==='gworkspace'||p==='gws') return 'google';
+    if(p==='imap') return 'imap';
+    return p;
+  }
+  function startEmailOAuth(p){
+    const n = normEmailProvider(p);
+    if(n==='m365'){
+      window.location.href = `${API_BASE}/auth/m365/start`;
+      return;
+    }
+    if(n==='google'){
+      window.location.href = `${API_BASE}/auth/google/start`;
+      return;
+    }
+  }
+
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState({ items: [] });
   const [emailProvider, setEmailProvider] = React.useState('imap');
@@ -890,10 +976,9 @@ function Integrations({ api }) {
         });
         setWizMsg('IMAP connected.');
       } else {
-        await safe(async()=>{
-          return await api.post('/integrations/email/connect', { provider: wizProvider, settings:{ scope: wizForm.scope } });
-        });
-        setWizMsg('Redirected/connected via OAuth (simulated).');
+        setWizMsg('Redirecting to provider for sign-in...');
+        startEmailOAuth(wizProvider);
+        return; // do not advance; user returns via /auth/.../callback
       }
     }
     if(wizStep===2){
@@ -912,8 +997,8 @@ function Integrations({ api }) {
   const styles = {
     card: { padding: 16, border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, background: "rgba(255,255,255,.04)" },
     ghost: { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,.2)", background: "transparent", color: "#e6e9ef", cursor: "pointer" },
-    modal:{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:1000 },
-    sheet:{ width:'min(720px, 92vw)', background:'rgba(24,26,34,.96)', border:'1px solid rgba(255,255,255,.12)', borderRadius:12, padding:16 }
+    modal:{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:1000, backdropFilter:'blur(6px)' },
+    sheet:{ width:'min(760px, 94vw)', background:'linear-gradient(180deg, rgba(28,30,38,.92), rgba(22,24,30,.9))', border:'1px solid rgba(255,255,255,.12)', borderRadius:16, padding:18, boxShadow:'0 18px 48px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06)' }
   };
 
   async function refresh() {
@@ -940,6 +1025,22 @@ function Integrations({ api }) {
     try{ await navigator.clipboard.writeText(String(text)); setToast('Copied to clipboard'); setTimeout(()=>setToast(''), 1200); }
     catch(_e){ setToast('Copy failed'); setTimeout(()=>setToast(''), 1200); }
   }
+
+  // Listen for ?connected=... on page load and show toast, clear param, refresh integrations
+  React.useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const connected = sp.get('connected');
+    if (connected) {
+      setToast((connected === 'm365' ? 'Microsoft 365' : 'Google') + ' connected');
+      setTimeout(() => setToast(''), 1500);
+
+      const url = new URL(window.location.href);
+      url.searchParams.delete('connected');
+      window.history.replaceState({}, '', url.toString());
+
+      refresh?.();
+    }
+  }, []);
 
   return (
     <div style={{ padding: 20 }}>
