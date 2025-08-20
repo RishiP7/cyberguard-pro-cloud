@@ -928,12 +928,13 @@ function Integrations({ api }) {
   }
   function startEmailOAuth(p){
     const n = normEmailProvider(p);
+    const tok = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
     if(n==='m365'){
-      window.location.href = `${API_BASE}/auth/m365/start`;
+      window.location.href = `${API_BASE}/auth/m365/start?token=${encodeURIComponent(tok)}`;
       return;
     }
     if(n==='google'){
-      window.location.href = `${API_BASE}/auth/google/start`;
+      window.location.href = `${API_BASE}/auth/google/start?token=${encodeURIComponent(tok)}`;
       return;
     }
   }
