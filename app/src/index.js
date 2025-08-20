@@ -10,6 +10,7 @@ import bcrypt from "bcryptjs";
 import OpenAI from "openai";
 import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
+import querystring from "node:querystring";
 
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY||"";
 const AI_MODEL=process.env.AI_MODEL||"gpt-4o-mini";
@@ -381,44 +382,79 @@ app.post('/integrations/email/connect', authMiddleware, enforceActive, async (re
 });
 
 // ===== OAuth: Microsoft 365 (Outlook) =====
+// helpers to pull token from query or header
+function extractBearer(req) {
+  const qTok = (req.query?.token || "").trim();
+  const h = req.headers?.authorization || req.headers?.Authorization || "";
+  const m = /^Bearer\s+(.+)$/i.exec(h || "");
+  return qTok || (m ? m[1] : "");
+}
+
+// --- M365 OAuth start (robust) ---
 app.get("/auth/m365/start", async (req, res) => {
   try {
-    // Accept token from Authorization header or ?token= query
-    let tok = null;
-    const h = req.headers.authorization || "";
-    if (h.startsWith("Bearer ")) tok = h.slice(7);
-    if (!tok && req.query && req.query.token) tok = String(req.query.token);
+    const FRONTEND_URL = process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com";
+    const TENANT = process.env.M365_TENANT || "common";
+    const CLIENT_ID = process.env.M365_CLIENT_ID;
+    const REDIRECT = process.env.M365_REDIRECT_URI || (FRONTEND_URL.replace(/\/$/,"") + "/auth/m365/callback");
+    const SECRET = process.env.JWT_SECRET;
 
+    if (!CLIENT_ID || !REDIRECT) {
+      return res.status(500).json({
+        error: "m365 env missing",
+        have: { CLIENT_ID: !!CLIENT_ID, REDIRECT: !!REDIRECT }
+      });
+    }
+
+    // verify the user token (from ?token= or Authorization header)
+    const tok = extractBearer(req);
     if (!tok) return res.status(401).json({ error: "missing token" });
 
     let decoded;
-    try {
-      decoded = jwt.verify(tok, JWT_SECRET);
-    } catch {
-      return res.status(401).json({ error: "Invalid token" });
-    }
+    try { decoded = jwt.verify(tok, SECRET); }
+    catch(e){ return res.status(401).json({ error: "invalid token" }); }
 
-    if (!M365_CLIENT_ID || !M365_REDIRECT) return res.status(500).send("M365 not configured");
-
-    const state = jwt.sign(
-      { tenant_id: decoded.tenant_id, t: Date.now() },
-      JWT_SECRET,
-      { expiresIn: "10m" }
-    );
-    const params = new URLSearchParams({
-      client_id: M365_CLIENT_ID,
+    // build authorization URL
+    const authParams = {
+      client_id: CLIENT_ID,
       response_type: "code",
-      redirect_uri: M365_REDIRECT,
       response_mode: "query",
-      scope: "openid profile email offline_access https://graph.microsoft.com/Mail.Read",
-      state
-    });
-    const authUrl = `https://login.microsoftonline.com/${encodeURIComponent(M365_TENANT)}/oauth2/v2.0/authorize?${params.toString()}`;
-    return res.redirect(authUrl);
+      redirect_uri: REDIRECT,
+      scope: "openid offline_access email Mail.Read",
+      state: Buffer.from(JSON.stringify({
+        r: (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com") + "/integrations",
+        t: tok
+      })).toString("base64url")
+    };
+
+    const authUrl = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/authorize?` +
+      querystring.stringify(authParams);
+
+    // go to Microsoft login
+    return res.redirect(302, authUrl);
+
   } catch (e) {
-    console.error("m365 start error", e);
-    return res.status(500).send("start failed");
+    console.error("m365/start failed", e);
+    return res.status(500).json({ error: "start failed" });
   }
+});
+
+// TEMP: quick diag to see what API is reading
+app.get("/auth/m365/diag", (req, res) => {
+  const tok = extractBearer(req);
+  let d = null;
+  try { d = jwt.decode(tok || ""); } catch(_){}
+  res.json({
+    ok: true,
+    from: "diag",
+    have: {
+      CLIENT_ID: !!process.env.M365_CLIENT_ID,
+      REDIRECT: !!process.env.M365_REDIRECT_URI,
+      TENANT: process.env.M365_TENANT || null
+    },
+    token_present: !!tok,
+    token_decoded: d || null
+  });
 });
 
 app.get("/auth/m365/callback", async (req, res) => {
