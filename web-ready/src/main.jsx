@@ -948,6 +948,30 @@ function Integrations({ api }) {
   const [edrToken, setEdrToken] = React.useState("");
   const [dnsInfo, setDnsInfo] = React.useState(null);
 
+  // --- Integrations connection status ---
+  const [connStatus, setConnStatus] = React.useState(null);
+  const [loadingStatus, setLoadingStatus] = React.useState(false);
+
+  async function fetchConnStatus() {
+    try {
+      setLoadingStatus(true);
+      const token = localStorage.getItem('token') || '';
+      const r = await fetch(API_BASE + "/integrations/status", {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const j = await r.json();
+      if (j.ok) {
+        setConnStatus(j.items || []);
+        // also keep existing 'status' in sync for tiles that already use it
+        setStatus(j || { items: [] });
+      }
+    } catch (e) {
+      console.error("status load failed", e);
+    } finally {
+      setLoadingStatus(false);
+    }
+  }
+
   // --- Email Wizard state ---
   const [wizOpen, setWizOpen] = React.useState(false);
   const [wizStep, setWizStep] = React.useState(0);
@@ -1003,13 +1027,10 @@ function Integrations({ api }) {
   };
 
   async function refresh() {
-    try {
-      const j = await api.get('/integrations/status');
-      setStatus(j || { items: [] });
-    } catch (e) { console.error(e); }
+    return fetchConnStatus();
   }
-  React.useEffect(() => { refresh(); }, []);
-  React.useEffect(() => { const t = setInterval(refresh, 10000); return () => clearInterval(t); }, []);
+  React.useEffect(() => { fetchConnStatus(); }, []);
+  React.useEffect(() => { const t = setInterval(fetchConnStatus, 10000); return () => clearInterval(t); }, []);
 
   function getState(type){
     return (status.items||[]).find(s=>s.type===type) || { status:'disconnected' };
@@ -1049,13 +1070,41 @@ function Integrations({ api }) {
       sp.delete('err');
       window.history.replaceState({}, '', url.toString());
 
-      refresh?.();
+      fetchConnStatus();
     }
+  }, []);
+
+  // Load current connection status on first render
+  React.useEffect(() => {
+    fetchConnStatus();
   }, []);
 
   return (
     <div style={{ padding: 20 }}>
       <h1 style={{marginTop:0}}>Integrations</h1>
+      {/* Connection status summary */}
+      <div style={{margin:"10px 0", padding:"10px 12px", border:"1px solid #e5e7eb", background:"#0b0c0d", borderRadius:10}}>
+        <div style={{fontSize:14, opacity:0.9, marginBottom:6}}>
+          <b>Current connections</b> {loadingStatus ? '(refreshing...)' : ''}
+        </div>
+        {Array.isArray(connStatus) && connStatus.length > 0 ? (
+          <ul style={{listStyle:"none", padding:0, margin:0, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8}}>
+            {connStatus.map((c,i)=>(
+              <li key={i} style={{padding:"8px 10px", background:"#111316", border:"1px solid #1f2328", borderRadius:8}}>
+                <div style={{fontSize:12, opacity:0.8}}>{(c.type||'').toUpperCase()} • {c.provider||'—'}</div>
+                <div style={{fontSize:13, marginTop:4}}>
+                  {c.status === 'connected' ? '✅ Connected'
+                    : c.status === 'pending' ? '⏳ Pending'
+                    : c.status === 'error'   ? '❌ Error'
+                    : '—'}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div style={{fontSize:13, opacity:0.8}}>No integrations connected yet.</div>
+        )}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12 }}>
 
         {/* Email */}
