@@ -57,10 +57,10 @@ function KeysCard() {
       if(!r?.api_key) throw new Error(r?.error || "No key returned");
       localStorage.setItem("api_key", r.api_key);
       setMsg("API key created and stored in localStorage.api_key");
-    }catch(e){
-      const base = e?.error || e?.message || "key create failed";
-      const planHint = (me?.plan === 'trial') ? " — Your plan is Trial. Upgrade to Basic/Pro to enable keys." : "";
-      setMsg(base + planHint);
+    }} catch (e) {
+  const base = e?.error || e?.message || "key create failed";
+  setMsg(base);
+}
     }
   }
 
@@ -522,7 +522,14 @@ function Dashboard(){
 function Stat({title,value}){ return <div style={card}><div style={{opacity:.75,fontSize:13}}>{title}</div><div style={{fontSize:22,fontWeight:700,marginTop:6}}>{value}</div></div>; }
 
 
-function Block({title,children,disabled}){ return <div style={{...card, opacity:disabled?.8:1}}><div style={{fontWeight:700,marginBottom:6}}>{title}</div>{children}</div>; }
+function Block({title,children,disabled}){
+  return (
+    <div style={{...card, opacity: disabled ? 0.8 : 1}}>
+      <div style={{fontWeight:700,marginBottom:6}}>{title}</div>
+      {children}
+    </div>
+  );
+}>{title}</div>{children}</div>; }
 function Code({children}){ return <pre style={pre}>{children}</pre>; }
 
 function Policy(){
