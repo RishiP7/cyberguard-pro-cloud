@@ -480,130 +480,48 @@ app.get("/auth/m365/diag", (req, res) => {
 });
 
 app.get("/auth/m365/callback", async (req, res) => {
+  const code = req.query.code;
+  const tenantId = req.auth?.tenant_id;
+
   try {
-    const { code, state, error, error_description } = req.query || {};
-    const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
+    const tokenResp = await fetch(`https://login.microsoftonline.com/${process.env.M365_TENANT_ID}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.M365_CLIENT_ID,
+        client_secret: process.env.M365_CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: process.env.M365_REDIRECT_URI,
+        scope: "offline_access openid email Mail.Read"
+      })
+    }).then(r => r.json());
 
-    function back(ok, errMsg) {
-      const base = `${FRONTEND}/integrations`;
-      const qp = new URLSearchParams({ connected: "m365", ok: ok ? "1" : "0" });
-      if (!ok && errMsg) qp.set("err", String(errMsg).slice(0, 300));
-      return res.redirect(`${base}?${qp.toString()}`);
+    if (!tokenResp.access_token) {
+      console.error("Token exchange failed:", tokenResp);
+      return res.status(400).json({ error: "token_exchange_failed", details: tokenResp });
     }
 
-    if (error) return back(false, error_description || error);
-    if (!code || !state) return back(false, "missing code/state");
-
-    // Decode base64url state (JSON with { r, t })
-    let parsed;
-    try {
-      const json = Buffer.from(String(state), "base64url").toString("utf8");
-      parsed = JSON.parse(json || "{}");
-    } catch (_e) {
-      return back(false, "bad state");
-    }
-
-    const tok = parsed?.t;
-    if (!tok) return back(false, "missing auth token");
-
-    // Verify embedded user JWT to get tenant id
-    let user;
-    try {
-      user = jwt.verify(tok, JWT_SECRET);
-    } catch (_e) {
-      return back(false, "invalid user token");
-    }
-    const tenant_id = user?.tenant_id;
-    if (!tenant_id) return back(false, "no tenant in token");
-
-    // Exchange code for tokens
-    const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
-    const baseBody = {
-      client_id: process.env.M365_CLIENT_ID || "",
-      client_secret: process.env.M365_CLIENT_SECRET || "",
-      redirect_uri: process.env.M365_REDIRECT_URI || (FRONTEND + "/auth/m365/callback"),
-    };
-
-    const tokenRes = await fetch(
-      `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          ...baseBody,
-          grant_type: "authorization_code",
-          code: String(code),
-        }),
-      }
-    );
-    if (!tokenRes.ok) {
-      const txt = await tokenRes.text().catch(() => "");
-      return back(false, "token exchange failed: " + txt);
-    }
-    let tokens = await tokenRes.json();
-
-    // Probe Microsoft Graph /me (refresh once on 401)
-    async function graphMe(accessToken) {
-      return fetch("https://graph.microsoft.com/v1.0/me", {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-    }
-
-    let meRes = await graphMe(tokens.access_token);
-    if (meRes.status === 401 && tokens.refresh_token) {
-      const refreshRes = await fetch(
-        `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            ...baseBody,
-            grant_type: "refresh_token",
-            refresh_token: tokens.refresh_token,
-          }),
-        }
-      );
-      if (refreshRes.ok) {
-        const refreshed = await refreshRes.json();
-        tokens = { ...tokens, ...refreshed };
-        meRes = await graphMe(tokens.access_token);
-      }
-    }
-
-    if (!meRes.ok) {
-      const t = await meRes.text().catch(() => "");
-      await upsertConnector(tenant_id, "email", "m365", {
-        status: "error",
-        details: { last_error: t.slice(0, 500) },
-      });
-      return back(false, `graph /me failed (${meRes.status})`);
-    }
-    const me = await meRes.json().catch(() => ({}));
-
-    // Persist connector with minimal account context + tokens
-    await upsertConnector(tenant_id, "email", "m365", {
-      status: "connected",
-      details: {
-        account: {
-          id: me?.id || null,
-          userPrincipalName: me?.userPrincipalName || null,
-          mail: me?.mail || me?.userPrincipalName || null,
-          displayName: me?.displayName || null,
-        },
+    await pool.query(
+      `INSERT INTO connectors(tenant_id, type, details)
+       VALUES ($1, 'email', $2::jsonb)
+       ON CONFLICT (tenant_id, type)
+       DO UPDATE SET details = connectors.details || EXCLUDED.details`,
+      [tenantId, JSON.stringify({
+        provider: "m365",
         tokens: {
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          expires_in: tokens.expires_in,
-        },
-        connected_at: Math.floor(Date.now() / 1000),
-      },
-    });
+          access_token: tokenResp.access_token,
+          refresh_token: tokenResp.refresh_token,
+          expires_in: tokenResp.expires_in,
+          obtained_at: Date.now()
+        }
+      })]
+    );
 
-    return back(true);
+    res.redirect("/integrations?m365=connected");
   } catch (e) {
-    console.error("m365 callback error", e);
-    const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
-    return res.redirect(`${FRONTEND}/integrations?connected=m365&ok=0&err=${encodeURIComponent("callback failed")}`);
+    console.error("M365 callback error", e);
+    res.status(500).json({ error: "m365_callback_failed" });
   }
 });
 
@@ -625,7 +543,7 @@ app.get("/auth/google/start", async (req, res) => {
       return res.status(401).json({ error: "Invalid token" });
     }
 
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT) return res.status(500).send("Google not configured");
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT) return res.status(500).json({ error: "google not configured" });
 
     const state = jwt.sign(
       { tenant_id: decoded.tenant_id, t: Date.now() },
@@ -645,7 +563,7 @@ app.get("/auth/google/start", async (req, res) => {
     return res.redirect(authUrl);
   } catch (e) {
     console.error("google start error", e);
-    return res.status(500).send("start failed");
+    return res.status(500).json({ error: "start failed" });
   }
 });
 
@@ -664,6 +582,10 @@ app.get("/auth/google/callback", async (req, res) => {
     const tenant_id = decoded?.tenant_id;
     if (!tenant_id) return res.status(400).send("bad state payload");
 
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT) {
+      return res.status(500).send("google not configured");
+    }
+
     const body = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       client_secret: GOOGLE_CLIENT_SECRET,
@@ -677,22 +599,40 @@ app.get("/auth/google/callback", async (req, res) => {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body
     });
-    if (!tokenRes.ok) {
-      const txt = await tokenRes.text().catch(() => "");
-      return res.status(500).send("token exchange failed: " + txt);
-    }
     const tokens = await tokenRes.json();
+    if (!tokenRes.ok || !tokens.access_token) {
+      const txt = typeof tokens === 'string' ? tokens : JSON.stringify(tokens).slice(0,300);
+      const to = `${FRONTEND_URL.replace(/\/$/,"")}/integrations?connected=google&ok=0&err=${encodeURIComponent('token exchange failed')}`;
+      return res.redirect(to);
+    }
+
+    // Fetch Gmail profile to capture the account email
+    const profRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+    let profile = null;
+    if (profRes.ok) {
+      profile = await profRes.json().catch(()=>null);
+    }
 
     await upsertConnector(tenant_id, "email", "google", {
       status: "connected",
-      details: { tokens }
+      details: {
+        account: {
+          emailAddress: profile?.emailAddress || null,
+          messagesTotal: profile?.messagesTotal || null,
+          threadsTotal: profile?.threadsTotal || null
+        },
+        tokens
+      }
     });
 
-    const to = `${FRONTEND_URL.replace(/\/$/,"")}/integrations?connected=google`;
+    const to = `${FRONTEND_URL.replace(/\/$/,"")}/integrations?connected=google&ok=1`;
     return res.redirect(to);
   } catch (e) {
     console.error("google callback error", e);
-    return res.status(500).send("callback failed");
+    const to = `${FRONTEND_URL.replace(/\/$/,"")}/integrations?connected=google&ok=0&err=${encodeURIComponent('callback failed')}`;
+    return res.redirect(to);
   }
 });
 
@@ -743,12 +683,75 @@ app.post("/integrations/email/test", authMiddleware, async (req, res) => {
       return res.json({ ok:true, connected:true, provider:'m365', account:{ id: me?.id||null, upn: me?.userPrincipalName||null } });
     }
 
+    if (c.provider === "google") {
+      const details = c.details || {};
+      let access = details?.tokens?.access_token || null;
+      const refresh = details?.tokens?.refresh_token || null;
+      if (!access) return res.json({ ok: true, connected: false, provider: 'google', reason: "no access token" });
+
+      async function gmailProfile(tok){
+        return fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", { headers: { Authorization: `Bearer ${tok}` } });
+      }
+      let profRes = await gmailProfile(access);
+      if (profRes.status === 401 && refresh) {
+        const rr = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: GOOGLE_CLIENT_ID || "",
+            client_secret: GOOGLE_CLIENT_SECRET || "",
+            grant_type: "refresh_token",
+            refresh_token: refresh
+          })
+        });
+        if (rr.ok) {
+          const newTok = await rr.json();
+          access = newTok.access_token || access;
+          await upsertConnector(req.user.tenant_id, "email", "google", {
+            status: "connected",
+            details: { ...details, tokens: { ...(details.tokens||{}), ...newTok } }
+          });
+          profRes = await gmailProfile(access);
+        }
+      }
+      if (!profRes.ok) {
+        const t = await profRes.text().catch(()=>"");
+        return res.json({ ok:true, connected:false, provider:'google', reason:`gmail ${profRes.status}`, detail:t.slice(0,160) });
+      }
+      const prof = await profRes.json().catch(()=>({}));
+      return res.json({ ok:true, connected:true, provider:'google', account:{ emailAddress: prof?.emailAddress||null } });
+    }
+
     const hasToken = !!(c?.details?.tokens?.access_token || c?.details?.tokens?.refresh_token);
     return res.json({ ok:true, connected: hasToken, provider: c.provider });
   } catch (e) {
     console.error("email test failed", e);
     return res.status(500).json({ error: "test failed" });
   }
+});
+// ===== Manual refresh endpoint for Google =====
+app.post('/auth/google/refresh', authMiddleware, async (req,res)=>{
+  try{
+    const c = await getEmailConnector(req.user.tenant_id);
+    if(!c || c.provider !== 'google') return res.status(400).json({ error:'not google-connected' });
+    const refresh = c.details?.tokens?.refresh_token;
+    if(!refresh) return res.status(400).json({ error:'no refresh token' });
+
+    const r = await fetch('https://oauth2.googleapis.com/token',{
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID || '',
+        client_secret: GOOGLE_CLIENT_SECRET || '',
+        grant_type: 'refresh_token',
+        refresh_token: refresh
+      })
+    });
+    const j = await r.json();
+    if(!r.ok) return res.status(500).json({ ok:false, error:'refresh failed', detail: j });
+
+    await upsertConnector(req.user.tenant_id, 'email', 'google', { status:'connected', details: { ...(c.details||{}), tokens: { ...(c.details?.tokens||{}), ...j } } });
+    return res.json({ ok:true });
+  }catch(e){ return res.status(500).json({ error:'refresh failed' }); }
 });
 
 // ===== Manual refresh endpoint for M365 =====
