@@ -1027,16 +1027,26 @@ function Integrations({ api }) {
     catch(_e){ setToast('Copy failed'); setTimeout(()=>setToast(''), 1200); }
   }
 
-  // Listen for ?connected=... on page load and show toast, clear param, refresh integrations
+  // Handle OAuth return flags (?connected=..., ok=..., err=...)
   React.useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
+    const url = new URL(window.location.href);
+    const sp = url.searchParams;
     const connected = sp.get('connected');
     if (connected) {
-      setToast((connected === 'm365' ? 'Microsoft 365' : 'Google') + ' connected');
-      setTimeout(() => setToast(''), 1500);
+      const ok  = sp.get('ok');
+      const err = sp.get('err');
 
-      const url = new URL(window.location.href);
-      url.searchParams.delete('connected');
+      if (ok === '1') {
+        setToast((connected === 'm365' ? 'Microsoft 365' : 'Google') + ' connected');
+      } else {
+        setToast(`Connection failed${err ? `: ${err}` : ''}`);
+      }
+      setTimeout(() => setToast(''), 1800);
+
+      // remove flags from the URL
+      sp.delete('connected');
+      sp.delete('ok');
+      sp.delete('err');
       window.history.replaceState({}, '', url.toString());
 
       refresh?.();
