@@ -38,12 +38,12 @@ app.disable("x-powered-by");
 // ===== Email OAuth env (M365 + Google) =====
 const M365_CLIENT_ID     = process.env.M365_CLIENT_ID || "";
 const M365_CLIENT_SECRET = process.env.M365_CLIENT_SECRET || "";
-const M365_TENANT        = process.env.M365_TENANT || "common";
-const M365_REDIRECT      = process.env.M365_REDIRECT || ""; // e.g. https://your-api.onrender.com/auth/m365/callback
+const M365_TENANT        = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
+const M365_REDIRECT      = process.env.M365_REDIRECT || process.env.M365_REDIRECT_URI || ""; // e.g. https://your-api.onrender.com/auth/m365/callback
 
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
-const GOOGLE_REDIRECT      = process.env.GOOGLE_REDIRECT || ""; // e.g. https://your-api.onrender.com/auth/google/callback
+const GOOGLE_REDIRECT      = process.env.GOOGLE_REDIRECT || process.env.GOOGLE_REDIRECT_URI || ""; // e.g. https://your-api.onrender.com/auth/google/callback
 
 // ----- CORS (explicit allowlist) -----
 const ALLOWED_ORIGINS = Array.from(new Set(
@@ -52,6 +52,9 @@ const ALLOWED_ORIGINS = Array.from(new Set(
     .map(s => (s||'').trim().toLowerCase().replace(/\/$/, ''))
     .filter(Boolean)
 ));
+
+// Frontend URL for post-auth redirects
+const FRONTEND_URL = process.env.FRONTEND_URL || ALLOWED_ORIGINS[0] || "http://localhost:5173";
 
 function corsOrigin(origin, cb){
   if (!origin) return cb(null, true); // non-browser / same-host
@@ -378,11 +381,27 @@ app.post('/integrations/email/connect', authMiddleware, enforceActive, async (re
 });
 
 // ===== OAuth: Microsoft 365 (Outlook) =====
-app.get("/auth/m365/start", authMiddleware, async (req, res) => {
+app.get("/auth/m365/start", async (req, res) => {
   try {
+    // Accept token from Authorization header or ?token= query
+    let tok = null;
+    const h = req.headers.authorization || "";
+    if (h.startsWith("Bearer ")) tok = h.slice(7);
+    if (!tok && req.query && req.query.token) tok = String(req.query.token);
+
+    if (!tok) return res.status(401).json({ error: "missing token" });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(tok, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
     if (!M365_CLIENT_ID || !M365_REDIRECT) return res.status(500).send("M365 not configured");
+
     const state = jwt.sign(
-      { tenant_id: req.user.tenant_id, t: Date.now() },
+      { tenant_id: decoded.tenant_id, t: Date.now() },
       JWT_SECRET,
       { expiresIn: "10m" }
     );
@@ -454,11 +473,27 @@ app.get("/auth/m365/callback", async (req, res) => {
 });
 
 // ===== OAuth: Google Workspace (Gmail) =====
-app.get("/auth/google/start", authMiddleware, async (req, res) => {
+app.get("/auth/google/start", async (req, res) => {
   try {
+    // Accept token from Authorization header or ?token= query
+    let tok = null;
+    const h = req.headers.authorization || "";
+    if (h.startsWith("Bearer ")) tok = h.slice(7);
+    if (!tok && req.query && req.query.token) tok = String(req.query.token);
+
+    if (!tok) return res.status(401).json({ error: "missing token" });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(tok, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
     if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT) return res.status(500).send("Google not configured");
+
     const state = jwt.sign(
-      { tenant_id: req.user.tenant_id, t: Date.now() },
+      { tenant_id: decoded.tenant_id, t: Date.now() },
       JWT_SECRET,
       { expiresIn: "10m" }
     );
