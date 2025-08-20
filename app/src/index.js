@@ -220,6 +220,28 @@ async function upsertConnector(tenant_id, type, provider, patch){
              updated_at=EXTRACT(EPOCH FROM NOW())`,
            [id, tenant_id, type, provider||null, patch?.status||'connected', patch?.details? JSON.stringify(patch.details) : '{}']);
 }
+
+// ====== Email connector helpers ======
+async function getEmailConnector(tenant_id){
+  // Prefer deterministic id for single-email-connector design
+  const id = `email:${tenant_id}`;
+  const byId = await q(`SELECT id, tenant_id, type, provider, status, details, updated_at FROM connectors WHERE id=$1`, [id]);
+  if (byId.rows && byId.rows.length) return byId.rows[0];
+  // Fallback: latest email connector if schema was older
+  const latest = await q(`SELECT id, tenant_id, type, provider, status, details, updated_at FROM connectors WHERE tenant_id=$1 AND type='email' ORDER BY updated_at DESC LIMIT 1`, [tenant_id]);
+  return latest.rows[0] || null;
+}
+
+function maskTokens(details){
+  try{
+    const d = JSON.parse(JSON.stringify(details||{}));
+    if(d.tokens){
+      if(d.tokens.access_token) d.tokens.access_token = d.tokens.access_token.slice(0,6)+"…";
+      if(d.tokens.refresh_token) d.tokens.refresh_token = d.tokens.refresh_token.slice(0,6)+"…";
+    }
+    return d;
+  }catch(_){ return details || {}; }
+}
 // ---------- DB bootstrap (idempotent) ----------
 (async ()=>{
   await q(`
@@ -368,8 +390,8 @@ app.get('/integrations/status', authMiddleware, async (req,res)=>{
 // ===== Integrations: Email =====
 app.get('/integrations/email/status', authMiddleware, async (req,res)=>{
   try{
-    const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='email'`,[req.user.tenant_id]);
-    return res.json({ ok:true, connector: rows[0]||null });
+    const conn = await getEmailConnector(req.user.tenant_id);
+    return res.json({ ok:true, connector: conn ? { provider: conn.provider, status: conn.status, details: maskTokens(conn.details), updated_at: conn.updated_at } : null });
   }catch(e){ return res.status(500).json({ error: 'status failed' }); }
 });
 app.post('/integrations/email/connect', authMiddleware, enforceActive, async (req,res)=>{
@@ -677,69 +699,92 @@ app.get("/auth/google/callback", async (req, res) => {
 // ===== Simple verification endpoint used by the wizard =====
 app.post("/integrations/email/test", authMiddleware, async (req, res) => {
   try {
-    const { rows } = await q(
-      `SELECT provider, details FROM connectors WHERE tenant_id=$1 AND type='email'`,
-      [req.user.tenant_id]
-    );
-    const c = rows[0];
+    const c = await getEmailConnector(req.user.tenant_id);
     if (!c) return res.json({ ok: true, connected: false, reason: "no connector" });
 
     if (c.provider === "m365") {
       const details = c.details || {};
       let access = details?.tokens?.access_token || null;
       const refresh = details?.tokens?.refresh_token || null;
-      if (!access) return res.json({ ok: true, connected: false, reason: "no access token" });
+      if (!access) return res.json({ ok: true, connected: false, provider: 'm365', reason: "no access token" });
 
-      async function graphMe(tok) {
-        return fetch("https://graph.microsoft.com/v1.0/me", {
-          headers: { Authorization: `Bearer ${tok}` },
-        });
+      async function graphMe(tok){
+        return fetch("https://graph.microsoft.com/v1.0/me", { headers: { Authorization: `Bearer ${tok}` } });
       }
-
       let meRes = await graphMe(access);
       if (meRes.status === 401 && refresh) {
         const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
-        const r = await fetch(
-          `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-              client_id: process.env.M365_CLIENT_ID || "",
-              client_secret: process.env.M365_CLIENT_SECRET || "",
-              redirect_uri: process.env.M365_REDIRECT_URI || "",
-              grant_type: "refresh_token",
-              refresh_token: refresh,
-            }),
-          }
-        );
+        const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: process.env.M365_CLIENT_ID || "",
+            client_secret: process.env.M365_CLIENT_SECRET || "",
+            redirect_uri: process.env.M365_REDIRECT_URI || "",
+            grant_type: "refresh_token",
+            refresh_token: refresh
+          })
+        });
         if (r.ok) {
           const newTok = await r.json();
           access = newTok.access_token || access;
-          // persist refreshed tokens
           await upsertConnector(req.user.tenant_id, "email", "m365", {
             status: "connected",
-            details: { ...details, tokens: { ...(details.tokens || {}), ...newTok } },
+            details: { ...details, tokens: { ...(details.tokens||{}), ...newTok } }
           });
           meRes = await graphMe(access);
         }
       }
-
       if (!meRes.ok) {
-        const t = await meRes.text().catch(() => "");
-        return res.json({ ok: true, connected: false, provider: "m365", reason: `graph ${meRes.status}`, detail: t.slice(0, 120) });
+        const t = await meRes.text().catch(()=>"");
+        return res.json({ ok:true, connected:false, provider:'m365', reason:`graph ${meRes.status}`, detail:t.slice(0,160) });
       }
-      const me = await meRes.json().catch(() => ({}));
-      return res.json({ ok: true, connected: true, provider: "m365", account: { id: me?.id || null, upn: me?.userPrincipalName || null } });
+      const me = await meRes.json().catch(()=>({}));
+      return res.json({ ok:true, connected:true, provider:'m365', account:{ id: me?.id||null, upn: me?.userPrincipalName||null } });
     }
 
-    // Fallback for other providers (IMAP, etc.)
     const hasToken = !!(c?.details?.tokens?.access_token || c?.details?.tokens?.refresh_token);
-    return res.json({ ok: true, connected: hasToken, provider: c.provider });
+    return res.json({ ok:true, connected: hasToken, provider: c.provider });
   } catch (e) {
     console.error("email test failed", e);
     return res.status(500).json({ error: "test failed" });
   }
+});
+
+// ===== Manual refresh endpoint for M365 =====
+app.post('/auth/m365/refresh', authMiddleware, async (req,res)=>{
+  try{
+    const c = await getEmailConnector(req.user.tenant_id);
+    if(!c || c.provider !== 'm365') return res.status(400).json({ error:'not m365-connected' });
+    const refresh = c.details?.tokens?.refresh_token;
+    if(!refresh) return res.status(400).json({ error:'no refresh token' });
+
+    const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || 'common';
+    const body = new URLSearchParams({
+      client_id: process.env.M365_CLIENT_ID || '',
+      client_secret: process.env.M365_CLIENT_SECRET || '',
+      grant_type: 'refresh_token',
+      refresh_token: refresh,
+      redirect_uri: process.env.M365_REDIRECT_URI || ''
+    });
+    const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,{
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body
+    });
+    const j = await r.json();
+    if(!r.ok) return res.status(500).json({ ok:false, error:'refresh failed', detail: j });
+
+    await upsertConnector(req.user.tenant_id, 'email', 'm365', { status:'connected', details: { ...(c.details||{}), tokens: { ...(c.details?.tokens||{}), ...j } } });
+    return res.json({ ok:true });
+  }catch(e){ return res.status(500).json({ error:'refresh failed' }); }
+});
+
+// ===== Safe debug endpoint for email connector (masked) =====
+app.get('/integrations/email/debug', authMiddleware, async (req,res)=>{
+  try{
+    const c = await getEmailConnector(req.user.tenant_id);
+    if(!c) return res.json({ ok:true, connector:null });
+    return res.json({ ok:true, connector: { id:c.id, provider:c.provider, status:c.status, details: maskTokens(c.details), updated_at:c.updated_at } });
+  }catch(e){ return res.status(500).json({ error:'debug failed' }); }
 });
 
 // ===== Integrations: EDR =====
