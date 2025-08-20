@@ -462,22 +462,17 @@ app.get("/auth/m365/callback", async (req, res) => {
     const { code, state, error, error_description } = req.query || {};
     const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
 
-    // Helper to always redirect back to the integrations page with flags
     function back(ok, errMsg) {
       const base = `${FRONTEND}/integrations`;
-      const qp = new URLSearchParams({
-        connected: "m365",
-        ok: ok ? "1" : "0",
-      });
+      const qp = new URLSearchParams({ connected: "m365", ok: ok ? "1" : "0" });
       if (!ok && errMsg) qp.set("err", String(errMsg).slice(0, 300));
-      const to = `${base}?${qp.toString()}`;
-      return res.redirect(to);
+      return res.redirect(`${base}?${qp.toString()}`);
     }
 
     if (error) return back(false, error_description || error);
     if (!code || !state) return back(false, "missing code/state");
 
-    // state is base64url(JSON) produced by /auth/m365/start
+    // Decode base64url state (JSON with { r, t })
     let parsed;
     try {
       const json = Buffer.from(String(state), "base64url").toString("utf8");
@@ -489,7 +484,7 @@ app.get("/auth/m365/callback", async (req, res) => {
     const tok = parsed?.t;
     if (!tok) return back(false, "missing auth token");
 
-    // Verify the embedded user JWT to learn tenant_id
+    // Verify embedded user JWT to get tenant id
     let user;
     try {
       user = jwt.verify(tok, JWT_SECRET);
@@ -499,44 +494,94 @@ app.get("/auth/m365/callback", async (req, res) => {
     const tenant_id = user?.tenant_id;
     if (!tenant_id) return back(false, "no tenant in token");
 
-    // Exchange the auth code for tokens
+    // Exchange code for tokens
     const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
-    const body = new URLSearchParams({
+    const baseBody = {
       client_id: process.env.M365_CLIENT_ID || "",
       client_secret: process.env.M365_CLIENT_SECRET || "",
-      grant_type: "authorization_code",
-      code: String(code),
-      redirect_uri: process.env.M365_REDIRECT_URI || (FRONTEND + "/auth/m365/callback")
-    });
+      redirect_uri: process.env.M365_REDIRECT_URI || (FRONTEND + "/auth/m365/callback"),
+    };
 
     const tokenRes = await fetch(
       `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body
+        body: new URLSearchParams({
+          ...baseBody,
+          grant_type: "authorization_code",
+          code: String(code),
+        }),
       }
     );
-
     if (!tokenRes.ok) {
       const txt = await tokenRes.text().catch(() => "");
       return back(false, "token exchange failed: " + txt);
     }
-    const tokens = await tokenRes.json();
+    let tokens = await tokenRes.json();
 
-    // Save connector
+    // Probe Microsoft Graph /me (refresh once on 401)
+    async function graphMe(accessToken) {
+      return fetch("https://graph.microsoft.com/v1.0/me", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    }
+
+    let meRes = await graphMe(tokens.access_token);
+    if (meRes.status === 401 && tokens.refresh_token) {
+      const refreshRes = await fetch(
+        `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            ...baseBody,
+            grant_type: "refresh_token",
+            refresh_token: tokens.refresh_token,
+          }),
+        }
+      );
+      if (refreshRes.ok) {
+        const refreshed = await refreshRes.json();
+        tokens = { ...tokens, ...refreshed };
+        meRes = await graphMe(tokens.access_token);
+      }
+    }
+
+    if (!meRes.ok) {
+      const t = await meRes.text().catch(() => "");
+      await upsertConnector(tenant_id, "email", "m365", {
+        status: "error",
+        details: { last_error: t.slice(0, 500) },
+      });
+      return back(false, `graph /me failed (${meRes.status})`);
+    }
+    const me = await meRes.json().catch(() => ({}));
+
+    // Persist connector with minimal account context + tokens
     await upsertConnector(tenant_id, "email", "m365", {
       status: "connected",
-      details: { tokens }
+      details: {
+        account: {
+          id: me?.id || null,
+          userPrincipalName: me?.userPrincipalName || null,
+          mail: me?.mail || me?.userPrincipalName || null,
+          displayName: me?.displayName || null,
+        },
+        tokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expires_in: tokens.expires_in,
+        },
+        connected_at: Math.floor(Date.now() / 1000),
+      },
     });
 
-    // Success
     return back(true);
   } catch (e) {
     console.error("m365 callback error", e);
     const FRONTEND = (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "");
-    const to = `${FRONTEND}/integrations?connected=m365&ok=0&err=${encodeURIComponent("callback failed")}`;
-    return res.redirect(to);
+    return res.redirect(`${FRONTEND}/integrations?connected=m365&ok=0&err=${encodeURIComponent("callback failed")}`);
   }
 });
 
@@ -631,16 +676,67 @@ app.get("/auth/google/callback", async (req, res) => {
 
 // ===== Simple verification endpoint used by the wizard =====
 app.post("/integrations/email/test", authMiddleware, async (req, res) => {
-  try{
+  try {
     const { rows } = await q(
       `SELECT provider, details FROM connectors WHERE tenant_id=$1 AND type='email'`,
       [req.user.tenant_id]
     );
     const c = rows[0];
-    if(!c) return res.status(400).json({ error: "no email provider connected" });
+    if (!c) return res.json({ ok: true, connected: false, reason: "no connector" });
+
+    if (c.provider === "m365") {
+      const details = c.details || {};
+      let access = details?.tokens?.access_token || null;
+      const refresh = details?.tokens?.refresh_token || null;
+      if (!access) return res.json({ ok: true, connected: false, reason: "no access token" });
+
+      async function graphMe(tok) {
+        return fetch("https://graph.microsoft.com/v1.0/me", {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+      }
+
+      let meRes = await graphMe(access);
+      if (meRes.status === 401 && refresh) {
+        const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
+        const r = await fetch(
+          `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              client_id: process.env.M365_CLIENT_ID || "",
+              client_secret: process.env.M365_CLIENT_SECRET || "",
+              redirect_uri: process.env.M365_REDIRECT_URI || "",
+              grant_type: "refresh_token",
+              refresh_token: refresh,
+            }),
+          }
+        );
+        if (r.ok) {
+          const newTok = await r.json();
+          access = newTok.access_token || access;
+          // persist refreshed tokens
+          await upsertConnector(req.user.tenant_id, "email", "m365", {
+            status: "connected",
+            details: { ...details, tokens: { ...(details.tokens || {}), ...newTok } },
+          });
+          meRes = await graphMe(access);
+        }
+      }
+
+      if (!meRes.ok) {
+        const t = await meRes.text().catch(() => "");
+        return res.json({ ok: true, connected: false, provider: "m365", reason: `graph ${meRes.status}`, detail: t.slice(0, 120) });
+      }
+      const me = await meRes.json().catch(() => ({}));
+      return res.json({ ok: true, connected: true, provider: "m365", account: { id: me?.id || null, upn: me?.userPrincipalName || null } });
+    }
+
+    // Fallback for other providers (IMAP, etc.)
     const hasToken = !!(c?.details?.tokens?.access_token || c?.details?.tokens?.refresh_token);
-    return res.json({ ok:true, provider: c.provider, token: hasToken });
-  }catch(e){
+    return res.json({ ok: true, connected: hasToken, provider: c.provider });
+  } catch (e) {
     console.error("email test failed", e);
     return res.status(500).json({ error: "test failed" });
   }
