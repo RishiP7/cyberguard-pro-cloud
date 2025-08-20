@@ -861,9 +861,59 @@ function Integrations({ api }) {
   const [edrToken, setEdrToken] = React.useState("");
   const [dnsInfo, setDnsInfo] = React.useState(null);
 
+  // --- Email Wizard state ---
+  const [wizOpen, setWizOpen] = React.useState(false);
+  const [wizStep, setWizStep] = React.useState(0);
+  const [wizProvider, setWizProvider] = React.useState('o365');
+  const [wizForm, setWizForm] = React.useState({ scope:'all', imapHost:'', imapPort:993, imapUser:'', imapPass:'', imapTLS:true });
+  const [wizMsg, setWizMsg] = React.useState('');
+  const [wizErr, setWizErr] = React.useState('');
+
+  function openEmailWizard(provider){
+    setWizProvider(provider);
+    setWizStep(0);
+    setWizForm({ scope:'all', imapHost:'', imapPort:993, imapUser:'', imapPass:'', imapTLS:true });
+    setWizMsg(''); setWizErr('');
+    setWizOpen(true);
+  }
+
+  async function wizNext(){
+    setWizErr(''); setWizMsg('');
+    // Step actions per provider
+    if(wizStep===1){
+      // Perform connect call on step 2
+      if(wizProvider==='imap'){
+        await safe(async()=>{
+          return await api.post('/integrations/email/connect', { provider:'imap', settings:{
+            host: wizForm.imapHost, port: Number(wizForm.imapPort), username: wizForm.imapUser, password: wizForm.imapPass, tls: !!wizForm.imapTLS, scope: wizForm.scope
+          }});
+        });
+        setWizMsg('IMAP connected.');
+      } else {
+        await safe(async()=>{
+          return await api.post('/integrations/email/connect', { provider: wizProvider, settings:{ scope: wizForm.scope } });
+        });
+        setWizMsg('Redirected/connected via OAuth (simulated).');
+      }
+    }
+    if(wizStep===2){
+      // Test
+      await safe(async()=>{
+        return await api.post('/integrations/email/test', { provider: wizProvider });
+      });
+      setWizMsg('Test message queued.');
+    }
+    setWizStep(s=>Math.min(3, s+1));
+  }
+
+  function wizBack(){ setWizErr(''); setWizMsg(''); setWizStep(s=>Math.max(0, s-1)); }
+  function wizClose(){ setWizOpen(false); refresh(); }
+
   const styles = {
     card: { padding: 16, border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, background: "rgba(255,255,255,.04)" },
-    ghost: { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,.2)", background: "transparent", color: "#e6e9ef", cursor: "pointer" }
+    ghost: { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,.2)", background: "transparent", color: "#e6e9ef", cursor: "pointer" },
+    modal:{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', justifyContent:'center', alignItems:'center', zIndex:1000 },
+    sheet:{ width:'min(720px, 92vw)', background:'rgba(24,26,34,.96)', border:'1px solid rgba(255,255,255,.12)', borderRadius:12, padding:16 }
   };
 
   async function refresh() {
@@ -909,7 +959,7 @@ function Integrations({ api }) {
               <option value="gmail">Google Workspace</option>
               <option value="imap">Generic IMAP</option>
             </select>
-            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/email/connect', { provider: emailProvider, settings:{} }))}>Connect</button>
+            <button style={btn} disabled={busy} onClick={()=>openEmailWizard(emailProvider)}>Connect</button>
           </div>
         </div>
 
@@ -987,10 +1037,116 @@ function Integrations({ api }) {
         </div>
       </div>
 
+      {/* Debug panel toggle */}
+      <div style={{marginTop:12}}>
+        <button style={styles.ghost} onClick={()=>setOut(o=> o ? '' : '{"ok": true}')}>
+          {out? 'Hide debug' : 'Show debug'}
+        </button>
+      </div>
       {(out||err) && (
         <div style={{marginTop:12}}>
           {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</div>}
           {out && <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{out}</pre>}
+        </div>
+      )}
+
+      {wizOpen && (
+        <div style={styles.modal}>
+          <div style={styles.sheet}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:700}}>Email Setup — {wizProvider==='o365'?'Microsoft 365':wizProvider==='gmail'?'Google Workspace':'Generic IMAP'}</div>
+              <button style={styles.ghost} onClick={wizClose}>Close</button>
+            </div>
+
+            {/* Stepper */}
+            <div style={{display:'flex',gap:8,margin:'12px 0'}}>
+              {[0,1,2,3].map(i=> (
+                <div key={i} style={{padding:'4px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)',background: i<=wizStep ? '#1f6feb' : 'transparent'}}>{i+1}</div>
+              ))}
+            </div>
+
+            {/* Steps */}
+            {wizStep===0 && (
+              <div>
+                <div style={{opacity:.85}}>Choose scope and confirm provider.</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:10}}>
+                  <div>
+                    <div style={{opacity:.8,marginBottom:6}}>Provider</div>
+                    <select value={wizProvider} onChange={e=>setWizProvider(e.target.value)} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
+                      <option value="o365">Microsoft 365</option>
+                      <option value="gmail">Google Workspace</option>
+                      <option value="imap">Generic IMAP</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{opacity:.8,marginBottom:6}}>Mailbox scope</div>
+                    <select value={wizForm.scope} onChange={e=>setWizForm({...wizForm, scope:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
+                      <option value="all">All users</option>
+                      <option value="subset">Selected users</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{marginTop:12}}>
+                  <button style={btn} onClick={wizNext}>Continue</button>
+                </div>
+              </div>
+            )}
+
+            {wizStep===1 && (
+              <div>
+                {wizProvider==='imap' ? (
+                  <div>
+                    <div style={{opacity:.85}}>Enter your IMAP server details.</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:10}}>
+                      <input placeholder="Host" value={wizForm.imapHost} onChange={e=>setWizForm({...wizForm, imapHost:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
+                      <input placeholder="Port" type="number" value={wizForm.imapPort} onChange={e=>setWizForm({...wizForm, imapPort:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
+                      <input placeholder="Username" value={wizForm.imapUser} onChange={e=>setWizForm({...wizForm, imapUser:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
+                      <input placeholder="Password" type="password" value={wizForm.imapPass} onChange={e=>setWizForm({...wizForm, imapPass:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
+                      <label style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" checked={!!wizForm.imapTLS} onChange={e=>setWizForm({...wizForm, imapTLS:e.target.checked})}/>Use TLS</label>
+                    </div>
+                    <div style={{marginTop:12,display:'flex',gap:8}}>
+                      <button style={btn} onClick={wizBack}>Back</button>
+                      <button style={btn} onClick={wizNext}>Connect</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{opacity:.85}}>We will open the provider authorization flow and request read‑only access to messages for scanning.</div>
+                    <div style={{marginTop:12,display:'flex',gap:8}}>
+                      <button style={btn} onClick={wizBack}>Back</button>
+                      <button style={btn} onClick={wizNext}>Authorize & Connect</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {wizStep===2 && (
+              <div>
+                <div style={{opacity:.85}}>Connection complete. Send a test to verify events are arriving.</div>
+                <div style={{marginTop:12,display:'flex',gap:8}}>
+                  <button style={btn} onClick={wizBack}>Back</button>
+                  <button style={btn} onClick={wizNext}>Send test</button>
+                </div>
+              </div>
+            )}
+
+            {wizStep===3 && (
+              <div>
+                <div style={{opacity:.85}}>All set. You can close this window.</div>
+                <div style={{marginTop:12}}>
+                  <button style={btn} onClick={wizClose}>Finish</button>
+                </div>
+              </div>
+            )}
+
+            {(wizErr || wizMsg) && (
+              <div style={{marginTop:12}}>
+                {wizErr && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10}}>Error: {wizErr}</div>}
+                {wizMsg && <div style={{padding:'10px 12px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:10}}>{wizMsg}</div>}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
