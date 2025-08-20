@@ -56,22 +56,6 @@ function KeysCard() {
       setTimeout(()=>setToast(""), 1500);
     } finally { setLoading(false); }
   }
-  // --- helper: createAccountKey ---
-  async function createAccountKey(){
-    setMsg("");
-    try{
-      let r;
-      try{ r = await apiPost("/apikeys", {}); }
-      catch(e1){ r = await apiPost("/apikeys/create", {}); }
-      if(!r?.api_key) throw new Error(r?.error || "No key returned");
-      localStorage.setItem("api_key", r.api_key);
-      setMsg("API key created and stored in localStorage.api_key");
-    }} catch (e) {
-  const base = e?.error || e?.message || "key create failed";
-  setMsg(base);
-}
-    }
-  }
 
   return (
     <div style={{ ...card, marginTop: 16 }}>
