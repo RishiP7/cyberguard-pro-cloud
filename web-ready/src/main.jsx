@@ -1060,7 +1060,22 @@ function Integrations({ api }) {
               <option value="gmail">Google Workspace</option>
               <option value="imap">Generic IMAP</option>
             </select>
-            <button style={btn} disabled={busy} onClick={()=>openEmailWizard(emailProvider)}>Connect</button>
+            <button
+              style={btn}
+              disabled={busy}
+              onClick={()=>{
+                const p = (emailProvider||'').toLowerCase();
+                // For M365 / Google, jump straight to OAuth start endpoints
+                if (p === 'o365' || p === 'gmail') {
+                  startEmailOAuth(p);
+                } else {
+                  // IMAP goes through the guided wizard
+                  openEmailWizard(p);
+                }
+              }}
+            >
+              Connect
+            </button>
           </div>
         </div>
 
