@@ -416,7 +416,11 @@ function extractBearer(req) {
 app.get("/auth/m365/start", async (req, res) => {
   try {
     const FRONTEND_URL = process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com";
-    const TENANT = process.env.M365_TENANT || "common";
+    // Prefer multi-tenant flows unless a specific tenant is configured
+    const wantedTenant = (process.env.M365_TENANT || "").trim().toLowerCase();
+    const TENANT = wantedTenant && wantedTenant !== "common" && wantedTenant !== "consumers"
+      ? wantedTenant
+      : (wantedTenant || "common");
     const CLIENT_ID = process.env.M365_CLIENT_ID;
     const REDIRECT = process.env.M365_REDIRECT_URI || (FRONTEND_URL.replace(/\/$/,"") + "/auth/m365/callback");
     const SECRET = process.env.JWT_SECRET;
@@ -480,48 +484,86 @@ app.get("/auth/m365/diag", (req, res) => {
 });
 
 app.get("/auth/m365/callback", async (req, res) => {
-  const code = req.query.code;
-  const tenantId = req.auth?.tenant_id;
-
   try {
-    const tokenResp = await fetch(`https://login.microsoftonline.com/${process.env.M365_TENANT_ID}/oauth2/v2.0/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: process.env.M365_CLIENT_ID,
-        client_secret: process.env.M365_CLIENT_SECRET,
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: process.env.M365_REDIRECT_URI,
-        scope: "offline_access openid email Mail.Read"
-      })
-    }).then(r => r.json());
+    const { code, state, error, error_description } = req.query || {};
+    if (error) return res.status(400).send(String(error_description || error));
+    if (!code || !state) return res.status(400).send("missing code/state");
 
-    if (!tokenResp.access_token) {
-      console.error("Token exchange failed:", tokenResp);
-      return res.status(400).json({ error: "token_exchange_failed", details: tokenResp });
+    // Decode our state (base64url JSON: { r, t }) to recover the user's JWT
+    let sessionToken = null;
+    try {
+      const decodedState = JSON.parse(Buffer.from(String(state), "base64url").toString("utf8"));
+      sessionToken = decodedState?.t || null;
+    } catch (_) {}
+    if (!sessionToken) return res.status(400).send("bad state");
+
+    let sess;
+    try {
+      sess = jwt.verify(sessionToken, JWT_SECRET);
+    } catch (_) {
+      return res.status(401).send("invalid session");
+    }
+    const tenant_id = sess?.tenant_id;
+    if (!tenant_id) return res.status(400).send("missing tenant in session");
+
+    // Preferred tenant from env; fall back to 'common'
+    const envTenant = (process.env.M365_TENANT || process.env.M365_TENANT_ID || "").trim();
+    const preferredTenant = envTenant || "common";
+    const redirectUri = process.env.M365_REDIRECT_URI || process.env.M365_REDIRECT || ((process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "") + "/auth/m365/callback");
+
+    async function exchangeWithTenant(tenantSlug) {
+      const body = new URLSearchParams({
+        client_id: process.env.M365_CLIENT_ID || "",
+        client_secret: process.env.M365_CLIENT_SECRET || "",
+        grant_type: "authorization_code",
+        code: String(code),
+        redirect_uri: redirectUri,
+        scope: "offline_access openid email Mail.Read"
+      });
+      const resp = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenantSlug)}/oauth2/v2.0/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const json = await resp.json();
+      return { ok: resp.ok && !!json?.access_token, json };
     }
 
-    await pool.query(
-      `INSERT INTO connectors(tenant_id, type, details)
-       VALUES ($1, 'email', $2::jsonb)
-       ON CONFLICT (tenant_id, type)
-       DO UPDATE SET details = connectors.details || EXCLUDED.details`,
-      [tenantId, JSON.stringify({
-        provider: "m365",
-        tokens: {
-          access_token: tokenResp.access_token,
-          refresh_token: tokenResp.refresh_token,
-          expires_in: tokenResp.expires_in,
-          obtained_at: Date.now()
-        }
-      })]
-    );
+    // Try env tenant first, then consumers, then common
+    const attempts = [preferredTenant, "consumers", "common"]
+      .filter((v, i, a) => v && a.indexOf(v) === i);
 
-    res.redirect("/integrations?m365=connected");
+    let tokens = null;
+    for (const t of attempts) {
+      const r = await exchangeWithTenant(t);
+      if (r.ok) { tokens = r.json; break; }
+      const msg = (r.json?.error_description || r.json?.error || "").toString();
+      // If it's clearly a personal-account error, continue to next tenant
+      const personal = /personal Microsoft account|AADSTS70000121/i.test(msg);
+      if (!personal && t !== attempts[attempts.length-1]) {
+        // For other errors, still try next attempt; if last, we will fail below
+        continue;
+      }
+    }
+
+    if (!tokens || !tokens.access_token) {
+      console.error("m365 token exchange failed (all attempts)");
+      const to = `${FRONTEND_URL.replace(/\/$/, "")}/integrations?connected=m365&ok=0&err=${encodeURIComponent("token_exchange_failed")}`;
+      return res.redirect(to);
+    }
+
+    // Persist/update connector with tokens
+    await upsertConnector(tenant_id, "email", "m365", {
+      status: "connected",
+      details: { tokens }
+    });
+
+    const to = `${FRONTEND_URL.replace(/\/$/, "")}/integrations?connected=m365&ok=1`;
+    return res.redirect(to);
   } catch (e) {
     console.error("M365 callback error", e);
-    res.status(500).json({ error: "m365_callback_failed" });
+    const to = `${FRONTEND_URL.replace(/\/$/, "")}/integrations?connected=m365&ok=0&err=${encodeURIComponent("callback_failed")}`;
+    return res.redirect(to);
   }
 });
 
