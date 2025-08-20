@@ -9,6 +9,7 @@ import pg from "pg";
 import bcrypt from "bcryptjs";
 import OpenAI from "openai";
 import { EventEmitter } from "events";
+import { URLSearchParams } from "url";
 
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY||"";
 const AI_MODEL=process.env.AI_MODEL||"gpt-4o-mini";
@@ -33,6 +34,16 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
 const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
+
+// ===== Email OAuth env (M365 + Google) =====
+const M365_CLIENT_ID     = process.env.M365_CLIENT_ID || "";
+const M365_CLIENT_SECRET = process.env.M365_CLIENT_SECRET || "";
+const M365_TENANT        = process.env.M365_TENANT || "common";
+const M365_REDIRECT      = process.env.M365_REDIRECT || ""; // e.g. https://your-api.onrender.com/auth/m365/callback
+
+const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const GOOGLE_REDIRECT      = process.env.GOOGLE_REDIRECT || ""; // e.g. https://your-api.onrender.com/auth/google/callback
 
 // ----- CORS (explicit allowlist) -----
 const ALLOWED_ORIGINS = Array.from(new Set(
@@ -364,6 +375,146 @@ app.post('/integrations/email/connect', authMiddleware, enforceActive, async (re
     await upsertConnector(req.user.tenant_id, 'email', provider, { status:'connected', details: settings||{} });
     return res.json({ ok:true });
   }catch(e){ return res.status(500).json({ error:'connect failed' }); }
+});
+
+// ===== OAuth: Microsoft 365 (Outlook) =====
+app.get("/auth/m365/start", authMiddleware, async (req, res) => {
+  try {
+    if (!M365_CLIENT_ID || !M365_REDIRECT) return res.status(500).send("M365 not configured");
+    const state = jwt.sign({ tenant_id: req.user.tenant_id, t: Date.now() }, JWT_SECRET, { expiresIn: "10m" });
+    const params = new URLSearchParams({
+      client_id: M365_CLIENT_ID,
+      response_type: "code",
+      redirect_uri: M365_REDIRECT,
+      response_mode: "query",
+      scope: "openid offline_access https://graph.microsoft.com/Mail.Read",
+      state
+    });
+    const authUrl = `https://login.microsoftonline.com/${encodeURIComponent(M365_TENANT)}/oauth2/v2.0/authorize?${params.toString()}`;
+    return res.redirect(authUrl);
+  } catch (e) {
+    console.error("m365 start error", e);
+    return res.status(500).send("start failed");
+  }
+});
+
+app.get("/auth/m365/callback", async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query || {};
+    if (error) return res.status(400).send(String(error_description || error));
+    if (!code || !state) return res.status(400).send("missing code/state");
+
+    let decoded;
+    try { decoded = jwt.verify(String(state), JWT_SECRET); } catch { return res.status(400).send("bad state"); }
+    const tenant_id = decoded?.tenant_id;
+    if (!tenant_id) return res.status(400).send("bad state payload");
+
+    const body = new URLSearchParams({
+      client_id: M365_CLIENT_ID,
+      client_secret: M365_CLIENT_SECRET,
+      grant_type: "authorization_code",
+      code: String(code),
+      redirect_uri: M365_REDIRECT
+    });
+
+    const tokenRes = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(M365_TENANT)}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+
+    if (!tokenRes.ok) {
+      const txt = await tokenRes.text().catch(()=> "");
+      return res.status(500).send("token exchange failed: " + txt);
+    }
+    const tokens = await tokenRes.json();
+
+    // Save tokens into connectors table
+    await upsertConnector(tenant_id, "email", "m365", { status: "connected", details: { tokens } });
+
+    return res.redirect("/integrations?connected=m365");
+  } catch (e) {
+    console.error("m365 callback error", e);
+    return res.status(500).send("callback failed");
+  }
+});
+
+// ===== OAuth: Google Workspace (Gmail) =====
+app.get("/auth/google/start", authMiddleware, async (req, res) => {
+  try {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT) return res.status(500).send("Google not configured");
+    const state = jwt.sign({ tenant_id: req.user.tenant_id, t: Date.now() }, JWT_SECRET, { expiresIn: "10m" });
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: GOOGLE_REDIRECT,
+      response_type: "code",
+      scope: "openid email https://www.googleapis.com/auth/gmail.readonly",
+      access_type: "offline",
+      prompt: "consent",
+      state
+    });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    return res.redirect(authUrl);
+  } catch (e) {
+    console.error("google start error", e);
+    return res.status(500).send("start failed");
+  }
+});
+
+app.get("/auth/google/callback", async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query || {};
+    if (error) return res.status(400).send(String(error_description || error));
+    if (!code || !state) return res.status(400).send("missing code/state");
+
+    let decoded;
+    try { decoded = jwt.verify(String(state), JWT_SECRET); } catch { return res.status(400).send("bad state"); }
+    const tenant_id = decoded?.tenant_id;
+    if (!tenant_id) return res.status(400).send("bad state payload");
+
+    const body = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      grant_type: "authorization_code",
+      code: String(code),
+      redirect_uri: GOOGLE_REDIRECT
+    });
+
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    if (!tokenRes.ok) {
+      const txt = await tokenRes.text().catch(()=> "");
+      return res.status(500).send("token exchange failed: " + txt);
+    }
+    const tokens = await tokenRes.json();
+
+    await upsertConnector(tenant_id, "email", "google", { status: "connected", details: { tokens } });
+
+    return res.redirect("/integrations?connected=google");
+  } catch (e) {
+    console.error("google callback error", e);
+    return res.status(500).send("callback failed");
+  }
+});
+
+// ===== Simple verification endpoint used by the wizard =====
+app.post("/integrations/email/test", authMiddleware, async (req, res) => {
+  try{
+    const { rows } = await q(
+      `SELECT provider, details FROM connectors WHERE tenant_id=$1 AND type='email'`,
+      [req.user.tenant_id]
+    );
+    const c = rows[0];
+    if(!c) return res.status(400).json({ error: "no email provider connected" });
+    const hasToken = !!(c?.details?.tokens?.access_token || c?.details?.tokens?.refresh_token);
+    return res.json({ ok:true, provider: c.provider, token: hasToken });
+  }catch(e){
+    console.error("email test failed", e);
+    return res.status(500).json({ error: "test failed" });
+  }
 });
 
 // ===== Integrations: EDR =====
