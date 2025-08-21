@@ -723,7 +723,15 @@ function RealtimeEmailScans() {
           .map(a => ({
             subject: a?.event?.email?.subject || a?.event?.subject || '(no subject)',
             from: a?.event?.email?.from || a?.event?.from || '-',
-            date: new Date(Number(a.created_at || Date.now()/1000) * 1000).toISOString(),
+            date: (() => {
+              const w = a?.event?.email?.when
+                || a?.event?.email?.receivedDateTime
+                || a?.event?.email?.internalDate
+                || a?.created_at
+                || (Date.now()/1000);
+              // if it's already an ISO string, return as-is; otherwise treat as epoch seconds
+              return (typeof w === 'string' && w.includes('T')) ? w : new Date(Number(w) * 1000).toISOString();
+            })(),
             score: Number(a?.score || 0)
           }));
         if (rows.length) setEmails(rows);
@@ -769,9 +777,15 @@ function RealtimeEmailScans() {
             a?.event?.from ||
             '-';
 
-          const when =
-            a.date ||
-            (a.created_at ? new Date(Number(a.created_at) * 1000).toISOString() : new Date().toISOString());
+          const when = (() => {
+            const w = a.when
+              || a.date
+              || a?.event?.email?.receivedDateTime
+              || a?.event?.email?.internalDate
+              || a?.created_at
+              || (Date.now()/1000);
+            return (typeof w === 'string' && w.includes('T')) ? w : new Date(Number(w) * 1000).toISOString();
+          })();
 
           const score = Number(a.score ?? 0);
 
@@ -1416,6 +1430,11 @@ function Integrations({ api }) {
                     : c.status === 'error'   ? '❌ Error'
                     : '—'}
                 </div>
+                {c.account && (
+                  <div style={{fontSize:12, opacity:.8, marginTop:4}}>
+                    Connected as: {c.account.displayName || c.account.mail || c.account.userPrincipalName || '—'}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
