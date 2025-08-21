@@ -513,10 +513,6 @@ function Layout({children}){
   const authed = useAuthFlag();
 
   // Correct ordering + single source of truth for the trial badge
-  const p = String(me?.plan || '').toLowerCase();
-  const info = trialInfo(me);
-  const showTrialBadge = info.active && (p === 'basic' || p === 'pro');
-
   const info = trialInfo(me); // normalized {active, days_left, ends_at}
   const actualPlan = String(me?.plan_actual || me?.plan || '').toLowerCase();
   const showTrialBadge = info.active && (actualPlan === 'basic' || actualPlan === 'pro' || actualPlan === 'trial');
