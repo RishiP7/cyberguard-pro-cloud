@@ -1286,7 +1286,7 @@ app.get("/me",authMiddleware,async (req,res)=>{
     me.is_super = !!req.user.is_super;
     // --- normalized trial object for frontend ---
     const nowEpoch = now();
-    const endsEpoch = me.trial_ends_at ? Number(me.trial_ends_at) : null;
+    const endsEpoch = (me.trial_ends_at ? Number(me.trial_ends_at) : null) ?? (eff.trial_ends_at ? Number(eff.trial_ends_at) : null);
     const days_left = endsEpoch ? Math.max(0, Math.ceil((endsEpoch - nowEpoch) / (24 * 3600))) : 0;
     me.trial = {
       active: !!(eff.trial_active),
