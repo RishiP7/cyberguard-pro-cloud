@@ -1,3 +1,7 @@
+import React, { useEffect, useState } from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
   const [keys, setKeys] = useState([]);
@@ -198,7 +202,6 @@ function AdminTenantKeys({ selected }) {
     </div>
   );
 }
-import React, { useEffect, useState, useMemo } from "react";
 
 
 // ===== Minimal API wrapper (re-added) =====
@@ -315,9 +318,6 @@ const badgeSA={
   fontSize:12,
   boxShadow:"inset 0 1px 0 rgba(255,255,255,.1)"
 };
-import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import Register from "./pages/Register.jsx";
 
 function ErrorBoundary({children}){
   const [err,setErr] = useState(null);
@@ -682,6 +682,29 @@ const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rg
 function RealtimeEmailScans() {
   const [emails, setEmails] = React.useState([]);
   const [busy, setBusy] = React.useState(false);
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function pollNow() {
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token) return;
+    try {
+      setBusy(true);
+      const r = await fetch(`${API_ORIGIN}/email/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ max: 10 })
+      });
+      try { console.log('PollNow result', await r.json()); } catch (_e) {}
+    } catch (_e) {
+      // no-op
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Preload recent email alerts so the table isn't empty while waiting for SSE
   React.useEffect(() => {
@@ -709,26 +732,6 @@ function RealtimeEmailScans() {
   }, []);
 
   React.useEffect(() => {
-  async function pollNow() {
-    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-    if (!token) return;
-    const base = (import.meta?.env?.VITE_API_BASE)
-      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-            ? 'https://cyberguard-pro-cloud.onrender.com'
-            : 'http://localhost:8080');
-    try {
-      setBusy(true);
-      await fetch(`${base}/email/poll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ max: 10 })
-      });
-      // no need to manually add rows; SSE should push them. If not, they will appear on next preload/refresh
-    } catch (_) {
-    } finally {
-      setBusy(false);
-    }
-  }
     const base = (import.meta?.env?.VITE_API_BASE)
       || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
             ? 'https://cyberguard-pro-cloud.onrender.com'
