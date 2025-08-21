@@ -690,35 +690,64 @@ function RealtimeEmailScans() {
     const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
     if (!token) return;
 
-    const url = new URL(`${base}/alerts/stream`);
-if (token) url.searchParams.set('token', token);
-const es = new EventSource(url.toString());
-    es.onmessage = (e) => {
-      try {
-        const a = JSON.parse(e.data || "{}");
-        const subject =
-  a.subject ||
-  a?.event?.email?.subject ||
-  a?.event?.subject ||
-  "(no subject)";
-        const from =
-          a.from ||
-          a?.event?.email?.from ||
-          a?.event?.from ||
-          "-";
-        const when =
-          a.date ||
-          (a.created_at ? new Date(Number(a.created_at) * 1000).toISOString() : new Date().toISOString());
-        const score = Number(a.score ?? 0);
+    let es = null;
+    let closed = false;
 
-        const row = { subject, from, date: when, score };
-        setEmails(prev => [row, ...prev].slice(0, 50));
-      } catch (_e) {
-        // ignore parse errors
-      }
+    function open(paths, idx = 0) {
+      if (closed) return;
+      const p = paths[idx];
+      if (!p) return; // no more fallbacks
+
+      const url = new URL(`${base}${p}`);
+      if (token) url.searchParams.set('token', token);
+
+      if (es) { try { es.close(); } catch (_e) {} es = null; }
+      es = new EventSource(url.toString());
+
+      es.onmessage = (e) => {
+        try {
+          const a = JSON.parse(e.data || '{}');
+
+          const subject =
+            a.subject ||
+            a?.event?.email?.subject ||
+            a?.event?.subject ||
+            '(no subject)';
+
+          const from =
+            a.from ||
+            a?.event?.email?.from ||
+            a?.event?.from ||
+            '-';
+
+          const when =
+            a.date ||
+            (a.created_at ? new Date(Number(a.created_at) * 1000).toISOString() : new Date().toISOString());
+
+          const score = Number(a.score ?? 0);
+
+          const row = { subject, from, date: when, score };
+          setEmails(prev => [row, ...prev].slice(0, 50));
+        } catch (_e) {
+          // ignore parse errors
+        }
+      };
+
+      es.onerror = () => {
+        try { es.close(); } catch (_e) {}
+        es = null;
+        // fall back to the next endpoint after a short backoff
+        setTimeout(() => open(paths, idx + 1), 1500);
+      };
+    }
+
+    // Prefer dedicated scans stream; fall back gracefully
+    open(['/scans/stream', '/email/stream', '/alerts/stream']);
+
+    return () => {
+      closed = true;
+      if (es) { try { es.close(); } catch (_e) {} es = null; }
     };
-    es.onerror = () => {};
-    return () => es.close();
   }, []);
 
   const rowStyle = (score) => {
