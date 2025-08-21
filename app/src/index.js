@@ -351,16 +351,18 @@ async function scanAndRecordEmails(tenant_id, items){
     const subj = m.subject || '';
     const from = m.from?.emailAddress?.address || null;
     const preview = m.bodyPreview || '';
-    const ev = { type:'email', from, subject: subj, preview, anomaly:false };
-    const score = classifyEmail(subj, preview);
-    ev.anomaly = (score <= -0.6);
-    // --- realtime scan fanout (for frontend "RealtimeEmailScans") ---
-    const severity = (score <= -0.8) ? 'high' : (score <= -0.6) ? 'medium' : 'none';
+    // Derive the canonical timestamp for this email (used by UI)
     const when = (
       m.receivedDateTime
         ? m.receivedDateTime
         : (m.internalDate ? new Date(Number(m.internalDate)).toISOString() : new Date().toISOString())
     );
+    // Event that will be persisted into alerts.event_json
+    const ev = { type:'email', from, subject: subj, preview, when, anomaly:false };
+    const score = classifyEmail(subj, preview);
+    ev.anomaly = (score <= -0.6);
+    // --- realtime scan fanout (for frontend "RealtimeEmailScans") ---
+    const severity = (score <= -0.8) ? 'high' : (score <= -0.6) ? 'medium' : 'none';
     try {
       // in-memory recent ring buffer
       pushRecentScan(tenant_id, {
@@ -1762,6 +1764,33 @@ app.post("/cloud/ingest",async (req,res)=>{
 app.get("/alerts",authMiddleware,async (req,res)=>{
   const {rows}=await q(`SELECT id,tenant_id,event_json AS event,score,status,created_at FROM alerts WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200`,[req.user.tenant_id]);
   res.json({ok:true,alerts:rows});
+});
+
+// Convenience: alerts ordered by actual email timestamp (event.when) newest first
+app.get("/alerts/recent", authMiddleware, async (req, res) => {
+  try{
+    const { rows } = await q(`
+      SELECT
+        id,
+        tenant_id,
+        event_json AS event,
+        score,
+        status,
+        created_at,
+        COALESCE(
+          NULLIF(event_json->>'when','')::timestamptz,
+          to_timestamp(created_at)
+        ) AS when_ts
+      FROM alerts
+      WHERE tenant_id=$1
+      ORDER BY when_ts DESC
+      LIMIT 200
+    `,[req.user.tenant_id]);
+    res.json({ ok:true, alerts: rows });
+  }catch(e){
+    console.error('alerts/recent failed', e);
+    res.status(500).json({ ok:false, error: 'recent failed' });
+  }
 });
 // Quick 7-day severity summary for Alerts Dashboard
 app.get("/alerts/summary", authMiddleware, async (req,res)=>{
