@@ -323,7 +323,7 @@ const badgeSA={
 // ---- Trial Notice Bar ----
 function TrialNotice({ me }){
   const t = me?.trial || trialInfo(me);
-  if(!t?.active) return null;
+  if (!(t?.active && String(me?.plan||'').toLowerCase() !== 'pro_plus')) return null;
   return (
     <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #c69026',background:'#c6902615',borderRadius:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <div>
@@ -518,7 +518,7 @@ function Layout({children}){
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
-          {me?.trial?.active && (
+          {(String(me?.plan||'').toLowerCase() !== 'pro_plus' && me?.trial?.active) && (
             <Link
               to="/account"
               style={{
