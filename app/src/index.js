@@ -296,17 +296,24 @@ async function graphGet(tenant_id, path){
 }
 
 function classifyEmail(subject, bodyPreview){
-  const s = (subject||'').toLowerCase();
-  const b = (bodyPreview||'').toLowerCase();
-  const risky = /(verify|urgent|password|invoice|bank|overdue|action required|reset)/i.test(subject||'')
-             || /(wire|gift card|crypto|login|security alert|mfa)/i.test(bodyPreview||'');
-  const veryRisky = /(urgent|verify.*account|reset.*password|bitcoin|crypto|bank)/i.test(subject||'');
-  let score = -0.2;
-  if(risky) score = -0.6;
-  if(veryRisky) score = -1.0;
+  const txt = ((subject||'') + ' ' + (bodyPreview||''))
+    .toLowerCase()
+    .slice(0, 8000);
+
+  let score = -0.1; // normal default
+
+  const keywordsHigh = /(urgent|verify\s+account|confirm\s+identity|password\s*reset|wire\s*transfer|bank\s*details|gift\s*(card|cards)|crypto|bitcoin|invoice\s*(overdue|due)|action\s*required|refund)/i;
+  const keywordsMed  = /(click\s*here|open\s*attachment|security\s*alert|login\s*issue|detect(ed)?|blocked|suspended|outlook|microsoft|office\s*365|sharepoint|onedrive)/i;
+
+  if (keywordsHigh.test(txt)) score = -1.0;
+  else if (keywordsMed.test(txt)) score = -0.6;
+
+  // Presence of URL nudges suspicious unless already high
+  const hasUrl = /(https?:\/\/|www\.)[\w\-._~:/?#\[\]@!$&'()*+,;=%]+/.test(txt);
+  if (hasUrl && score > -1.0) score = Math.min(score, -0.6);
+
   return score;
 }
-
 async function scanAndRecordEmails(tenant_id, items){
   let alertsCreated = 0;
   for(const m of items){
@@ -334,6 +341,98 @@ async function fetchM365Inbox(tenant_id, maxCount=10){
   }
   const j = await r.json();
   return Array.isArray(j?.value) ? j.value : [];
+}
+
+// ===== M365 delta polling (only new/changed messages) =====
+async function fetchM365Delta(tenant_id, pageTop = 25) {
+  const sel  = '$select=receivedDateTime,from,subject,bodyPreview,webLink';
+  const base = `/me/mailFolders/Inbox/messages/delta?${sel}&$orderby=receivedDateTime%20desc&$top=${Math.max(1,Math.min(50,pageTop))}`;
+
+  const conn = await getEmailConnector(tenant_id);
+  const prev = conn?.details?.delta?.m365 || null;
+
+  let url = prev ? prev.replace('https://graph.microsoft.com/v1.0','') : base;
+  let items = [];
+
+  while (url) {
+    const r = await graphGet(tenant_id, url);
+    if (!r.ok) {
+      const t = await r.text().catch(()=> "");
+      throw new Error(`delta ${r.status}: ${t.slice(0,200)}`);
+    }
+    const j = await r.json();
+    if (Array.isArray(j?.value)) items = items.concat(j.value);
+
+    const next  = j['@odata.nextLink'] || null;
+    const delta = j['@odata.deltaLink'] || null;
+    if (next) { url = next.replace('https://graph.microsoft.com/v1.0',''); continue; }
+    if (delta) {
+      await upsertConnector(tenant_id, 'email', 'm365', {
+        status: 'connected',
+        details: { ...(conn?.details||{}), delta: { ...(conn?.details?.delta||{}), m365: delta } }
+      });
+    }
+    break;
+  }
+  return items;
+}
+
+// ===== Gmail helpers (refresh + list) =====
+async function getGoogleAccessTokenForTenant(tenant_id){
+  const conn = await getEmailConnector(tenant_id);
+  if(!conn || conn.provider !== 'google') return { ok:false };
+  const details = conn.details || {};
+  let access = details?.tokens?.access_token || null;
+  const refresh = details?.tokens?.refresh_token || null;
+  if (access) return { ok:true, access };
+  if (!refresh) return { ok:false };
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type':'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID || '',
+      client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+      grant_type: 'refresh_token',
+      refresh_token: refresh
+    })
+  });
+  const j = await r.json();
+  if(!r.ok || !j.access_token) return { ok:false };
+  await upsertConnector(tenant_id, 'email', 'google', { status:'connected', details: { ...(details||{}), tokens: { ...(details?.tokens||{}), ...j } } });
+  return { ok:true, access: j.access_token };
+}
+
+async function gmailList(tenant_id, qStr = 'newer_than:1d', max = 25){
+  const conn = await getEmailConnector(tenant_id);
+  if(!conn || conn.provider !== 'google') return [];
+  const accTok = await getGoogleAccessTokenForTenant(tenant_id);
+  if(!accTok.ok) return [];
+
+  const params = new URLSearchParams({ q: qStr, maxResults: String(Math.max(1,Math.min(100,max))) });
+  const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accTok.access}` }
+  });
+  if(!r.ok) return [];
+  const j = await r.json();
+  const ids = (j.messages||[]).map(m=>m.id).slice(0,max);
+
+  const out = [];
+  for(const id of ids){
+    const pr = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=To`,{
+      headers:{ Authorization:`Bearer ${accTok.access}` }
+    });
+    if(pr.ok){
+      const msg = await pr.json();
+      const headers = Object.fromEntries((msg.payload?.headers||[]).map(h=>[h.name.toLowerCase(), h.value]));
+      out.push({
+        id: msg.id,
+        subject: headers['subject']||'',
+        from: { emailAddress: { address: headers['from']||null } },
+        receivedDateTime: headers['date']||null,
+        bodyPreview: ''
+      });
+    }
+  }
+  return out;
 }
 // ---------- DB bootstrap (idempotent) ----------
 (async ()=>{
@@ -645,12 +744,27 @@ app.get("/auth/m365/callback", async (req, res) => {
       return res.redirect(to);
     }
 
-    // Persist/update connector with tokens
-    await upsertConnector(tenant_id, "email", "m365", {
-      status: "connected",
-      details: { tokens }
-    });
+    // Fetch identity for “Connected as …”
+let account = null;
+try {
+  const meRes = await fetch("https://graph.microsoft.com/v1.0/me", {
+    headers: { Authorization: `Bearer ${tokens.access_token}` }
+  });
+  if (meRes.ok) {
+    const me = await meRes.json();
+    account = {
+      id: me?.id || null,
+      upn: me?.userPrincipalName || null,
+      displayName: me?.displayName || null,
+      mail: me?.mail || null
+    };
+  }
+} catch(_) {}
 
+await upsertConnector(tenant_id, "email", "m365", {
+  status: "connected",
+  details: { tokens, account, delta: { m365: null } } // init delta holder
+});
     const to = `${FRONTEND_URL.replace(/\/$/, "")}/integrations?connected=m365&ok=1`;
     return res.redirect(to);
   } catch (e) {
@@ -1362,14 +1476,35 @@ app.get('/alerts/stream', async (req, res) => {
 });
 
 // ---------- ingest helpers ----------
-// ===== Email: on-demand poll & scan (M365) =====
+// ===== Email: on-demand poll & scan (provider-aware: M365 delta or Gmail) =====
 app.post('/email/poll', authMiddleware, enforceActive, async (req,res)=>{
   try{
     const max = Number(req.body?.max||10);
-    const items = await fetchM365Inbox(req.user.tenant_id, max);
+    const conn = await getEmailConnector(req.user.tenant_id);
+    if(!conn || conn.status!=='connected'){
+      return res.status(400).json({ ok:false, error:'no connected email provider' });
+    }
+
+    let items = [];
+    if(conn.provider === 'm365'){
+      // Prefer delta (only new/changed); fall back to inbox page if delta errs
+      try{
+        items = await fetchM365Delta(req.user.tenant_id, Math.max(1, Math.min(50, max)));
+      }catch(_e){
+        items = await fetchM365Inbox(req.user.tenant_id, max);
+      }
+    }else if(conn.provider === 'google'){
+      items = await gmailList(req.user.tenant_id, 'newer_than:1d', Math.max(1, Math.min(50, max)));
+    }else{
+      return res.status(400).json({ ok:false, error:`unsupported provider: ${conn.provider}` });
+    }
+
     const created = await scanAndRecordEmails(req.user.tenant_id, items);
     await saveUsage(req.user.tenant_id, 'email_poll');
-    return res.json({ ok:true, fetched: items.length, alerts_created: created });
+
+    // Include a little status echo back
+    const account = (conn.details && conn.details.account) ? conn.details.account : null;
+    return res.json({ ok:true, provider: conn.provider, fetched: items.length, alerts_created: created, account });
   }catch(e){
     console.error('email poll failed', e);
     return res.status(500).json({ ok:false, error: 'poll failed', detail: String(e.message||e) });
@@ -1499,6 +1634,25 @@ app.get("/alerts",authMiddleware,async (req,res)=>{
   const {rows}=await q(`SELECT id,tenant_id,event_json AS event,score,status,created_at FROM alerts WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200`,[req.user.tenant_id]);
   res.json({ok:true,alerts:rows});
 });
+// Quick 7-day severity summary for Alerts Dashboard
+app.get("/alerts/summary", authMiddleware, async (req,res)=>{
+  try{
+    const since = now() - 7*24*3600;
+    const { rows } = await q(`
+      SELECT
+        COUNT(*)::int AS total,
+        SUM(CASE WHEN score <= -0.8 THEN 1 ELSE 0 END)::int AS high,
+        SUM(CASE WHEN score > -0.8 AND score <= -0.6 THEN 1 ELSE 0 END)::int AS medium,
+        SUM(CASE WHEN score > -0.6 THEN 1 ELSE 0 END)::int AS low
+      FROM alerts WHERE tenant_id=$1 AND created_at >= $2
+    `,[req.user.tenant_id, since]);
+    const r = rows[0] || { total:0, high:0, medium:0, low:0 };
+    return res.json({ ok:true, window_days:7, ...r });
+  }catch(e){
+    console.error('alerts summary failed', e);
+    return res.status(500).json({ ok:false, error:'summary failed' });
+  }
+});
 app.get("/actions",authMiddleware,async (req,res)=>{
   const {rows}=await q(`SELECT id,alert_id,tenant_id,action,target_kind,result_json,created_at FROM actions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200`,[req.user.tenant_id]);
   res.json({ok:true,actions:rows});
@@ -1562,19 +1716,37 @@ setInterval(async ()=>{
   }catch(_e){}
 }, 6*60*60*1000);
 
-// ---------- background email poller (M365) ----------
+// ---------- background email poller (provider-aware: M365 delta + Gmail) ----------
 setInterval(async ()=>{
   try{
-    // Find tenants with connected M365 email connector
-    const { rows } = await q(`SELECT DISTINCT tenant_id FROM connectors WHERE type='email' AND provider='m365' AND status='connected' LIMIT 50`);
+    // Pull a small batch of connected email connectors
+    const { rows } = await q(`
+      SELECT tenant_id, provider
+      FROM connectors
+      WHERE type='email' AND status='connected'
+      ORDER BY updated_at DESC
+      LIMIT 100
+    `);
+
     for(const r of rows){
       try{
-        const items = await fetchM365Inbox(r.tenant_id, 5);
+        let items = [];
+        if(r.provider === 'm365'){
+          try{
+            items = await fetchM365Delta(r.tenant_id, 25);
+          }catch(_e){
+            items = await fetchM365Inbox(r.tenant_id, 10);
+          }
+        }else if(r.provider === 'google'){
+          items = await gmailList(r.tenant_id, 'newer_than:1d', 25);
+        }else{
+          continue; // unsupported
+        }
+
         const created = await scanAndRecordEmails(r.tenant_id, items);
-        if(created>0) console.log('[poll]', r.tenant_id, 'alerts:', created);
+        if(created>0) console.log('[poll]', r.tenant_id, r.provider, 'alerts:', created);
       }catch(inner){
-        // avoid crashing the loop
-        console.warn('[poll] tenant failed', r.tenant_id, String(inner.message||inner));
+        console.warn('[poll] tenant failed', r.tenant_id, r.provider, String(inner.message||inner));
       }
     }
   }catch(e){
