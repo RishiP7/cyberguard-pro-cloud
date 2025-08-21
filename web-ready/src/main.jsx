@@ -323,7 +323,8 @@ const badgeSA={
 // ---- Trial Notice Bar ----
 function TrialNotice({ me }){
   const t = me?.trial || trialInfo(me);
-  if (!(t?.active && String(me?.plan||'').toLowerCase() !== 'pro_plus')) return null;
+  const p = String(me?.plan || '').toLowerCase();
+  if (!(t?.active && (p === 'basic' || p === 'pro'))) return null;
   return (
     <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #c69026',background:'#c6902615',borderRadius:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <div>
@@ -502,6 +503,9 @@ function Layout({children}){
   const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
+  const _trialInfo = trialInfo(me);
+  const _plan = String(me?.plan || '').toLowerCase();
+  const showTrialBadge = _trialInfo.active && (_plan === 'basic' || _plan === 'pro');
   return (
     <div>
       <div style={bar}>
@@ -518,7 +522,7 @@ function Layout({children}){
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
-          {(String(me?.plan||'').toLowerCase() !== 'pro_plus' && me?.trial?.active) && (
+          {showTrialBadge && (
             <Link
               to="/account"
               style={{
@@ -534,7 +538,7 @@ function Layout({children}){
               }}
               title="Your Pro+ trial is active — click to manage plan"
             >
-              Trial ({me.trial.days_left}d left)
+              Pro+ trial ({_trialInfo.days_left}d left)
             </Link>
           )}
           {authed ? (
