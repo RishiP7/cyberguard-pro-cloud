@@ -697,10 +697,10 @@ const es = new EventSource(url.toString());
       try {
         const a = JSON.parse(e.data || "{}");
         const subject =
-          a.subject ||
-          a?.event?.email?.subject ||
-          a?.event?.subject ||
-          "(no subject)";
+  a.subject ||
+  a?.event?.email?.subject ||
+  a?.event?.subject ||
+  "(no subject)";
         const from =
           a.from ||
           a?.event?.email?.from ||
