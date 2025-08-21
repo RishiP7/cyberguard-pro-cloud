@@ -681,8 +681,54 @@ const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rg
 
 function RealtimeEmailScans() {
   const [emails, setEmails] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+
+  // Preload recent email alerts so the table isn't empty while waiting for SSE
+  React.useEffect(() => {
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token) return;
+    const base = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+            ? 'https://cyberguard-pro-cloud.onrender.com'
+            : 'http://localhost:8080');
+    fetch(`${base}/alerts`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(j => {
+        const rows = (j.alerts || [])
+          .filter(a => (a?.event?.type || '').toLowerCase() === 'email')
+          .slice(0, 25)
+          .map(a => ({
+            subject: a?.event?.email?.subject || a?.event?.subject || '(no subject)',
+            from: a?.event?.email?.from || a?.event?.from || '-',
+            date: new Date(Number(a.created_at || Date.now()/1000) * 1000).toISOString(),
+            score: Number(a?.score || 0)
+          }));
+        if (rows.length) setEmails(rows);
+      })
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
+  async function pollNow() {
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token) return;
+    const base = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+            ? 'https://cyberguard-pro-cloud.onrender.com'
+            : 'http://localhost:8080');
+    try {
+      setBusy(true);
+      await fetch(`${base}/email/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ max: 10 })
+      });
+      // no need to manually add rows; SSE should push them. If not, they will appear on next preload/refresh
+    } catch (_) {
+    } finally {
+      setBusy(false);
+    }
+  }
     const base = (import.meta?.env?.VITE_API_BASE)
       || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
             ? 'https://cyberguard-pro-cloud.onrender.com'
@@ -758,7 +804,14 @@ function RealtimeEmailScans() {
 
   return (
     <div style={{ marginTop: 16 }}>
-      <div style={{fontWeight:700, marginBottom:8}}>Real‑time Email Scans</div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <div style={{fontWeight:700}}>Real‑time Email Scans</div>
+        <div>
+          <button onClick={pollNow} disabled={busy} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit',cursor:'pointer'}}>
+            {busy ? 'Polling…' : 'Poll now'}
+          </button>
+        </div>
+      </div>
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead>
