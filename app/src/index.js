@@ -1284,6 +1284,15 @@ app.get("/me",authMiddleware,async (req,res)=>{
     me.trial_active   = eff.trial_active;
     me.role = req.user.role || 'member';
     me.is_super = !!req.user.is_super;
+    // --- normalized trial object for frontend ---
+    const nowEpoch = now();
+    const endsEpoch = me.trial_ends_at ? Number(me.trial_ends_at) : null;
+    const days_left = endsEpoch ? Math.max(0, Math.ceil((endsEpoch - nowEpoch) / (24 * 3600))) : 0;
+    me.trial = {
+      active: !!(eff.trial_active),
+      days_left,
+      ends_at: endsEpoch ? new Date(endsEpoch * 1000).toISOString() : null
+    };
     res.json({ ok: true, ...me });
   }catch(e){ res.status(500).json({error:"me failed"}); }
 });
