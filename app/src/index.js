@@ -657,7 +657,7 @@ app.get("/auth/m365/start", async (req, res) => {
       response_type: "code",
       response_mode: "query",
       redirect_uri: REDIRECT,
-      scope: "openid offline_access email Mail.Read",
+      scope: ["openid","offline_access","email","User.Read","Mail.Read"].join(" "),
       state: Buffer.from(JSON.stringify({
         r: (process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com") + "/integrations",
         t: tok
@@ -910,41 +910,41 @@ app.post("/integrations/email/test", authMiddleware, async (req, res) => {
       const details = c.details || {};
       let access = details?.tokens?.access_token || null;
       const refresh = details?.tokens?.refresh_token || null;
-      if (!access) return res.json({ ok: true, connected: false, provider: 'm365', reason: "no access token" });
+      if (!access && refresh) {
+        // attempt refresh via helper (tries tenant_used, env, consumers, common)
+        const rTok = await getM365AccessTokenForTenant(req.user.tenant_id);
+        if (rTok.ok) access = rTok.access;
+      }
+      if (!access) return res.json({ ok: true, connected: false, provider: 'm365', reason: 'no access token' });
 
-      async function graphMe(tok){
-        return fetch("https://graph.microsoft.com/v1.0/me", { headers: { Authorization: `Bearer ${tok}` } });
-      }
-      let meRes = await graphMe(access);
-      if (meRes.status === 401 && refresh) {
-        const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || "common";
-        const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            client_id: process.env.M365_CLIENT_ID || "",
-            client_secret: process.env.M365_CLIENT_SECRET || "",
-            redirect_uri: process.env.M365_REDIRECT_URI || "",
-            grant_type: "refresh_token",
-            refresh_token: refresh
-          })
+      // Use /me endpoint (requires User.Read and openid/email scopes)
+      async function graphTiny(tok){
+        return fetch("https://graph.microsoft.com/v1.0/me", {
+          headers: { Authorization: `Bearer ${tok}` }
         });
-        if (r.ok) {
-          const newTok = await r.json();
-          access = newTok.access_token || access;
-          await upsertConnector(req.user.tenant_id, "email", "m365", {
-            status: "connected",
-            details: { ...details, tokens: { ...(details.tokens||{}), ...newTok } }
-          });
-          meRes = await graphMe(access);
+      }
+
+      let r = await graphTiny(access);
+      if (r.status === 401 && refresh) {
+        const rTok = await getM365AccessTokenForTenant(req.user.tenant_id);
+        if (rTok.ok) { access = rTok.access; r = await graphTiny(access); }
+      }
+      if (!r.ok) {
+        const t = await r.text().catch(()=>"");
+        return res.json({ ok:true, connected:false, provider:'m365', reason:`graph ${r.status}`, detail:t.slice(0,160) });
+      }
+      const me = await r.json().catch(()=> ({}));
+      return res.json({
+        ok: true,
+        connected: true,
+        provider: 'm365',
+        account: {
+          id: me?.id || null,
+          displayName: me?.displayName || null,
+          mail: me?.mail || null,
+          userPrincipalName: me?.userPrincipalName || null
         }
-      }
-      if (!meRes.ok) {
-        const t = await meRes.text().catch(()=>"");
-        return res.json({ ok:true, connected:false, provider:'m365', reason:`graph ${meRes.status}`, detail:t.slice(0,160) });
-      }
-      const me = await meRes.json().catch(()=>({}));
-      return res.json({ ok:true, connected:true, provider:'m365', account:{ id: me?.id||null, upn: me?.userPrincipalName||null } });
+      });
     }
 
     if (c.provider === "google") {
