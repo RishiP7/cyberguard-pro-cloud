@@ -512,9 +512,9 @@ function Layout({children}){
   const me = nav.me;
   const authed = useAuthFlag();
 
-  const p = String(me?.plan || '').toLowerCase();
   const info = trialInfo(me); // normalized {active, days_left, ends_at}
-  const showTrialBadge = info.active && (p === 'basic' || p === 'pro');
+  const actualPlan = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const showTrialBadge = info.active && (actualPlan === 'basic' || actualPlan === 'pro' || actualPlan === 'trial');
   return (
     <div>
       <div style={bar}>
