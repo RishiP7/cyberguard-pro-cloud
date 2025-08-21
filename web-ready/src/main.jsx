@@ -514,7 +514,9 @@ function Layout({children}){
 
   // Correct ordering + single source of truth for the trial badge
   const info = trialInfo(me); // normalized {active, days_left, ends_at}
-  const actualPlan = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const actualPlanRaw = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  // If backend lifts plan to pro_plus during trial and omits plan_actual, treat as a trial for badge purposes
+  const actualPlan = (info.active && (!me || !me.plan_actual)) ? 'trial' : actualPlanRaw;
   const showTrialBadge = info.active && (actualPlan === 'basic' || actualPlan === 'pro' || actualPlan === 'trial');
   return (
     <div>
