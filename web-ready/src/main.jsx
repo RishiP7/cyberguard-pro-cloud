@@ -608,19 +608,6 @@ const btnGhost={
 const th    ={textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8};
 const td    ={padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"};
 
-// ---- Plan gating helpers ----
-function planCapabilities(plan, me){
-  const trialIsActive = !!me?.trial?.active;
-  return {
-    email: true,
-    edr:   plan !== 'basic',
-    dns:   plan !== 'basic',
-    ueba:  plan === 'pro_plus',
-    cloud: plan === 'pro_plus',
-    // AI: Pro+ full; Trial only if still active
-    ai: (plan === 'pro_plus') || (plan === 'trial' && trialIsActive),
-  };
-}
 
 function LockedTile({ title, reason }) {
   return (
