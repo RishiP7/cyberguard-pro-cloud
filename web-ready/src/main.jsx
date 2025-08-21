@@ -322,7 +322,7 @@ const badgeSA={
 
 // ---- Trial Notice Bar ----
 function TrialNotice({ me }){
-  const t = me?.trial || trialInfo(me);
+  const t = (me?.trial && typeof me.trial.active === 'boolean') ? me.trial : trialInfo(me);
   const p = String(me?.plan || '').toLowerCase();
   if (!(t?.active && (p === 'basic' || p === 'pro'))) return null;
   return (
@@ -346,8 +346,16 @@ class ErrorCatcher extends React.Component{
   componentDidCatch(e,info){ console.error("ErrorBoundary", e, info); this.props.onError(e); }
   render(){ return this.props.children; }
 }
-// Compute trial info from server fields (trial_ends_at epoch seconds)
 function trialInfo(me){
+  // Prefer server-provided trial object if present
+  if (me?.trial && typeof me.trial.active === 'boolean') {
+    return {
+      active: !!me.trial.active,
+      days_left: Number(me.trial.days_left ?? 0),
+      ends_at: me.trial.ends_at ?? null
+    };
+  }
+  // Fallback to epoch seconds field
   const ends = Number(me?.trial_ends_at || 0);
   if (!ends) return { active:false, days_left:0, ends_at:null };
   const now = Math.floor(Date.now()/1000);
@@ -503,9 +511,10 @@ function Layout({children}){
   const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
-  const _trialInfo = trialInfo(me);
-  const _plan = String(me?.plan || '').toLowerCase();
-  const showTrialBadge = _trialInfo.active && (_plan === 'basic' || _plan === 'pro');
+
+  const p = String(me?.plan || '').toLowerCase();
+  const info = trialInfo(me); // normalized {active, days_left, ends_at}
+  const showTrialBadge = info.active && (p === 'basic' || p === 'pro');
   return (
     <div>
       <div style={bar}>
@@ -538,7 +547,7 @@ function Layout({children}){
               }}
               title="Your Pro+ trial is active — click to manage plan"
             >
-              Pro+ trial ({_trialInfo.days_left}d left)
+              Pro+ trial ({info.days_left}d left)
             </Link>
           )}
           {authed ? (
@@ -1734,9 +1743,10 @@ function TestEvents({ api }){
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
   const caps = planCapabilities(me?.plan || "trial", me);
-  const isTrial = (me?.plan || "trial") === "trial";
-  const trialDays = me?.trial?.days_left ?? null;
-
+const planStr = String(me?.plan || '').toLowerCase();
+const isProPlus = planStr === 'pro_plus';
+const showTrial = !!(me?.trial?.active) && (planStr === 'basic' || planStr === 'pro');
+const trialDays = Number(me?.trial?.days_left ?? 0);
   const styles = {
     row:{display:"flex",alignItems:"center",gap:12,margin:"10px 0"},
     btn:{padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"},
@@ -1761,11 +1771,11 @@ function TestEvents({ api }){
   return (
     <div style={{padding:16}}>
       <h1 style={{marginTop:0}}>Test Events</h1>
-      {isTrial && (
-        <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10}}>
-          Trial {me?.trial?.active ? `— ${trialDays} day${trialDays===1?'':'s'} left` : 'expired'}. {me?.trial?.active ? 'Enjoy preview access to AI features.' : 'Upgrade to Pro+ to continue using AI.'}
-        </div>
-      )}
+     {showTrial && !isProPlus && (
+  <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10}}>
+    Pro+ trial — <b>{trialDays}</b> day{trialDays===1?'':'s'} left. Enjoy Pro+ features during your trial.
+  </div>
+)}
       {!apiKey && (
         <div style={styles.warn}>
           No API key set. Create one in <a href="/account">Account</a>; it will be read from <code>localStorage.api_key</code>.
@@ -1873,27 +1883,23 @@ function TestEvents({ api }){
 // ---- Capabilities Helper ----
 function planCapabilities(plan, me){
   const p = String(plan || '').toLowerCase();
-  const trialIsActive =
-    !!me?.trial?.active ||
-    (typeof trialInfo === 'function' ? !!(trialInfo(me)?.active) : false);
-
-  // Pro+ trial unlock applies ONLY to Basic & Pro customers
-  const trialUnlock = trialIsActive && (p === 'basic' || p === 'pro');
+  const trialActive = !!(me?.trial?.active);
+  const trialUnlock = trialActive && (p === 'basic' || p === 'pro');
+  const effective = trialUnlock ? 'pro_plus' : p;
 
   return {
-    // Always available
-    email: true,
-
-    // Pro features
-    edr: (p !== 'basic') || trialUnlock,
-    dns: (p !== 'basic') || trialUnlock,
-
-    // Pro+ features
-    ueba: (p === 'pro_plus') || trialUnlock,
-    cloud: (p === 'pro_plus') || trialUnlock,
-    ai:    (p === 'pro_plus') || trialUnlock,
+    email: true, // always
+    edr:   effective === 'pro' || effective === 'pro_plus',
+    dns:   effective === 'pro' || effective === 'pro_plus',
+    ueba:  effective === 'pro_plus',
+    cloud: effective === 'pro_plus',
+    ai:    effective === 'pro_plus'
   };
 }
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode><BrowserRouter><App/></BrowserRouter></React.StrictMode>
+  <React.StrictMode>
+    <BrowserRouter>
+      <App/>
+    </BrowserRouter>
+  </React.StrictMode>
 );
