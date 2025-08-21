@@ -356,7 +356,11 @@ async function scanAndRecordEmails(tenant_id, items){
     ev.anomaly = (score <= -0.6);
     // --- realtime scan fanout (for frontend "RealtimeEmailScans") ---
     const severity = (score <= -0.8) ? 'high' : (score <= -0.6) ? 'medium' : 'none';
-    const when = m.receivedDateTime || Math.floor(Date.now()/1000);
+    const when = (
+      m.receivedDateTime
+        ? m.receivedDateTime
+        : (m.internalDate ? new Date(Number(m.internalDate)).toISOString() : new Date().toISOString())
+    );
     try {
       // in-memory recent ring buffer
       pushRecentScan(tenant_id, {
@@ -474,6 +478,7 @@ async function gmailList(tenant_id, qStr = 'newer_than:1d', max = 25){
         subject: headers['subject']||'',
         from: { emailAddress: { address: headers['from']||null } },
         receivedDateTime: headers['date']||null,
+        internalDate: msg.internalDate || null,
         bodyPreview: ''
       });
     }
