@@ -729,11 +729,12 @@ function RealtimeEmailScans() {
                 || a?.event?.email?.internalDate
                 || a?.created_at
                 || (Date.now()/1000);
-              // if it's already an ISO string, return as-is; otherwise treat as epoch seconds
               return (typeof w === 'string' && w.includes('T')) ? w : new Date(Number(w) * 1000).toISOString();
             })(),
             score: Number(a?.score || 0)
           }));
+        // Ensure newest first by actual email timestamp
+        rows.sort((b, a) => new Date(a.date).getTime() - new Date(b.date).getTime());
         if (rows.length) setEmails(rows);
       })
       .catch(() => {});
@@ -790,7 +791,11 @@ function RealtimeEmailScans() {
           const score = Number(a.score ?? 0);
 
           const row = { subject, from, date: when, score };
-          setEmails(prev => [row, ...prev].slice(0, 50));
+          setEmails(prev => {
+            const next = [row, ...prev];
+            next.sort((b, a) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            return next.slice(0, 50);
+          });
         } catch (_e) {
           // ignore parse errors
         }
