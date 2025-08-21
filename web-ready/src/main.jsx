@@ -309,6 +309,7 @@ const errBox={
   borderRadius:12,
   margin:"10px 0"
 };
+
 const badgeSA={
   marginRight:8,
   padding:'4px 10px',
@@ -318,6 +319,20 @@ const badgeSA={
   fontSize:12,
   boxShadow:"inset 0 1px 0 rgba(255,255,255,.1)"
 };
+
+// ---- Trial Notice Bar ----
+function TrialNotice({ me }){
+  const t = me?.trial || trialInfo(me);
+  if(!t?.active) return null;
+  return (
+    <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #c69026',background:'#c6902615',borderRadius:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <div>
+        <b>Pro+ trial</b> — <b>{t.days_left}</b> day{t.days_left===1?'':'s'} left. Enjoy all features during your trial.
+      </div>
+      <Link to="/account" style={{padding:'6px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',textDecoration:'none'}}>Switch plan</Link>
+    </div>
+  );
+}
 
 function ErrorBoundary({children}){
   const [err,setErr] = useState(null);
@@ -520,7 +535,8 @@ function Layout({children}){
         </div>
       </div>
       <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>
-<SuperAdminBanner me={me} />
+        <SuperAdminBanner me={me} />
+        <TrialNotice me={me} />
         {!me?.is_super && typeof localStorage!=='undefined' && localStorage.getItem('admin_token_backup') && (
           <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div><b>Impersonating tenant</b> — you’re viewing the app as a customer.</div>
@@ -531,7 +547,7 @@ function Layout({children}){
           </div>
         )}
         {children}
-<AIDock me={me} />
+        <AIDock me={me} />
       </div>
     </div>
   );
@@ -1255,6 +1271,9 @@ function App(){
 
 // --- Integrations Wizard UI ---
 function Integrations({ api }) {
+  const [meState, setMeState] = React.useState(null);
+  React.useEffect(()=>{ apiGet('/me').then(setMeState).catch(()=>setMeState(null)); },[]);
+  const caps = planCapabilities(meState?.plan || 'trial', meState);
   // --- Helper functions for email provider normalization and OAuth ---
   function normEmailProvider(p){
     p = (p||'').toLowerCase();
@@ -1482,75 +1501,95 @@ function Integrations({ api }) {
         </div>
 
         {/* EDR */}
-        <div style={styles.card}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{fontWeight:700}}>Endpoint (EDR)</div>
-            <span style={{opacity:.85,fontSize:12}}>{getState('edr').status}</span>
+        {caps.edr ? (
+          <div style={styles.card}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:700}}>Endpoint (EDR)</div>
+              <span style={{opacity:.85,fontSize:12}}>{getState('edr').status}</span>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</div>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+              <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.post('/integrations/edr/enrollment-token',{}); setEdrToken(j?.token||''); return j; })}>Get enrollment token</button>
+              {edrToken && (
+                <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                  <code style={{opacity:.9}}>{edrToken}</code>
+                  <button style={styles.ghost} onClick={()=>copy(edrToken)}>Copy</button>
+                </span>
+              )}
+            </div>
           </div>
-          <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</div>
-          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
-            <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.post('/integrations/edr/enrollment-token',{}); setEdrToken(j?.token||''); return j; })}>Get enrollment token</button>
-            {edrToken && (
-              <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
-                <code style={{opacity:.9}}>{edrToken}</code>
-                <button style={styles.ghost} onClick={()=>copy(edrToken)}>Copy</button>
-              </span>
-            )}
-          </div>
-        </div>
+        ) : (
+          <LockedTile title="Endpoint (EDR)" reason="Upgrade to Pro or Pro+ to enable endpoint security." />
+        )}
 
         {/* DNS */}
-        <div style={styles.card}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{fontWeight:700}}>DNS Protection</div>
-            <span style={{opacity:.85,fontSize:12}}>{getState('dns').status}</span>
+        {caps.dns ? (
+          <div style={styles.card}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:700}}>DNS Protection</div>
+              <span style={{opacity:.85,fontSize:12}}>{getState('dns').status}</span>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</div>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+              <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.get('/integrations/dns/bootstrap'); setDnsInfo(j); return j; })}>Bootstrap</button>
+              {dnsInfo && (
+                <span style={{display:'inline-flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                  <span>Resolvers: <code>{(dnsInfo.resolver_ips||[]).join(', ')}</code></span>
+                  <span>• Token: <code>{dnsInfo.token}</code></span>
+                  <button style={styles.ghost} onClick={()=>copy(dnsInfo.token)}>Copy</button>
+                </span>
+              )}
+            </div>
           </div>
-          <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</div>
-          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
-            <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.get('/integrations/dns/bootstrap'); setDnsInfo(j); return j; })}>Bootstrap</button>
-            {dnsInfo && (
-              <span style={{display:'inline-flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                <span>Resolvers: <code>{(dnsInfo.resolver_ips||[]).join(', ')}</code></span>
-                <span>• Token: <code>{dnsInfo.token}</code></span>
-                <button style={styles.ghost} onClick={()=>copy(dnsInfo.token)}>Copy</button>
-              </span>
-            )}
-          </div>
-        </div>
+        ) : (
+          <LockedTile title="DNS Protection" reason="Upgrade to Pro or Pro+ to enable DNS protection." />
+        )}
 
         {/* UEBA */}
-        <div style={styles.card}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{fontWeight:700}}>UEBA</div>
-            <span style={{opacity:.85,fontSize:12}}>{getState('ueba').status}</span>
+        {caps.ueba ? (
+          <div style={styles.card}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:700}}>UEBA</div>
+              <span style={{opacity:.85,fontSize:12}}>{getState('ueba').status}</span>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</div>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+              <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'m365', settings:{} }))}>Connect M365</button>
+              <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'gworkspace', settings:{} }))}>Connect GWS</button>
+            </div>
           </div>
-          <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</div>
-          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
-            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'m365', settings:{} }))}>Connect M365</button>
-            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'gworkspace', settings:{} }))}>Connect GWS</button>
-          </div>
-        </div>
+        ) : (
+          <LockedTile title="UEBA" reason="Available on Pro+ plan." />
+        )}
 
         {/* Cloud */}
-        <div style={styles.card}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{fontWeight:700}}>Cloud Security</div>
-            <span style={{opacity:.85,fontSize:12}}>{getState('cloud').status}</span>
+        {caps.cloud ? (
+          <div style={styles.card}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:700}}>Cloud Security</div>
+              <span style={{opacity:.85,fontSize:12}}>{getState('cloud').status}</span>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</div>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
+              <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'aws', settings:{} }))}>Connect AWS</button>
+              <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'azure', settings:{} }))}>Connect Azure</button>
+              <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'gcp', settings:{} }))}>Connect GCP</button>
+            </div>
           </div>
-          <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</div>
-          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
-            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'aws', settings:{} }))}>Connect AWS</button>
-            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'azure', settings:{} }))}>Connect Azure</button>
-            <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'gcp', settings:{} }))}>Connect GCP</button>
-          </div>
-        </div>
+        ) : (
+          <LockedTile title="Cloud Security" reason="Available on Pro+ plan." />
+        )}
 
         {/* AI Assistant (placeholder) */}
         <div style={styles.card}>
           <div style={{fontWeight:700}}>AI Security Assistant</div>
           <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</div>
           <div style={{marginTop:8}}>
-            <button style={btn} onClick={()=>alert('AI assistant preview. Full features on Pro+.')}>Open Assistant</button>
+            {planCapabilities(meState?.plan || 'trial', meState).ai ? (
+              <button style={btn} onClick={()=>alert('AI assistant preview. Full features on Pro+.')}>Open Assistant</button>
+            ) : (
+              <LockedTile title="AI Security Assistant" reason="Available on Pro+ (trial preview unlocks it temporarily)." />
+            )}
           </div>
         </div>
       </div>
