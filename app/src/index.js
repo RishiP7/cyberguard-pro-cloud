@@ -1561,6 +1561,35 @@ app.get('/scans/stream', async (req, res) => {
 
   req.on('close', () => bus.off('scan', listener));
 });
+// Back-compat alias for older frontends that listen on /email/stream
+app.get('/email/stream', async (req, res) => {
+  try {
+    let token = null;
+    const h = req.headers?.authorization || '';
+    if (h.startsWith('Bearer ')) token = h.slice(7);
+    if (!token && req.query && req.query.token) token = String(req.query.token);
+    if (!token) return res.status(401).end();
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = { tenant_id: decoded.tenant_id, email: decoded.email };
+  } catch (e) { return res.status(401).end(); }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const tenant = req.user.tenant_id;
+  const listener = (payload) => {
+    if (payload.tenant_id !== tenant) return;
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+  bus.on('scan', listener);
+
+  res.write(`event: ping\n`);
+  res.write(`data: {"ok":true}\n\n`);
+
+  req.on('close', () => bus.off('scan', listener));
+});
 // Recent scans for initial UI fill (non-persistent; in-memory ring buffer)
 app.get('/email/recent-scans', authMiddleware, async (req,res)=>{
   try{
