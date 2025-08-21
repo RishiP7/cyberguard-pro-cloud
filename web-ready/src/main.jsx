@@ -339,6 +339,150 @@ function trialInfo(me){
   return { active: left > 0, days_left: Math.ceil(left/86400), ends_at: ends };
 }
 // ---------- Layout ----------
+function SuperAdminBanner({ me }) {
+  if (!me?.is_super) return null;
+  return (
+    <div style={{
+      padding:'6px 10px',
+      border:'1px solid #7bd88f55',
+      background:'linear-gradient(180deg,#7bd88f22,#7bd88f18)',
+      borderRadius:10,
+      margin:'8px 0 12px',
+      display:'flex',
+      alignItems:'center',
+      gap:10
+    }}>
+      <b>Super Admin</b>
+      <span style={{opacity:.8, fontSize:12}}>Preview plan as:</span>
+      <select
+        defaultValue={typeof localStorage!=='undefined' ? (localStorage.getItem('admin_plan_preview') || '') : ''}
+        onChange={e=>{
+          const v = e.target.value;
+          if (typeof localStorage !== 'undefined') {
+            if (v) localStorage.setItem('admin_plan_preview', v);
+            else localStorage.removeItem('admin_plan_preview');
+          }
+          alert('Plan preview set. Reloading…');
+          location.reload();
+        }}
+        style={{padding:'4px 8px',borderRadius:8,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.14)',color:'#e6e9ef'}}
+      >
+        <option value="">(tenant actual)</option>
+        <option value="trial">trial</option>
+        <option value="basic">basic</option>
+        <option value="pro">pro</option>
+        <option value="pro_plus">pro+</option>
+      </select>
+
+      <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
+        <input
+          type="checkbox"
+          defaultChecked={typeof localStorage!=='undefined' && localStorage.getItem('admin_override')==='1'}
+          onChange={e=>{
+            if (typeof localStorage !== 'undefined') {
+              if (e.target.checked) localStorage.setItem('admin_override','1');
+              else localStorage.removeItem('admin_override');
+            }
+            alert('Override updated. Reloading…');
+            location.reload();
+          }}
+        />
+        Bypass paywall
+      </label>
+    </div>
+  );
+}
+function AIDock({ me }) {
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [messages, setMessages] = React.useState([]);
+
+  async function ask() {
+    if (!q.trim()) return;
+    setBusy(true);
+    try {
+      const targetTenant = (me?.is_super && localStorage.getItem('admin_target_tenant')) || undefined;
+      const path = (me?.is_super && targetTenant) ? '/admin/ai/ask' : '/ai/ask';
+      const body = (me?.is_super && targetTenant) ? { question: q, tenant_id: targetTenant } : { question: q };
+      const r = await API.post(path, body);
+      setMessages(m => [...m, { role: 'user', content: q }, { role: 'assistant', content: r?.answer || JSON.stringify(r) }]);
+      setQ("");
+    } catch (_e) {
+      setMessages(m => [...m, { role: 'user', content: q }, { role: 'assistant', content: 'Sorry — assistant failed.' }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={()=>setOpen(true)}
+        style={{
+          position:'fixed', right:16, bottom:16, zIndex:1000,
+          padding:'10px 14px', borderRadius:999, border:'1px solid #2b6dff55',
+          background:'#1f6feb', color:'#fff', cursor:'pointer',
+          boxShadow:'0 10px 24px rgba(31,111,235,.28)'
+        }}
+      >
+        AI Assistant
+      </button>
+
+      {open && (
+        <div style={{
+          position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:1100,
+          display:'flex', alignItems:'flex-end', justifyContent:'flex-end'
+        }}>
+          <div style={{
+            width:'min(420px, 96vw)', height:'min(70vh, 720px)', margin:16,
+            background:'linear-gradient(180deg, rgba(28,30,38,.92), rgba(22,24,30,.9))',
+            border:'1px solid rgba(255,255,255,.12)', borderRadius:16,
+            display:'grid', gridTemplateRows:'auto 1fr auto'
+          }}>
+            <div style={{padding:'10px 12px', borderBottom:'1px solid rgba(255,255,255,.12)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <div><b>AI Security Assistant</b>{me?.is_super ? <span style={{marginLeft:8,opacity:.8,fontSize:12}}>(admin)</span> : null}</div>
+              <button onClick={()=>setOpen(false)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)', background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
+            </div>
+            <div style={{padding:12, overflow:'auto'}}>
+              {messages.length === 0 && <div style={{opacity:.8}}>Ask about setup, errors, or “how do I…”</div>}
+              {messages.map((m,i)=>(
+                <div key={i} style={{margin:'8px 0'}}>
+                  <div style={{fontSize:12,opacity:.7}}>{m.role}</div>
+                  <div>{m.content}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:12, borderTop:'1px solid rgba(255,255,255,.12)'}}>
+              <form onSubmit={(e)=>{ e.preventDefault(); ask(); }}>
+                <input
+                  value={q}
+                  onChange={e=>setQ(e.target.value)}
+                  placeholder="Ask anything about CyberGuard Pro…"
+                  style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.06)',color:'inherit'}}
+                  disabled={busy}
+                />
+                <div style={{marginTop:8, display:'flex', gap:8}}>
+                  <button disabled={busy} style={{padding:'8px 12px',borderRadius:10,border:'1px solid #2b6dff66',background:'#1f6feb',color:'#fff',cursor:'pointer'}}>
+                    {busy ? 'Thinking…' : 'Ask'}
+                  </button>
+                  {me?.is_super && (
+                    <input
+                      placeholder="(optional) tenant id for support"
+                      defaultValue={localStorage.getItem('admin_target_tenant') || ''}
+                      onChange={e=>{ if(e.target.value) localStorage.setItem('admin_target_tenant', e.target.value); else localStorage.removeItem('admin_target_tenant'); }}
+                      style={{flex:1,padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}
+                    />
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 function Layout({children}){
   const nav = useNav();
   const me = nav.me;
@@ -376,6 +520,7 @@ function Layout({children}){
         </div>
       </div>
       <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>
+<SuperAdminBanner me={me} />
         {!me?.is_super && typeof localStorage!=='undefined' && localStorage.getItem('admin_token_backup') && (
           <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div><b>Impersonating tenant</b> — you’re viewing the app as a customer.</div>
@@ -386,6 +531,7 @@ function Layout({children}){
           </div>
         )}
         {children}
+<AIDock me={me} />
       </div>
     </div>
   );
@@ -533,6 +679,92 @@ function Login(){
 }
 const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"inherit",marginBottom:10};
 
+function RealtimeEmailScans() {
+  const [emails, setEmails] = React.useState([]);
+
+  React.useEffect(() => {
+    const base = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+            ? 'https://cyberguard-pro-cloud.onrender.com'
+            : 'http://localhost:8080');
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token) return;
+
+    const url = new URL(`${base}/alerts/stream`);
+if (token) url.searchParams.set('token', token);
+const es = new EventSource(url.toString());
+    es.onmessage = (e) => {
+      try {
+        const a = JSON.parse(e.data || "{}");
+        const subject =
+          a.subject ||
+          a?.event?.email?.subject ||
+          a?.event?.subject ||
+          "(no subject)";
+        const from =
+          a.from ||
+          a?.event?.email?.from ||
+          a?.event?.from ||
+          "-";
+        const when =
+          a.date ||
+          (a.created_at ? new Date(Number(a.created_at) * 1000).toISOString() : new Date().toISOString());
+        const score = Number(a.score ?? 0);
+
+        const row = { subject, from, date: when, score };
+        setEmails(prev => [row, ...prev].slice(0, 50));
+      } catch (_e) {
+        // ignore parse errors
+      }
+    };
+    es.onerror = () => {};
+    return () => es.close();
+  }, []);
+
+  const rowStyle = (score) => {
+    if (score >= 70) return { background: 'rgba(255, 82, 82, 0.15)', borderLeft: '4px solid #ff5252' };
+    if (score >= 40) return { background: 'rgba(255, 193, 7, 0.15)', borderLeft: '4px solid #ffc107' };
+    return { background: 'rgba(123, 216, 143, 0.12)', borderLeft: '4px solid #7bd88f' };
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{fontWeight:700, marginBottom:8}}>Real‑time Email Scans</div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>Subject</th>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>From</th>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>When</th>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {emails.length === 0 && (
+              <tr>
+                <td colSpan="4" style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)",opacity:.8}}>
+                  Waiting for new email events…
+                </td>
+              </tr>
+            )}
+            {emails.map((r, i) => (
+              <tr key={i} style={rowStyle(Number(r.score||0))}>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{r.subject}</td>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{r.from}</td>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+                  {new Date(r.date).toLocaleString()}
+                </td>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{Number(r.score||0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard(){
   const [me,setMe]=useState(null);
   const [stats,setStats]=useState(null);
@@ -581,6 +813,7 @@ function Dashboard(){
             </tbody>
           </table>
         </div>
+        <RealtimeEmailScans />
       </div>
     </div>
   );
