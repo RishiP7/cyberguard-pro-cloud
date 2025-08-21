@@ -242,6 +242,99 @@ function maskTokens(details){
     return d;
   }catch(_){ return details || {}; }
 }
+
+// ===== M365 email polling helpers =====
+async function getM365AccessTokenForTenant(tenant_id){
+  const conn = await getEmailConnector(tenant_id);
+  if(!conn || conn.provider !== 'm365') return { ok:false, reason:'not m365-connected' };
+  const details = conn.details || {};
+  let access = details?.tokens?.access_token || null;
+  const refresh = details?.tokens?.refresh_token || null;
+  if(access) return { ok:true, access };
+  if(!refresh) return { ok:false, reason:'no tokens' };
+  const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || 'common';
+  const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,{
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({
+      client_id: process.env.M365_CLIENT_ID || '',
+      client_secret: process.env.M365_CLIENT_SECRET || '',
+      grant_type: 'refresh_token',
+      refresh_token: refresh,
+      redirect_uri: process.env.M365_REDIRECT_URI || ''
+    })
+  });
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok || !j.access_token) return { ok:false, reason:'refresh_failed', detail:j };
+  access = j.access_token;
+  await upsertConnector(tenant_id, 'email', 'm365', { status:'connected', details: { ...(details||{}), tokens: { ...(details?.tokens||{}), ...j } } });
+  return { ok:true, access };
+}
+
+async function graphGet(tenant_id, path){
+  const conn = await getEmailConnector(tenant_id);
+  if(!conn || conn.provider !== 'm365') throw new Error('not m365-connected');
+  const base = 'https://graph.microsoft.com/v1.0';
+  const details = conn.details || {};
+  let access = details?.tokens?.access_token || null;
+  const refresh = details?.tokens?.refresh_token || null;
+  async function doGet(tok){
+    return fetch(base + path, { headers: { Authorization: `Bearer ${tok}` } });
+  }
+  if(!access && refresh){
+    const rTok = await getM365AccessTokenForTenant(tenant_id);
+    if(!rTok.ok) throw new Error('token_unavailable');
+    access = rTok.access;
+  }
+  let resp = await doGet(access);
+  if(resp.status === 401 && refresh){
+    const rTok = await getM365AccessTokenForTenant(tenant_id);
+    if(!rTok.ok) throw new Error('refresh_failed');
+    access = rTok.access;
+    resp = await doGet(access);
+  }
+  return resp;
+}
+
+function classifyEmail(subject, bodyPreview){
+  const s = (subject||'').toLowerCase();
+  const b = (bodyPreview||'').toLowerCase();
+  const risky = /(verify|urgent|password|invoice|bank|overdue|action required|reset)/i.test(subject||'')
+             || /(wire|gift card|crypto|login|security alert|mfa)/i.test(bodyPreview||'');
+  const veryRisky = /(urgent|verify.*account|reset.*password|bitcoin|crypto|bank)/i.test(subject||'');
+  let score = -0.2;
+  if(risky) score = -0.6;
+  if(veryRisky) score = -1.0;
+  return score;
+}
+
+async function scanAndRecordEmails(tenant_id, items){
+  let alertsCreated = 0;
+  for(const m of items){
+    const subj = m.subject || '';
+    const from = m.from?.emailAddress?.address || null;
+    const preview = m.bodyPreview || '';
+    const ev = { type:'email', from, subject: subj, preview, anomaly:false };
+    const score = classifyEmail(subj, preview);
+    ev.anomaly = (score <= -0.6);
+    const alert = await writeAlert(tenant_id, ev);
+    if(alert) alertsCreated++;
+  }
+  return alertsCreated;
+}
+
+async function fetchM365Inbox(tenant_id, maxCount=10){
+  const sel = '$select=receivedDateTime,from,subject,bodyPreview,webLink';
+  const ord = '$orderby=receivedDateTime desc';
+  const top = `$top=${Math.max(1, Math.min(25, maxCount))}`;
+  const path = `/me/messages?${sel}&${ord}&${top}`;
+  const r = await graphGet(tenant_id, path);
+  if(!r.ok){
+    const t = await r.text().catch(()=>"");
+    throw new Error(`graph ${r.status}: ${t.slice(0,200)}`);
+  }
+  const j = await r.json();
+  return Array.isArray(j?.value) ? j.value : [];
+}
 // ---------- DB bootstrap (idempotent) ----------
 (async ()=>{
   await q(`
@@ -1269,6 +1362,19 @@ app.get('/alerts/stream', async (req, res) => {
 });
 
 // ---------- ingest helpers ----------
+// ===== Email: on-demand poll & scan (M365) =====
+app.post('/email/poll', authMiddleware, enforceActive, async (req,res)=>{
+  try{
+    const max = Number(req.body?.max||10);
+    const items = await fetchM365Inbox(req.user.tenant_id, max);
+    const created = await scanAndRecordEmails(req.user.tenant_id, items);
+    await saveUsage(req.user.tenant_id, 'email_poll');
+    return res.json({ ok:true, fetched: items.length, alerts_created: created });
+  }catch(e){
+    console.error('email poll failed', e);
+    return res.status(500).json({ ok:false, error: 'poll failed', detail: String(e.message||e) });
+  }
+});
 async function checkKey(req){
   const key=(req.headers["x-api-key"]||"").trim();
   if(!key) return null;
@@ -1455,6 +1561,26 @@ setInterval(async ()=>{
     if(rows.length) console.log("[daily-summary]",new Date().toISOString(),rows);
   }catch(_e){}
 }, 6*60*60*1000);
+
+// ---------- background email poller (M365) ----------
+setInterval(async ()=>{
+  try{
+    // Find tenants with connected M365 email connector
+    const { rows } = await q(`SELECT DISTINCT tenant_id FROM connectors WHERE type='email' AND provider='m365' AND status='connected' LIMIT 50`);
+    for(const r of rows){
+      try{
+        const items = await fetchM365Inbox(r.tenant_id, 5);
+        const created = await scanAndRecordEmails(r.tenant_id, items);
+        if(created>0) console.log('[poll]', r.tenant_id, 'alerts:', created);
+      }catch(inner){
+        // avoid crashing the loop
+        console.warn('[poll] tenant failed', r.tenant_id, String(inner.message||inner));
+      }
+    }
+  }catch(e){
+    console.warn('background poller error', e);
+  }
+}, 5*60*1000); // every 5 minutes
 
 // ---------- start ----------
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
