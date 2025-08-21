@@ -250,24 +250,43 @@ async function getM365AccessTokenForTenant(tenant_id){
   const details = conn.details || {};
   let access = details?.tokens?.access_token || null;
   const refresh = details?.tokens?.refresh_token || null;
-  if(access) return { ok:true, access };
-  if(!refresh) return { ok:false, reason:'no tokens' };
-  const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || 'common';
-  const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,{
-    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body: new URLSearchParams({
-      client_id: process.env.M365_CLIENT_ID || '',
-      client_secret: process.env.M365_CLIENT_SECRET || '',
-      grant_type: 'refresh_token',
-      refresh_token: refresh,
-      redirect_uri: process.env.M365_REDIRECT_URI || ''
-    })
-  });
-  const j = await r.json().catch(()=>({}));
-  if(!r.ok || !j.access_token) return { ok:false, reason:'refresh_failed', detail:j };
-  access = j.access_token;
-  await upsertConnector(tenant_id, 'email', 'm365', { status:'connected', details: { ...(details||{}), tokens: { ...(details?.tokens||{}), ...j } } });
-  return { ok:true, access };
+  if (access) return { ok:true, access };
+  if (!refresh) return { ok:false, reason:'no tokens' };
+
+  const candidates = Array.from(new Set([
+    details.tenant_used || details.tokens?.tenant || null,
+    (process.env.M365_TENANT || process.env.M365_TENANT_ID || '').trim() || null,
+    'consumers',
+    'common'
+  ].filter(Boolean)));
+
+  let lastErr = null;
+  for (const ten of candidates) {
+    try {
+      const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(ten)}/oauth2/v2.0/token`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.M365_CLIENT_ID || '',
+          client_secret: process.env.M365_CLIENT_SECRET || '',
+          grant_type: 'refresh_token',
+          refresh_token: refresh,
+          redirect_uri: process.env.M365_REDIRECT_URI || ''
+        })
+      });
+      const j = await r.json().catch(()=>({}));
+      if (r.ok && j.access_token) {
+        access = j.access_token;
+        await upsertConnector(tenant_id, 'email', 'm365', {
+          status: 'connected',
+          details: { ...(details||{}), tenant_used: ten, tokens: { ...(details?.tokens||{}), ...j } }
+        });
+        return { ok:true, access };
+      }
+      lastErr = j;
+    } catch (e) { lastErr = e; }
+  }
+  return { ok:false, reason:'refresh_failed', detail:lastErr };
 }
 
 async function graphGet(tenant_id, path){
@@ -725,46 +744,42 @@ app.get("/auth/m365/callback", async (req, res) => {
     const attempts = [preferredTenant, "consumers", "common"]
       .filter((v, i, a) => v && a.indexOf(v) === i);
 
-    let tokens = null;
+    let tokens = null; let usedTenant = null;
     for (const t of attempts) {
       const r = await exchangeWithTenant(t);
-      if (r.ok) { tokens = r.json; break; }
-      const msg = (r.json?.error_description || r.json?.error || "").toString();
-      // If it's clearly a personal-account error, continue to next tenant
+      if (r.ok) { tokens = r.json; usedTenant = t; break; }
+      const msg = (r.json?.error_description || r.json?.error || '').toString();
       const personal = /personal Microsoft account|AADSTS70000121/i.test(msg);
-      if (!personal && t !== attempts[attempts.length-1]) {
-        // For other errors, still try next attempt; if last, we will fail below
-        continue;
-      }
+      if (!personal && t !== attempts[attempts.length-1]) continue;
     }
 
     if (!tokens || !tokens.access_token) {
-      console.error("m365 token exchange failed (all attempts)");
-      const to = `${FRONTEND_URL.replace(/\/$/, "")}/integrations?connected=m365&ok=0&err=${encodeURIComponent("token_exchange_failed")}`;
+      console.error('m365 token exchange failed (all attempts)');
+      const to = `${FRONTEND_URL.replace(/\/$/, '')}/integrations?connected=m365&ok=0&err=${encodeURIComponent('token_exchange_failed')}`;
       return res.redirect(to);
     }
 
     // Fetch identity for “Connected as …”
-let account = null;
-try {
-  const meRes = await fetch("https://graph.microsoft.com/v1.0/me", {
-    headers: { Authorization: `Bearer ${tokens.access_token}` }
-  });
-  if (meRes.ok) {
-    const me = await meRes.json();
-    account = {
-      id: me?.id || null,
-      upn: me?.userPrincipalName || null,
-      displayName: me?.displayName || null,
-      mail: me?.mail || null
-    };
-  }
-} catch(_) {}
+    let account = null;
+    try {
+      const meRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+      if (meRes.ok) {
+        const me = await meRes.json();
+        account = {
+          id: me?.id || null,
+          upn: me?.userPrincipalName || null,
+          displayName: me?.displayName || null,
+          mail: me?.mail || null
+        };
+      }
+    } catch(_) {}
 
-await upsertConnector(tenant_id, "email", "m365", {
-  status: "connected",
-  details: { tokens, account, delta: { m365: null } } // init delta holder
-});
+    await upsertConnector(tenant_id, 'email', 'm365', {
+      status: 'connected',
+      details: { tokens, account, delta: { m365: null }, tenant_used: usedTenant }
+    });
     const to = `${FRONTEND_URL.replace(/\/$/, "")}/integrations?connected=m365&ok=1`;
     return res.redirect(to);
   } catch (e) {
@@ -1008,25 +1023,40 @@ app.post('/auth/m365/refresh', authMiddleware, async (req,res)=>{
   try{
     const c = await getEmailConnector(req.user.tenant_id);
     if(!c || c.provider !== 'm365') return res.status(400).json({ error:'not m365-connected' });
-    const refresh = c.details?.tokens?.refresh_token;
+    const details = c.details || {};
+    const refresh = details?.tokens?.refresh_token;
     if(!refresh) return res.status(400).json({ error:'no refresh token' });
 
-    const tenant = process.env.M365_TENANT || process.env.M365_TENANT_ID || 'common';
-    const body = new URLSearchParams({
-      client_id: process.env.M365_CLIENT_ID || '',
-      client_secret: process.env.M365_CLIENT_SECRET || '',
-      grant_type: 'refresh_token',
-      refresh_token: refresh,
-      redirect_uri: process.env.M365_REDIRECT_URI || ''
-    });
-    const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,{
-      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body
-    });
-    const j = await r.json();
-    if(!r.ok) return res.status(500).json({ ok:false, error:'refresh failed', detail: j });
+    const candidates = Array.from(new Set([
+      details.tenant_used || details.tokens?.tenant || null,
+      (process.env.M365_TENANT || process.env.M365_TENANT_ID || '').trim() || null,
+      'consumers',
+      'common'
+    ].filter(Boolean)));
 
-    await upsertConnector(req.user.tenant_id, 'email', 'm365', { status:'connected', details: { ...(c.details||{}), tokens: { ...(c.details?.tokens||{}), ...j } } });
-    return res.json({ ok:true });
+    let last = null;
+    for (const ten of candidates) {
+      const r = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(ten)}/oauth2/v2.0/token`,{
+        method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+          client_id: process.env.M365_CLIENT_ID || '',
+          client_secret: process.env.M365_CLIENT_SECRET || '',
+          grant_type: 'refresh_token',
+          refresh_token: refresh,
+          redirect_uri: process.env.M365_REDIRECT_URI || ''
+        })
+      });
+      const j = await r.json();
+      if (r.ok && j.access_token) {
+        await upsertConnector(req.user.tenant_id, 'email', 'm365', {
+          status:'connected',
+          details: { ...(details||{}), tenant_used: ten, tokens: { ...(details?.tokens||{}), ...j } }
+        });
+        return res.json({ ok:true, tenant_used: ten });
+      }
+      last = j;
+    }
+    return res.status(500).json({ ok:false, error:'refresh failed', detail:last });
   }catch(e){ return res.status(500).json({ error:'refresh failed' }); }
 });
 
