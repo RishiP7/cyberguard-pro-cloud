@@ -518,6 +518,25 @@ function Layout({children}){
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
+          {me?.trial?.active && (
+            <Link
+              to="/account"
+              style={{
+                marginRight:8,
+                padding:'4px 10px',
+                border:'1px solid #c69026',
+                background:'linear-gradient(180deg,#c6902633,#c690261a)',
+                borderRadius:999,
+                fontSize:12,
+                color:'#fff',
+                textDecoration:'none',
+                boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'
+              }}
+              title="Your Pro+ trial is active — click to manage plan"
+            >
+              Trial ({me.trial.days_left}d left)
+            </Link>
+          )}
           {authed ? (
             <button
               style={btnGhost}
