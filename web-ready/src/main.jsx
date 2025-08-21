@@ -1879,7 +1879,30 @@ function TestEvents({ api }){
     </div>
   );
 }
+// ---- Capabilities Helper ----
+function planCapabilities(plan, me){
+  const p = String(plan || '').toLowerCase();
+  const trialIsActive =
+    !!me?.trial?.active ||
+    (typeof trialInfo === 'function' ? !!(trialInfo(me)?.active) : false);
 
+  // Pro+ trial unlock applies ONLY to Basic & Pro customers
+  const trialUnlock = trialIsActive && (p === 'basic' || p === 'pro');
+
+  return {
+    // Always available
+    email: true,
+
+    // Pro features
+    edr: (p !== 'basic') || trialUnlock,
+    dns: (p !== 'basic') || trialUnlock,
+
+    // Pro+ features
+    ueba: (p === 'pro_plus') || trialUnlock,
+    cloud: (p === 'pro_plus') || trialUnlock,
+    ai:    (p === 'pro_plus') || trialUnlock,
+  };
+}
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode><BrowserRouter><App/></BrowserRouter></React.StrictMode>
 );
