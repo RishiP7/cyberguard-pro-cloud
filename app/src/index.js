@@ -123,24 +123,20 @@ const adminMiddleware=(req,res,next)=>{
   if((req.headers["x-admin-key"]||"")!==ADMIN_KEY) return res.status(401).json({error:"unauthorized"});
   next();
 };
-const requirePaid=plan=>{
-  return ["basic","pro","pro_plus"].includes(plan);
-};
+const requirePaid = plan => ["basic","pro","pro_plus"].includes(String(plan||"").toLowerCase());
 async function enforceActive(req, res, next){
-  try{
-    const flags = readAdminFlags(req);
-    if(req.user?.is_super && flags.override){ return next(); }
-    const t = await getEffectivePlan(req.user.tenant_id, req);
-    const nowEpoch = now();
-    const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : true;
-    const plan = t.effective || t.plan;
-    const allowed = (plan && plan !== 'suspended') && (plan !== 'trial' ? true : trialActive);
-    if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
-    next();
-  }catch(e){
-    console.error('enforceActive error', e);
-    return res.status(500).json({ error: 'billing check failed' });
-  }
+try{
+  const flags = readAdminFlags(req);
+  if(req.user?.is_super && flags.override){ return next(); }
+
+  const t = await getEffectivePlan(req.user.tenant_id, req);
+  const allowed = (t.effective && t.effective !== 'suspended');
+  if (!allowed) return res.status(402).json({ error: 'subscription inactive' });
+  next();
+}catch(e){
+  console.error('enforceActive error', e);
+  return res.status(500).json({ error: 'billing check failed' });
+}
 }
 function requireSuper(req, res, next) { if (!req.user?.is_super) return res.status(403).json({ error: 'forbidden' }); next(); }
 function requireOwner(req, res, next) { if (!(req.user?.is_super || (req.user?.role === 'owner'))) return res.status(403).json({ error: 'forbidden' }); next(); }
@@ -152,14 +148,28 @@ function readAdminFlags(req){
 }
 
 async function getEffectivePlan(tenant_id, req){
-  const { rows } = await q(`SELECT plan, trial_ends_at FROM tenants WHERE tenant_id=$1`, [tenant_id]);
-  if(!rows.length) return { plan:null, trial_ends_at:null, effective:'none' };
+  const { rows } = await q(`SELECT plan, trial_started_at, trial_ends_at, trial_status FROM tenants WHERE tenant_id=$1`, [tenant_id]);
+  if(!rows.length) return { plan:null, trial_started_at:null, trial_ends_at:null, trial_status:null, effective:'none', trial_active:false };
   const t = rows[0];
-  const flags = readAdminFlags(req);
-  if(req.user?.is_super && flags.preview){
-    return { ...t, effective: flags.preview };
+  const nowEpoch = now();
+  const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : false;
+
+  // Super admin preview override (UI can pass x-plan-preview)
+  const flags = readAdminFlags(req||{headers:{}});
+  let effective = t.plan || 'basic';
+  if(trialActive) effective = 'pro_plus';
+  if(flags && flags.preview && (req?.user?.is_super)){
+    effective = String(flags.preview).toLowerCase();
   }
-  return { ...t, effective: t.plan };
+
+  return {
+    plan: t.plan,
+    trial_started_at: t.trial_started_at || null,
+    trial_ends_at: t.trial_ends_at || null,
+    trial_status: t.trial_status || (trialActive ? 'active' : 'ended'),
+    effective,
+    trial_active: trialActive
+  };
 }
 
 async function aiReply(tenant_id, prompt){
@@ -1245,7 +1255,7 @@ app.post("/auth/register",async (req,res)=>{
     const endsEpoch = nowEpoch + 7*24*3600; // 7-day trial
 
     await q(`INSERT INTO tenants(tenant_id,id,name,plan,trial_started_at,trial_ends_at,trial_status,created_at,updated_at)
-             VALUES($1,$1,$2,'trial',$3,$4,'active',$5,$5)
+             VALUES($1,$1,$2,'basic',$3,$4,'active',$5,$5)
              ON CONFLICT (tenant_id) DO UPDATE SET
                name=EXCLUDED.name,
                updated_at=EXCLUDED.updated_at`,
@@ -1269,10 +1279,29 @@ app.get("/me",authMiddleware,async (req,res)=>{
     const {rows}=await q(`SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
     if(!rows.length) return res.status(404).json({error:"tenant not found"});
     const me = rows[0];
+    const eff = await getEffectivePlan(req.user.tenant_id, req);
+    me.effective_plan = eff.effective;
+    me.trial_active   = eff.trial_active;
     me.role = req.user.role || 'member';
     me.is_super = !!req.user.is_super;
     res.json({ ok: true, ...me });
   }catch(e){ res.status(500).json({error:"me failed"}); }
+});
+
+app.get("/trial/status", authMiddleware, async (req,res)=>{
+  try{
+    const t = await getEffectivePlan(req.user.tenant_id, req);
+    const nowEpoch = now();
+    const days_left = t.trial_ends_at ? Math.max(0, Math.ceil((Number(t.trial_ends_at)-nowEpoch)/(24*3600))) : 0;
+    res.json({ ok:true, active: t.trial_active, ends_at: t.trial_ends_at || null, days_left, effective_plan: t.effective });
+  }catch(e){
+    res.status(500).json({ ok:false, error:'trial status failed' });
+  }
+});
+
+app.get("/admin/preview-plan", authMiddleware, requireSuper, async (req,res)=>{
+  const t = await getEffectivePlan(req.user.tenant_id, req);
+  res.json({ ok:true, effective: t.effective, base_plan: t.plan, trial_active: t.trial_active, trial_ends_at: t.trial_ends_at||null });
 });
 
 app.get("/usage",authMiddleware,async (req,res)=>{
@@ -1693,8 +1722,8 @@ async function writeAlert(tenant_id,ev){
 app.post("/email/scan",async (req,res)=>{
   try{
     const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-    const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
-    if(!requirePaid(rows[0]?.plan||"trial")) return res.status(403).json({error:"plan not active"});
+    const eff = await getEffectivePlan(tenant_id, req);
+    if(!requirePaid(eff.effective||"none")) return res.status(403).json({error:"plan not active"});
     const emails=req.body?.emails||[];
     await saveUsage(tenant_id,"email");
     const results=[];
@@ -1709,8 +1738,8 @@ app.post("/email/scan",async (req,res)=>{
 
 app.post("/edr/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
-  if(!["pro","pro_plus"].includes(rows[0]?.plan)) return res.status(403).json({error:"plan not active"});
+  const eff = await getEffectivePlan(tenant_id, req);
+  if(!["pro","pro_plus"].includes(eff.effective)) return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"edr");
   const events=req.body?.events||[];
   const results=[];
@@ -1724,8 +1753,8 @@ app.post("/edr/ingest",async (req,res)=>{
 
 app.post("/dns/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
-  if(!["pro","pro_plus"].includes(rows[0]?.plan)) return res.status(403).json({error:"plan not active"});
+  const eff = await getEffectivePlan(tenant_id, req);
+  if(!["pro","pro_plus"].includes(eff.effective)) return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"dns");
   const events=req.body?.events||[];
   const results=[];
@@ -1739,8 +1768,8 @@ app.post("/dns/ingest",async (req,res)=>{
 
 app.post("/logs/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
-  if(!["pro","pro_plus"].includes(rows[0]?.plan)) return res.status(403).json({error:"plan not active"});
+  const eff = await getEffectivePlan(tenant_id, req);
+  if(!["pro","pro_plus"].includes(eff.effective)) return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"logs");
   const events=req.body?.events||[];
   const results=[];
@@ -1754,8 +1783,8 @@ app.post("/logs/ingest",async (req,res)=>{
 
 app.post("/cloud/ingest",async (req,res)=>{
   const tenant_id=await checkKey(req); if(!tenant_id) return res.status(401).json({error:"Invalid API key"});
-  const {rows}=await q(`SELECT plan FROM tenants WHERE tenant_id=$1`,[tenant_id]);
-  if(rows[0]?.plan!=="pro_plus") return res.status(403).json({error:"plan not active"});
+  const eff = await getEffectivePlan(tenant_id, req);
+  if(eff.effective!=="pro_plus") return res.status(403).json({error:"plan not active"});
   await saveUsage(tenant_id,"cloud");
   res.json({ok:true});
 });
