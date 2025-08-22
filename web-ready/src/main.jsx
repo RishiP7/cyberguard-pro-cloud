@@ -579,6 +579,115 @@ function AdminOpsAudit(){
     </div>
   );
 }
+// ---- Admin Trial Control ----
+function AdminTrialControl(){
+  const [me, setMe] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(()=>{ apiGet('/me').then(m=>setMe({...m, trial: trialInfo(m)})).catch(()=>setMe(null)); },[]);
+
+  async function refresh(){
+    setErr(""); setMsg(""); setLoading(true);
+    try{ const m = await apiGet('/me'); setMe({...m, trial: trialInfo(m)}); }
+    catch(e){ setErr(e?.error || 'Failed to load /me'); }
+    finally{ setLoading(false); }
+  }
+
+  async function start(days=7){
+    setErr(""); setMsg(""); setLoading(true);
+    try{
+      const j = await apiPost('/admin/trial/start', { days });
+      setMsg(`Trial started for ${days} day${days===1?'':'s'}.`);
+      await refresh();
+      // let the rest of the app know
+      window.dispatchEvent(new Event('me-updated'));
+    }catch(e){ setErr(e?.error || 'Failed to start trial'); }
+    finally{ setLoading(false); }
+  }
+
+  async function endNow(){
+    setErr(""); setMsg(""); setLoading(true);
+    try{
+      await apiPost('/admin/trial/end', {});
+      setMsg('Trial ended.');
+      await refresh();
+      window.dispatchEvent(new Event('me-updated'));
+    }catch(e){ setErr(e?.error || 'Failed to end trial'); }
+    finally{ setLoading(false); }
+  }
+
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
+
+  const planActual = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const tri = me.trial || {active:false, days_left:0, ends_at:null};
+  const cardS = { padding:16, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)' };
+  const ghost = { padding:'8px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer' };
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Ops ▸ Trial Control</h1>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:12}}>
+        <div style={cardS}>
+          <div style={{fontWeight:700}}>Tenant status</div>
+          <div style={{marginTop:8}}>
+            <div><b>plan</b>: <code>{String(me.plan||'')}</code></div>
+            <div><b>plan_actual</b>: <code>{String(me.plan_actual||me.plan||'')}</code></div>
+            <div><b>effective_plan</b>: <code>{String(me.effective_plan||planActual)}</code></div>
+            <div style={{marginTop:6}}>
+              <b>trial</b>: {tri.active ? 'active' : 'inactive'}
+              {tri.active && (
+                <>
+                  {' • days_left: '}<b>{Number(tri.days_left||0)}</b>
+                  {tri.ends_at ? <> {' • ends_at: '}<code>{typeof tri.ends_at==='string'?tri.ends_at:new Date(Number(tri.ends_at||0)*1000).toISOString()}</code></> : null}
+                </>
+              )}
+            </div>
+          </div>
+          <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button style={ghost} onClick={refresh} disabled={loading}>Refresh</button>
+            <button style={ghost} onClick={()=>start(7)} disabled={loading || !(planActual==='basic'||planActual==='pro')}>Start 7‑day trial</button>
+            <button style={ghost} onClick={endNow} disabled={loading || !tri.active}>End trial</button>
+          </div>
+          {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</div>}
+          {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Admin Console (sidebar wrapper) ----
+function AdminConsolePage({ page }){
+  const [me, setMe] = React.useState(null);
+  React.useEffect(()=>{ apiGet('/me').then(setMe).catch(()=>setMe(null)); },[]);
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
+
+  const wrap = { display:'grid', gridTemplateColumns:'220px 1fr', gap:12 };
+  const side = { padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)', position:'sticky', top:86, height:'fit-content' };
+  const link = { display:'block', padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', textDecoration:'none', color:'#e6e9ef', marginBottom:8, background:'rgba(255,255,255,.03)' };
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Admin Console</h1>
+      <div style={wrap}>
+        <div style={side}>
+          <Link to="/admin/console/trial" style={link}>Trial Control</Link>
+          <Link to="/admin/console/retention" style={link}>Data Retention</Link>
+          <Link to="/admin/console/audit" style={link}>Audit Log</Link>
+        </div>
+        <div>
+          {page === 'trial' && <AdminTrialControl/>}
+          {page === 'retention' && <AdminOpsRetention/>}
+          {page === 'audit' && <AdminOpsAudit/>}
+        </div>
+      </div>
+    </div>
+  );
+}
 // ---------- Layout ----------
 function SuperAdminBanner({ me }) {
   if (!me?.is_super) return null;
@@ -740,6 +849,7 @@ function Layout({children}){
           <N to="/policy">Policy</N>
           <N to="/account">Account</N>
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
+          {(me?.is_super || me?.role === 'owner') && (<N to="/admin/console/trial">Admin Console</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/ops/retention">Ops</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/ops/audit">Ops Audit</N>)}
           <N to="/test">Test</N>
@@ -1513,6 +1623,10 @@ function App(){
   <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
   <Route path="/admin/ops/retention" element={<RequireAuth><AdminOpsRetention /></RequireAuth>} />
   <Route path="/admin/ops/audit" element={<RequireAuth><AdminOpsAudit /></RequireAuth>} />
+  <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
+  <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
+  <Route path="/admin/console/retention" element={<RequireAuth><AdminConsolePage page="retention" /></RequireAuth>} />
+  <Route path="/admin/console/audit" element={<RequireAuth><AdminConsolePage page="audit" /></RequireAuth>} />
   <Route path="/test" element={<RequireAuth><TestEvents api={API}/></RequireAuth>}/>
   <Route path="*" element={<Navigate to="/" replace />}/>
 </Routes>
