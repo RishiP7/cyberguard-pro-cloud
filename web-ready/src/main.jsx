@@ -664,6 +664,8 @@ function useNav(){
   const [me,setMe]=useState(null);
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState(null);
+  // Ref for scheduling a one-shot refresh at trial end
+  const trialTimerRef = React.useRef(null);
   useEffect(()=>{
     let mounted = true;
 
@@ -673,6 +675,21 @@ function useNav(){
         const m = await apiGet("/me");
         const withTrial = { ...m, trial: trialInfo(m) };
         if(mounted) setMe(withTrial);
+        // If a trial is active, schedule an automatic refresh at the moment it ends
+        try {
+          if (trialTimerRef.current) { clearTimeout(trialTimerRef.current); trialTimerRef.current = null; }
+          const t = withTrial?.trial || null;
+          const planActual = String(withTrial?.plan_actual || withTrial?.plan || '').toLowerCase();
+          if (t && t.active && (planActual === 'basic' || planActual === 'pro') && t.ends_at) {
+            const endMs = typeof t.ends_at === 'string' && t.ends_at.includes('T')
+              ? new Date(t.ends_at).getTime()
+              : Number(t.ends_at) * 1000;
+            const delta = Math.max(0, endMs - Date.now()) + 1500; // small buffer
+            trialTimerRef.current = setTimeout(() => {
+              window.dispatchEvent(new Event('me-updated'));
+            }, delta);
+          }
+        } catch (_e) {}
       }catch(e){ if(mounted) setErr(e.error||"API error"); }
       finally{ if(mounted) setLoading(false); }
     }
@@ -682,7 +699,12 @@ function useNav(){
     const onUpdated = () => { setLoading(true); fetchMe(); };
     window.addEventListener('me-updated', onUpdated);
 
-    return ()=>{ mounted=false; window.removeEventListener('me-updated', onUpdated); };
+    return ()=>{
+      mounted=false;
+      // Clear any scheduled trial refresh
+      if (trialTimerRef.current) { try { clearTimeout(trialTimerRef.current); } catch(_e){} trialTimerRef.current = null; }
+      window.removeEventListener('me-updated', onUpdated);
+    };
   },[]);
   return { me, loading, err };
 }
@@ -1312,7 +1334,32 @@ function App(){
 function Integrations({ api }) {
   const [meState, setMeState] = React.useState(null);
   React.useEffect(()=>{ apiGet('/me').then(setMeState).catch(()=>setMeState(null)); },[]);
-  const caps = planCapabilities(meState?.plan || 'trial', meState);
+  // Listen for global /me-updated events and refresh
+  React.useEffect(() => {
+    const onUpdated = () => { apiGet('/me').then(setMeState).catch(()=>{}); };
+    window.addEventListener('me-updated', onUpdated);
+    return () => window.removeEventListener('me-updated', onUpdated);
+  }, []);
+  // Auto-refresh at trial end (in case plan changes)
+  React.useEffect(() => {
+    let timer = null;
+    try {
+      const t = meState?.trial || null;
+      const planActual = String(meState?.plan_actual || meState?.plan || '').toLowerCase();
+      if (t && t.active && (planActual === 'basic' || planActual === 'pro') && t.ends_at) {
+        const endMs = typeof t.ends_at === 'string' && t.ends_at.includes('T')
+          ? new Date(t.ends_at).getTime()
+          : Number(t.ends_at) * 1000;
+        const delta = Math.max(0, endMs - Date.now()) + 1500;
+        timer = setTimeout(() => {
+          apiGet('/me').then(setMeState).catch(()=>{});
+          window.dispatchEvent(new Event('me-updated'));
+        }, delta);
+      }
+    } catch (_e) {}
+    return () => { if (timer) try { clearTimeout(timer); } catch(_e){} };
+  }, [meState?.trial?.ends_at, meState?.trial?.active, meState?.plan_actual, meState?.plan]);
+  const caps = planCapabilities(meState?.plan_actual || meState?.plan || 'trial', meState);
   // --- Helper functions for email provider normalization and OAuth ---
   function normEmailProvider(p){
     p = (p||'').toLowerCase();
