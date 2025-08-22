@@ -658,17 +658,24 @@ function useNav(){
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState(null);
   useEffect(()=>{
-    let mounted=true;
-    (async()=>{
+    let mounted = true;
+
+    async function fetchMe(){
       try{
-  if(!localStorage.getItem("token")){ setMe(null); setLoading(false); return; }
-  const m = await apiGet("/me");
-  const withTrial = { ...m, trial: trialInfo(m) };
-  if(mounted) setMe(withTrial);
-}catch(e){ if(mounted) setErr(e.error||"API error"); }
+        if(!localStorage.getItem("token")){ if(mounted){ setMe(null); setLoading(false); } return; }
+        const m = await apiGet("/me");
+        const withTrial = { ...m, trial: trialInfo(m) };
+        if(mounted) setMe(withTrial);
+      }catch(e){ if(mounted) setErr(e.error||"API error"); }
       finally{ if(mounted) setLoading(false); }
-    })();
-    return ()=>{ mounted=false; };
+    }
+
+    fetchMe();
+
+    const onUpdated = () => { setLoading(true); fetchMe(); };
+    window.addEventListener('me-updated', onUpdated);
+
+    return ()=>{ mounted=false; window.removeEventListener('me-updated', onUpdated); };
   },[]);
   return { me, loading, err };
 }
@@ -1034,10 +1041,15 @@ function Account(){
 
   async function activate(plan){
     try{
-      // Backend may ignore coupon, that's fine — we persist for checkout handoff later.
       const body = promo ? { plan, coupon: promo } : { plan };
       const r = await apiPost("/billing/mock-activate", body);
-      setMe({...me, plan:r.plan});
+
+      // Immediately refresh /me so trial eligibility and plan_actual are correct
+      const fresh = await apiGet("/me");
+      setMe(fresh);
+      // Notify global listeners (navbar/layout) to refetch
+      window.dispatchEvent(new Event('me-updated'));
+
       setMsg(`Plan set to ${r.plan}${promo ? ` (promo ${promo} applied if eligible)` : ""}`);
     }catch(e){
       setMsg(e.error||"activation failed");
@@ -1744,10 +1756,10 @@ function TestEvents({ api }){
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
   const caps = planCapabilities(me?.plan || "trial", me);
-const planStr = String(me?.plan || '').toLowerCase();
-const isProPlus = planStr === 'pro_plus';
-const showTrial = !!(me?.trial?.active) && (planStr === 'basic' || planStr === 'pro');
-const trialDays = Number(me?.trial?.days_left ?? 0);
+  const planStr = String(me?.plan || '').toLowerCase();
+  const isProPlus = planStr === 'pro_plus';
+  const showTrial = !!(me?.trial?.active) && (planStr === 'basic' || planStr === 'pro');
+  const trialDays = Number(me?.trial?.days_left ?? 0);
   const styles = {
     row:{display:"flex",alignItems:"center",gap:12,margin:"10px 0"},
     btn:{padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"#1f6feb",color:"#fff",cursor:"pointer"},
@@ -1863,10 +1875,10 @@ const trialDays = Number(me?.trial?.days_left ?? 0);
           <b>AI</b>
           <button
             style={styles.btn}
-            onClick={()=>alert(isTrial
+            onClick={()=>alert(showTrial
               ? "Trial preview: this will call /ai/ask with a sample question and display the model's answer."
               : "AI test coming soon: will exercise /ai/ask with a sample question and show the model's answer here.")}
-          >{isTrial ? "Preview (trial)" : "Preview"}</button>
+          >{showTrial ? "Preview (trial)" : "Preview"}</button>
         </div>
       ) : (
         <div style={styles.row}><b>AI</b><span style={{opacity:.8}}>Locked — available on Pro+.</span></div>
