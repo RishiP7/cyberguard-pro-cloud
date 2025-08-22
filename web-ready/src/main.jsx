@@ -323,8 +323,9 @@ const badgeSA={
 // ---- Trial Notice Bar ----
 function TrialNotice({ me }){
   const t = (me?.trial && typeof me.trial.active === 'boolean') ? me.trial : trialInfo(me);
-  const plan = String(me?.plan_actual || me?.plan || '').toLowerCase();
-  if (!(t?.active && (plan === 'basic' || plan === 'pro'))) return null;
+  const actualPlan = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const adminPreview = (typeof localStorage!=='undefined' && (localStorage.getItem('admin_plan_preview')||'')).toLowerCase();
+  if (!(t?.active && (actualPlan === 'basic' || actualPlan === 'pro') && adminPreview !== 'pro_plus')) return null;
   return (
     <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #c69026',background:'#c6902615',borderRadius:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <div>
@@ -514,8 +515,9 @@ function Layout({children}){
 
   // Correct ordering + single source of truth for the trial badge
   const info = trialInfo(me); // normalized {active, days_left, ends_at}
-  const plan = String(me?.plan_actual || me?.plan || '').toLowerCase();
-  const showTrialBadge = info.active && (plan === 'basic' || plan === 'pro');
+  const actualPlan = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const adminPreview = (typeof localStorage!=='undefined' && (localStorage.getItem('admin_plan_preview')||'')).toLowerCase();
+  const showTrialBadge = info.active && (actualPlan === 'basic' || actualPlan === 'pro') && adminPreview !== 'pro_plus';
   return (
     <div>
       <div style={bar}>
@@ -1756,9 +1758,10 @@ function TestEvents({ api }){
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
   const caps = planCapabilities(me?.plan || "trial", me);
-  const planStr = String(me?.plan || '').toLowerCase();
+  const planStr = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const adminPreviewTE = (typeof localStorage!=='undefined' && (localStorage.getItem('admin_plan_preview')||'')).toLowerCase();
+  const showTrial = !!(me?.trial?.active) && (planStr === 'basic' || planStr === 'pro') && adminPreviewTE !== 'pro_plus';
   const isProPlus = planStr === 'pro_plus';
-  const showTrial = !!(me?.trial?.active) && (planStr === 'basic' || planStr === 'pro');
   const trialDays = Number(me?.trial?.days_left ?? 0);
   const styles = {
     row:{display:"flex",alignItems:"center",gap:12,margin:"10px 0"},
