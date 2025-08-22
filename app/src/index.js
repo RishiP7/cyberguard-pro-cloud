@@ -1282,6 +1282,7 @@ app.get("/me",authMiddleware,async (req,res)=>{
     const eff = await getEffectivePlan(req.user.tenant_id, req);
     me.effective_plan = eff.effective;
     me.trial_active   = eff.trial_active;
+    me.plan_actual = eff.plan || me.plan;
     me.role = req.user.role || 'member';
     me.is_super = !!req.user.is_super;
     // --- normalized trial object for frontend ---
@@ -1302,7 +1303,14 @@ app.get("/trial/status", authMiddleware, async (req,res)=>{
     const t = await getEffectivePlan(req.user.tenant_id, req);
     const nowEpoch = now();
     const days_left = t.trial_ends_at ? Math.max(0, Math.ceil((Number(t.trial_ends_at)-nowEpoch)/(24*3600))) : 0;
-    res.json({ ok:true, active: t.trial_active, ends_at: t.trial_ends_at || null, days_left, effective_plan: t.effective });
+    res.json({
+      ok: true,
+      active: t.trial_active,
+      ends_at: t.trial_ends_at || null,
+      days_left,
+      effective_plan: t.effective,
+      plan_actual: t.plan || null
+    });
   }catch(e){
     res.status(500).json({ ok:false, error:'trial status failed' });
   }
