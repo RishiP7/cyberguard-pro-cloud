@@ -1986,6 +1986,110 @@ app.get("/admin/sar.csv", authMiddleware, requireSuper, async (_req,res)=>{
   res.setHeader("Content-Type","text/csv"); res.send(lines.join("\n"));
 });
 
+// ---------- data retention & backup diagnostics ----------
+// Retain alerts for RETAIN_ALERT_DAYS (default 90) and usage_events for RETAIN_USAGE_DAYS (default 180)
+const RETAIN_ALERT_DAYS = Number(process.env.RETAIN_ALERT_DAYS || 90);
+const RETAIN_USAGE_DAYS = Number(process.env.RETAIN_USAGE_DAYS || 180);
+
+function cutoffEpoch(days){
+  const d = Math.max(1, Number(days || 1));
+  return Math.floor(Date.now()/1000) - (d * 24 * 3600);
+}
+
+async function retentionPreview(){
+  const a = await q(`SELECT COUNT(*)::int AS n FROM alerts WHERE created_at < $1`, [cutoffEpoch(RETAIN_ALERT_DAYS)]);
+  const u = await q(`SELECT COUNT(*)::int AS n FROM usage_events WHERE created_at < $1`, [cutoffEpoch(RETAIN_USAGE_DAYS)]);
+  return { alerts: a.rows[0]?.n || 0, usage_events: u.rows[0]?.n || 0 };
+}
+
+async function retentionRun(){
+  const a = await q(`
+    WITH del AS (
+      DELETE FROM alerts
+       WHERE created_at < $1
+       RETURNING 1
+    )
+    SELECT COUNT(*)::int AS n FROM del
+  `, [cutoffEpoch(RETAIN_ALERT_DAYS)]);
+  const u = await q(`
+    WITH del AS (
+      DELETE FROM usage_events
+       WHERE created_at < $1
+       RETURNING 1
+    )
+    SELECT COUNT(*)::int AS n FROM del
+  `, [cutoffEpoch(RETAIN_USAGE_DAYS)]);
+  return { alerts_deleted: a.rows[0]?.n || 0, usage_events_deleted: u.rows[0]?.n || 0 };
+}
+
+// Super Admin: retention preview
+app.get('/admin/ops/retention/preview', authMiddleware, requireSuper, async (_req, res) => {
+  try{
+    const p = await retentionPreview();
+    res.json({ ok:true, keep: { alerts_days: RETAIN_ALERT_DAYS, usage_days: RETAIN_USAGE_DAYS }, pending: p });
+  }catch(e){
+    res.status(500).json({ ok:false, error:'preview failed' });
+  }
+});
+
+// Super Admin: retention run now
+app.post('/admin/ops/retention/run', authMiddleware, requireSuper, async (_req, res) => {
+  try{
+    const del = await retentionRun();
+    res.json({ ok:true, deleted: del });
+  }catch(e){
+    res.status(500).json({ ok:false, error:'retention run failed' });
+  }
+});
+
+// Super Admin: lightweight backup/DB diagnostics
+app.get('/admin/ops/backup/diag', authMiddleware, requireSuper, async (_req, res) => {
+  try{
+    const ver = await q(`SELECT version() AS version`);
+    const tz  = await q(`SELECT current_setting('TimeZone') AS tz`);
+    const nowts = await q(`SELECT NOW() AT TIME ZONE 'UTC' AS utc_now`);
+    res.json({
+      ok: true,
+      db: {
+        version: ver.rows[0]?.version || null,
+        timezone: tz.rows[0]?.tz || null,
+        utc_now: nowts.rows[0]?.utc_now || null
+      },
+      notes: 'Use your provider’s automated backups & snapshots. This endpoint only surfaces DB metadata so you can record it in ops runbooks.'
+    });
+  }catch(e){
+    res.status(500).json({ ok:false, error:'backup diag failed' });
+  }
+});
+
+// Daily retention at 03:15 UTC
+(function scheduleDailyRetention(){
+  function msUntilNext(hourUTC, minuteUTC){
+    const now = new Date();
+    const next = new Date(now);
+    next.setUTCHours(hourUTC, minuteUTC, 0, 0);
+    if(next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+    return next.getTime() - now.getTime();
+  }
+  const firstDelay = msUntilNext(3, 15); // 03:15 UTC
+  setTimeout(async () => {
+    try{
+      const del = await retentionRun();
+      console.log('[retention]', new Date().toISOString(), del);
+    }catch(e){
+      console.warn('[retention] failed', e?.message || e);
+    }
+    setInterval(async () => {
+      try{
+        const del = await retentionRun();
+        console.log('[retention]', new Date().toISOString(), del);
+      }catch(e){
+        console.warn('[retention] failed', e?.message || e);
+      }
+    }, 24*60*60*1000);
+  }, firstDelay);
+})();
+
 // ---------- summary job (console log in dev) ----------
 setInterval(async ()=>{
   try{
