@@ -492,7 +492,94 @@ function TrialCountdownBadge({ me }) {
     </Link>
   );
 }
+// ---- Admin Ops: Retention ----
+function AdminOpsRetention(){
+  const [me, setMe] = React.useState(null);
+  const [buckets, setBuckets] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
 
+  React.useEffect(()=>{ apiGet('/me').then(setMe).catch(()=>setMe(null)); },[]);
+
+  async function load(){
+    setErr(""); setLoading(true);
+    try{
+      const j = await apiGet('/admin/ops/usage/buckets');
+      setBuckets(j?.buckets || {});
+    }catch(e){ setErr(e?.error || 'Failed to load buckets'); }
+    finally{ setLoading(false); }
+  }
+  React.useEffect(()=>{ load(); },[]);
+
+  async function preview(){
+    setErr(""); setMsg(""); setLoading(true);
+    try{
+      const j = await apiGet('/admin/ops/retention/preview');
+      setMsg(`Preview → alerts: ${j?.pending?.alerts ?? 0}, usage_events: ${j?.pending?.usage_events ?? 0}`);
+    }catch(e){ setErr(e?.error || 'Preview failed'); }
+    finally{ setLoading(false); }
+  }
+
+  async function runPurge(){
+    setErr(""); setMsg(""); setLoading(true);
+    try{
+      const j = await apiPost('/admin/ops/retention/run', {});
+      setMsg(`Deleted → alerts: ${j?.deleted?.alerts_deleted ?? 0}, usage_events: ${j?.deleted?.usage_events_deleted ?? 0}`);
+      await load();
+    }catch(e){ setErr(e?.error || 'Run failed'); }
+    finally{ setLoading(false); }
+  }
+
+  async function seed(){
+    setErr(""); setMsg(""); setLoading(true);
+    try{
+      const j = await fetch(`${API_BASE}/admin/ops/seed/usage?days_ago=200&count=2000`, {
+        method:'POST', headers: { ...authHeaders(), ...adminPreviewHeaders() }
+      }).then(r=>r.json());
+      if(!j?.ok) throw j;
+      setMsg('Seeded 2000 usage events ~200 days ago');
+      await load();
+    }catch(e){ setErr(e?.error || 'Seed failed'); }
+    finally{ setLoading(false); }
+  }
+
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
+
+  const cardS = { padding:16, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)' };
+  const ghost = { padding:'8px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer' };
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Ops ▸ Retention</h1>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12}}>
+        <div style={cardS}>
+          <div style={{fontWeight:700}}>Usage Buckets</div>
+          <div style={{marginTop:8}}>
+            {loading && <div style={{opacity:.8}}>Loading…</div>}
+            {buckets && (
+              <ul style={{listStyle:'none',padding:0,margin:0}}>
+                <li>{'<90d'}: {buckets['<90d'] ?? 0}</li>
+                <li>{'90-180d'}: {buckets['90-180d'] ?? 0}</li>
+                <li>{'>180d'}: {buckets['>180d'] ?? 0}</li>
+              </ul>
+            )}
+            {!buckets && !loading && <div style={{opacity:.8}}>No data yet.</div>}
+          </div>
+          <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button style={ghost} onClick={load} disabled={loading}>Refresh</button>
+            <button style={ghost} onClick={preview} disabled={loading}>Preview purge</button>
+            <button style={ghost} onClick={runPurge} disabled={loading}>Run purge</button>
+            <button style={ghost} onClick={seed} disabled={loading}>Seed 2k @200d</button>
+          </div>
+          {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</div>}
+          {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
 // ---------- Layout ----------
 function SuperAdminBanner({ me }) {
   if (!me?.is_super) return null;
