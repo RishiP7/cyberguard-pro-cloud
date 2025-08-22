@@ -2077,6 +2077,25 @@ app.get('/admin/ops/backup/diag', authMiddleware, requireSuper, async (_req, res
     res.status(500).json({ ok:false, error:'backup diag failed' });
   }
 });
+
+// Super Admin: list recent ops runs (audit log)
+app.get('/admin/ops/runs', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 50)));
+    const type  = (req.query?.type || '').toString().trim(); // optional filter
+
+    const params = [];
+    let sql = `SELECT id, run_type, details, created_at FROM ops_runs`;
+    if (type) { sql += ` WHERE run_type = $1`; params.push(type); }
+    sql += ` ORDER BY created_at DESC LIMIT ${limit}`;
+
+    const { rows } = await q(sql, params);
+    return res.json({ ok: true, runs: rows });
+  } catch (e) {
+    console.error('ops runs failed', e);
+    return res.status(500).json({ ok: false, error: 'ops runs failed' });
+  }
+});
 // Super Admin: seed usage events for retention testing
 // Super Admin: seed usage events for retention testing (gated by ALLOW_ADMIN_SEED)
 app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res) => {
