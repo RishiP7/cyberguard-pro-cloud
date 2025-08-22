@@ -1329,6 +1329,70 @@ app.get("/trial/status", authMiddleware, async (req,res)=>{
   }
 });
 
+// ---- Admin: start trial (Basic/Pro only) ----
+app.post('/admin/trial/start', authMiddleware, requireSuper, async (req, res) => {
+  try{
+    const { tenant_id, days } = req.body || {};
+    const tid = tenant_id || req.user.tenant_id;
+    const d = Math.max(1, Math.min(30, Number(days || 7)));
+    const nowEpoch = now();
+    const ends = nowEpoch + d * 24 * 3600;
+
+    // Ensure tenant exists and is eligible (Basic/Pro only)
+    const trow = await q(`SELECT plan FROM tenants WHERE tenant_id=$1`, [tid]).then(r => r.rows[0]);
+    if (!trow) return res.status(404).json({ ok:false, error: 'tenant not found' });
+    const basePlan = String(trow.plan || 'basic').toLowerCase();
+    if (!(basePlan === 'basic' || basePlan === 'pro')) {
+      return res.status(400).json({ ok:false, error: 'trial only available for Basic/Pro tenants' });
+    }
+
+    await q(
+      `UPDATE tenants
+          SET trial_started_at = COALESCE(trial_started_at, $2),
+              trial_ends_at    = $3,
+              trial_status     = 'active',
+              updated_at       = $4
+        WHERE tenant_id=$1`,
+      [tid, nowEpoch, ends, nowEpoch]
+    );
+
+    const days_left = Math.max(0, Math.ceil((ends - nowEpoch) / 86400));
+    return res.json({
+      ok: true,
+      tenant_id: tid,
+      trial: { active: true, days_left, ends_at: new Date(ends * 1000).toISOString() }
+    });
+  }catch(e){
+    console.error('admin trial start failed', e);
+    return res.status(500).json({ ok:false, error: 'trial start failed' });
+  }
+});
+
+// ---- Admin: end trial now ----
+app.post('/admin/trial/end', authMiddleware, requireSuper, async (req, res) => {
+  try{
+    const { tenant_id } = req.body || {};
+    const tid = tenant_id || req.user.tenant_id;
+    const nowEpoch = now();
+
+    const r = await q(
+      `UPDATE tenants
+          SET trial_ends_at = $2,
+              trial_status  = 'ended',
+              updated_at    = $2
+        WHERE tenant_id=$1
+        RETURNING tenant_id`,
+      [tid, nowEpoch]
+    );
+
+    if (!r.rowCount) return res.status(404).json({ ok:false, error: 'tenant not found' });
+    return res.json({ ok:true, tenant_id: tid, trial: { active:false, days_left:0, ends_at: new Date(nowEpoch * 1000).toISOString() } });
+  }catch(e){
+    console.error('admin trial end failed', e);
+    return res.status(500).json({ ok:false, error: 'trial end failed' });
+  }
+});
+
 app.get("/admin/preview-plan", authMiddleware, requireSuper, async (req,res)=>{
   const t = await getEffectivePlan(req.user.tenant_id, req);
   res.json({ ok:true, effective: t.effective, base_plan: t.plan, trial_active: t.trial_active, trial_ends_at: t.trial_ends_at||null });
