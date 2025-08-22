@@ -152,13 +152,16 @@ async function getEffectivePlan(tenant_id, req){
   if(!rows.length) return { plan:null, trial_started_at:null, trial_ends_at:null, trial_status:null, effective:'none', trial_active:false };
   const t = rows[0];
   const nowEpoch = now();
-  const trialActive = t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : false;
+
+  const basePlan = String(t.plan || 'basic').toLowerCase();
+  const trialEligible = (basePlan === 'basic' || basePlan === 'pro');
+  const trialActive   = trialEligible && (t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : false);
 
   // Super admin preview override (UI can pass x-plan-preview)
   const flags = readAdminFlags(req||{headers:{}});
   let effective = t.plan || 'basic';
-  if(trialActive) effective = 'pro_plus';
-  if(flags && flags.preview && (req?.user?.is_super)){
+  if (trialActive) effective = 'pro_plus';
+  if (flags && flags.preview && (req?.user?.is_super)) {
     effective = String(flags.preview).toLowerCase();
   }
 
@@ -1294,6 +1297,12 @@ app.get("/me",authMiddleware,async (req,res)=>{
       days_left,
       ends_at: endsEpoch ? new Date(endsEpoch * 1000).toISOString() : null
     };
+    // Only Basic/Pro can have an active Pro+ trial
+    const basePlanNow = String(me.plan || '').toLowerCase();
+    const trialEligibleNow = (basePlanNow === 'basic' || basePlanNow === 'pro');
+    if (!trialEligibleNow) {
+      me.trial = { active:false, days_left:0, ends_at:null };
+    }
     res.json({ ok: true, ...me });
   }catch(e){ res.status(500).json({error:"me failed"}); }
 });
@@ -1302,11 +1311,15 @@ app.get("/trial/status", authMiddleware, async (req,res)=>{
   try{
     const t = await getEffectivePlan(req.user.tenant_id, req);
     const nowEpoch = now();
-    const days_left = t.trial_ends_at ? Math.max(0, Math.ceil((Number(t.trial_ends_at)-nowEpoch)/(24*3600))) : 0;
+    const basePlan = String(t.plan || '').toLowerCase();
+    const eligible = (basePlan === 'basic' || basePlan === 'pro');
+    const days_left = (eligible && t.trial_ends_at)
+      ? Math.max(0, Math.ceil((Number(t.trial_ends_at)-nowEpoch)/(24*3600)))
+      : 0;
     res.json({
       ok: true,
-      active: t.trial_active,
-      ends_at: t.trial_ends_at || null,
+      active: eligible ? !!t.trial_active : false,
+      ends_at: eligible ? (t.trial_ends_at || null) : null,
       days_left,
       effective_plan: t.effective,
       plan_actual: t.plan || null
