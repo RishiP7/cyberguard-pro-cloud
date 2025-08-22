@@ -2061,6 +2061,41 @@ app.get('/admin/ops/backup/diag', authMiddleware, requireSuper, async (_req, res
     res.status(500).json({ ok:false, error:'backup diag failed' });
   }
 });
+// Super Admin: seed usage events for retention testing
+app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    // Accept either query or body params
+    const rawDays  = (req.query?.days_ago ?? req.body?.days_ago ?? 200);
+    const rawCount = (req.query?.count    ?? req.body?.count    ?? 500);
+
+    const daysAgo = Math.max(1, Math.min(3650, Number(rawDays)));
+    const count   = Math.max(1, Math.min(5000, Number(rawCount)));
+
+    const baseTs = now() - (daysAgo * 24 * 3600);
+    let inserted = 0;
+
+    // Spread events roughly over the chosen backdated day
+    for (let i = 0; i < count; i++) {
+      const jitter = Math.floor(Math.random() * (24 * 3600));
+      const ts = baseTs + jitter;
+      await q(
+        `INSERT INTO usage_events(id, tenant_id, kind, created_at)
+         VALUES($1,$2,$3,$4)`,
+        [uuidv4(), req.user.tenant_id, 'email', ts]
+      );
+      inserted++;
+    }
+
+    return res.json({
+      ok: true,
+      seeded: { count: inserted, days_ago: daysAgo },
+      hint: 'Use /admin/ops/retention/preview and /admin/ops/retention/run to verify purge.'
+    });
+  } catch (e) {
+    console.error('seed usage failed', e);
+    return res.status(500).json({ ok:false, error: 'seed failed' });
+  }
+});
 
 // Daily retention at 03:15 UTC
 (function scheduleDailyRetention(){
