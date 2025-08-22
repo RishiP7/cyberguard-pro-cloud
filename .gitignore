@@ -11,3 +11,6 @@ build/
 .DS_Store
 .vscode/
 .idea/
+.DS_Store
+web-ready/.DS_Store
+app/.DS_Store
