@@ -2097,6 +2097,50 @@ app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res)
   }
 });
 
+// Super Admin: usage age buckets (per-tenant) for diagnostics
+app.get('/admin/ops/usage/buckets', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const nowEpoch = now();
+    const cut90  = nowEpoch -  90 * 24 * 3600;
+    const cut180 = nowEpoch - 180 * 24 * 3600;
+
+    const lt90 = await q(
+      `SELECT COUNT(*)::int AS n
+         FROM usage_events
+        WHERE tenant_id=$1 AND created_at >= $2`,
+      [tid, cut90]
+    );
+
+    const d90_180 = await q(
+      `SELECT COUNT(*)::int AS n
+         FROM usage_events
+        WHERE tenant_id=$1 AND created_at < $2 AND created_at >= $3`,
+      [tid, cut90, cut180]
+    );
+
+    const gt180 = await q(
+      `SELECT COUNT(*)::int AS n
+         FROM usage_events
+        WHERE tenant_id=$1 AND created_at < $2`,
+      [tid, cut180]
+    );
+
+    return res.json({
+      ok: true,
+      buckets: {
+        "<90d": lt90.rows[0]?.n || 0,
+        "90-180d": d90_180.rows[0]?.n || 0,
+        ">180d": gt180.rows[0]?.n || 0
+      },
+      keep: { alerts_days: RETAIN_ALERT_DAYS, usage_days: RETAIN_USAGE_DAYS }
+    });
+  } catch (e) {
+    console.error('usage buckets failed', e);
+    return res.status(500).json({ ok: false, error: 'buckets failed' });
+  }
+});
+
 // Daily retention at 03:15 UTC
 (function scheduleDailyRetention(){
   function msUntilNext(hourUTC, minuteUTC){
