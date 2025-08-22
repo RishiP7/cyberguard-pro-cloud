@@ -847,6 +847,7 @@ function Layout({children}){
           <N to="/">Dashboard</N>
           <N to="/integrations">Integrations</N>
           <N to="/policy">Policy</N>
+          <N to="/pricing">Pricing</N>
           <N to="/account">Account</N>
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/console/trial">Admin Console</N>)}
@@ -1432,6 +1433,156 @@ function Account(){
   );
 }
 
+function Pricing(){
+  const [me, setMe] = React.useState(null);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [coupon, setCoupon] = React.useState(localStorage.getItem("promo_code") || "");
+
+  React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function checkout(plan){
+    setErr(""); setMsg(""); setBusy(true);
+    try{
+      const token = localStorage.getItem("token") || "";
+      const body  = coupon ? { plan, coupon } : { plan };
+      const r = await fetch(`${API_ORIGIN}/billing/checkout`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if(!r.ok) throw new Error(j?.error || "Checkout failed");
+      if(j?.url){
+        // Save coupon locally for later and redirect
+        if (coupon) localStorage.setItem("promo_code", coupon);
+        window.location.href = j.url;
+        return;
+      }
+      setMsg("Checkout created.");
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  async function portal(){
+    setErr(""); setMsg(""); setBusy(true);
+    try{
+      const token = localStorage.getItem("token") || "";
+      const r = await fetch(`${API_ORIGIN}/billing/portal`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", Authorization: `Bearer ${token}` }
+      });
+      const j = await r.json();
+      if(!r.ok) throw new Error(j?.error || "Portal failed");
+      if(j?.url){ window.location.href = j.url; return; }
+      setMsg("Opened billing portal.");
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  const s = {
+    grid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:12},
+    card:{padding:16,border:"1px solid rgba(255,255,255,.12)",borderRadius:12,background:"rgba(255,255,255,.04)"},
+    h:{fontWeight:700,fontSize:18},
+    price:{fontSize:28,fontWeight:800,marginTop:6},
+    btn:{padding:"10px 12px",borderRadius:10,border:"1px solid #2b6dff66",background:"#1f6feb",color:"#fff",cursor:"pointer"},
+    ghost:{padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.22)",background:"transparent",color:"#e6e9ef",cursor:"pointer"}
+  };
+
+  const paid = me && (me.plan === "basic" || me.plan === "pro" || me.plan === "pro_plus");
+
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Pricing</h1>
+
+      <div style={{marginBottom:12, display:"grid", gridTemplateColumns:"1fr 220px", gap:10, alignItems:"center"}}>
+        <div style={{opacity:.9}}>
+          Choose a plan. You can manage or cancel anytime in the billing portal.
+        </div>
+        <div style={{display:"flex", gap:8, alignItems:"center"}}>
+          <input
+            value={coupon}
+            onChange={e=>setCoupon(e.target.value)}
+            placeholder="Coupon code (optional)"
+            style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.06)",color:"inherit"}}
+          />
+          <button
+            style={s.ghost}
+            onClick={()=>{
+              if (coupon) localStorage.setItem("promo_code", coupon);
+              else localStorage.removeItem("promo_code");
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+
+      <div style={s.grid}>
+        <div style={s.card}>
+          <div style={s.h}>Basic</div>
+          <div style={s.price}>£49/mo</div>
+          <ul style={{opacity:.9,lineHeight:1.5}}>
+            <li>Email threat scanning</li>
+            <li>Core dashboards &amp; alerts</li>
+            <li>Community support</li>
+          </ul>
+          <button disabled={busy} style={s.btn} onClick={()=>checkout("basic")}>Start Basic</button>
+        </div>
+
+        <div style={s.card}>
+          <div style={s.h}>Pro</div>
+          <div style={s.price}>£149/mo</div>
+          <ul style={{opacity:.9,lineHeight:1.5}}>
+            <li>Everything in Basic</li>
+            <li>Endpoint (EDR) &amp; DNS protection</li>
+            <li>Email &amp; chat support</li>
+          </ul>
+          <button disabled={busy} style={s.btn} onClick={()=>checkout("pro")}>Start Pro</button>
+        </div>
+
+        <div style={s.card}>
+          <div style={s.h}>Pro+</div>
+          <div style={s.price}>£399/mo</div>
+          <ul style={{opacity:.9,lineHeight:1.5}}>
+            <li>Everything in Pro</li>
+            <li>UEBA &amp; Cloud security</li>
+            <li>AI assistant &amp; priority support</li>
+          </ul>
+          <button disabled={busy} style={s.btn} onClick={()=>checkout("pro_plus")}>Start Pro+</button>
+        </div>
+      </div>
+
+      <div style={{marginTop:14, display:"flex", gap:10, alignItems:"center"}}>
+        <button disabled={busy || !paid} style={s.ghost} onClick={portal}>
+          Manage billing
+        </button>
+        {paid ? <span style={{opacity:.85}}>Current plan: <b>{me?.plan}</b></span> : <span style={{opacity:.75}}>You’ll see the billing portal after subscribing.</span>}
+      </div>
+
+      {(msg || err) && (
+        <div style={{marginTop:10}}>
+          {msg && <div style={{padding:"8px 10px",border:"1px solid #7bd88f66",background:"#7bd88f22",borderRadius:10}}>{msg}</div>}
+          {err && <div style={{padding:"8px 10px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10}}>{err}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Admin(){
   const [me, setMe] = useState(null);
   const [tenants, setTenants] = useState(null);
@@ -1614,22 +1765,23 @@ function App(){
     <ErrorBoundary>
       <Layout>
         <Routes>
-  <Route path="/login" element={<Login/>}/>
-  <Route path="/register" element={<Register/>}/>
-  <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>}/>
-  <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>}/>
-  <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
-  <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>}/>
-  <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
-  <Route path="/admin/ops/retention" element={<RequireAuth><AdminOpsRetention /></RequireAuth>} />
-  <Route path="/admin/ops/audit" element={<RequireAuth><AdminOpsAudit /></RequireAuth>} />
-  <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
-  <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
-  <Route path="/admin/console/retention" element={<RequireAuth><AdminConsolePage page="retention" /></RequireAuth>} />
-  <Route path="/admin/console/audit" element={<RequireAuth><AdminConsolePage page="audit" /></RequireAuth>} />
-  <Route path="/test" element={<RequireAuth><TestEvents api={API}/></RequireAuth>}/>
-  <Route path="*" element={<Navigate to="/" replace />}/>
-</Routes>
+          <Route path="/login" element={<Login/>}/>
+          <Route path="/register" element={<Register/>}/>
+          <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>}/>
+          <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>}/>
+          <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
+          <Route path="/pricing" element={<RequireAuth><Pricing/></RequireAuth>} />
+          <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>}/>
+          <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
+          <Route path="/admin/ops/retention" element={<RequireAuth><AdminOpsRetention /></RequireAuth>} />
+          <Route path="/admin/ops/audit" element={<RequireAuth><AdminOpsAudit /></RequireAuth>} />
+          <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
+          <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
+          <Route path="/admin/console/retention" element={<RequireAuth><AdminConsolePage page="retention" /></RequireAuth>} />
+          <Route path="/admin/console/audit" element={<RequireAuth><AdminConsolePage page="audit" /></RequireAuth>} />
+          <Route path="/test" element={<RequireAuth><TestEvents api={API}/></RequireAuth>}/>
+          <Route path="*" element={<Navigate to="/" replace />}/>
+        </Routes>
       </Layout>
     </ErrorBoundary>
   );
