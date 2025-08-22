@@ -598,6 +598,14 @@ CREATE TABLE IF NOT EXISTS ai_summaries(
   );
   CREATE INDEX IF NOT EXISTS usage_month_idx ON usage_events(tenant_id,created_at);
   `);
+await q(`
+  CREATE TABLE IF NOT EXISTS ops_runs(
+    id UUID PRIMARY KEY,
+    run_type TEXT NOT NULL,
+    details JSONB,
+    created_at BIGINT NOT NULL
+  );
+`);
   await q(`
   -- Integrations / connectors state
   CREATE TABLE IF NOT EXISTS connectors (
@@ -1985,7 +1993,8 @@ app.get("/admin/sar.csv", authMiddleware, requireSuper, async (_req,res)=>{
   const lines=["id,name,plan,created_at,updated_at",...rows.map(r=>`${JSON.stringify(r.id)},${JSON.stringify(r.name)},${r.plan},${r.created_at},${r.updated_at}`)];
   res.setHeader("Content-Type","text/csv"); res.send(lines.join("\n"));
 });
-
+// Allow/deny seeding usage events in the current environment
+const ALLOW_ADMIN_SEED = process.env.ALLOW_ADMIN_SEED === 'true';
 // ---------- data retention & backup diagnostics ----------
 // Retain alerts for RETAIN_ALERT_DAYS (default 90) and usage_events for RETAIN_USAGE_DAYS (default 180)
 const RETAIN_ALERT_DAYS = Number(process.env.RETAIN_ALERT_DAYS || 90);
@@ -2021,7 +2030,13 @@ async function retentionRun(){
   `, [cutoffEpoch(RETAIN_USAGE_DAYS)]);
   return { alerts_deleted: a.rows[0]?.n || 0, usage_events_deleted: u.rows[0]?.n || 0 };
 }
-
+// Record administrative ops runs (auditing)
+const recordOpsRun = (type, details) =>
+  q(
+    `INSERT INTO ops_runs(id, run_type, details, created_at)
+     VALUES($1,$2,$3,$4)`,
+    [uuidv4(), String(type||'unknown'), details || {}, now()]
+  );
 // Super Admin: retention preview
 app.get('/admin/ops/retention/preview', authMiddleware, requireSuper, async (_req, res) => {
   try{
@@ -2036,12 +2051,13 @@ app.get('/admin/ops/retention/preview', authMiddleware, requireSuper, async (_re
 app.post('/admin/ops/retention/run', authMiddleware, requireSuper, async (_req, res) => {
   try{
     const del = await retentionRun();
+    // audit trail
+    try { await recordOpsRun('retention_run', del); } catch(_e) {}
     res.json({ ok:true, deleted: del });
   }catch(e){
     res.status(500).json({ ok:false, error:'retention run failed' });
   }
 });
-
 // Super Admin: lightweight backup/DB diagnostics
 app.get('/admin/ops/backup/diag', authMiddleware, requireSuper, async (_req, res) => {
   try{
@@ -2062,8 +2078,12 @@ app.get('/admin/ops/backup/diag', authMiddleware, requireSuper, async (_req, res
   }
 });
 // Super Admin: seed usage events for retention testing
+// Super Admin: seed usage events for retention testing (gated by ALLOW_ADMIN_SEED)
 app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res) => {
   try {
+    if (!ALLOW_ADMIN_SEED) {
+      return res.status(403).json({ ok:false, error: 'disabled in this environment' });
+    }
     // Accept either query or body params
     const rawDays  = (req.query?.days_ago ?? req.body?.days_ago ?? 200);
     const rawCount = (req.query?.count    ?? req.body?.count    ?? 500);
@@ -2086,6 +2106,9 @@ app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res)
       inserted++;
     }
 
+    // audit trail
+    try { await recordOpsRun('seed_usage', { days_ago: daysAgo, count: inserted }); } catch(_e) {}
+
     return res.json({
       ok: true,
       seeded: { count: inserted, days_ago: daysAgo },
@@ -2096,7 +2119,6 @@ app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res)
     return res.status(500).json({ ok:false, error: 'seed failed' });
   }
 });
-
 // Super Admin: usage age buckets (per-tenant) for diagnostics
 app.get('/admin/ops/usage/buckets', authMiddleware, requireSuper, async (req, res) => {
   try {
