@@ -2141,6 +2141,41 @@ app.get('/admin/ops/usage/buckets', authMiddleware, requireSuper, async (req, re
   }
 });
 
+// Super Admin: exact usage counts by age buckets (per-tenant)
+app.get('/admin/ops/usage/counts', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const nowEpoch = now();
+    const cut90  = nowEpoch -  90 * 24 * 3600;
+    const cut180 = nowEpoch - 180 * 24 * 3600;
+
+    const r = await q(
+      `SELECT
+         SUM(CASE WHEN created_at >= $2 THEN 1 ELSE 0 END)::int AS lt90,
+         SUM(CASE WHEN created_at <  $2 AND created_at >= $3 THEN 1 ELSE 0 END)::int AS d90_180,
+         SUM(CASE WHEN created_at <  $3 THEN 1 ELSE 0 END)::int AS gt180
+       FROM usage_events
+       WHERE tenant_id = $1`,
+      [tid, cut90, cut180]
+    );
+
+    const counts = {
+      "<90d":     r.rows[0]?.lt90     || 0,
+      "90-180d":  r.rows[0]?.d90_180  || 0,
+      ">180d":    r.rows[0]?.gt180    || 0
+    };
+
+    return res.json({
+      ok: true,
+      counts,
+      keep: { alerts_days: RETAIN_ALERT_DAYS, usage_days: RETAIN_USAGE_DAYS }
+    });
+  } catch (e) {
+    console.error('usage counts failed', e);
+    return res.status(500).json({ ok: false, error: 'counts failed' });
+  }
+});
+
 // Daily retention at 03:15 UTC
 (function scheduleDailyRetention(){
   function msUntilNext(hourUTC, minuteUTC){
