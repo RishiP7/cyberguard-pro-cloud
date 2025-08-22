@@ -363,6 +363,35 @@ function trialInfo(me){
   const left = Math.max(0, ends - now);
   return { active: left > 0, days_left: Math.ceil(left/86400), ends_at: ends };
 }
+// ---- Trial Countdown Badge ----
+function TrialCountdownBadge({ me }) {
+  // Replicates logic from trialInfo and showTrialBadge in Layout
+  const info = trialInfo(me);
+  const actualPlan = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const adminPreview = (typeof localStorage !== 'undefined' && (localStorage.getItem('admin_plan_preview') || '')).toLowerCase();
+  const show = info.active && (actualPlan === 'basic' || actualPlan === 'pro') && adminPreview !== 'pro_plus';
+  if (!show) return null;
+  return (
+    <Link
+      to="/account"
+      style={{
+        marginRight: 8,
+        padding: '4px 10px',
+        border: '1px solid #c69026',
+        background: 'linear-gradient(180deg,#c6902633,#c690261a)',
+        borderRadius: 999,
+        fontSize: 12,
+        color: '#fff',
+        textDecoration: 'none',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,.08)'
+      }}
+      title="Your Pro+ trial is active — click to manage plan"
+    >
+      Pro+ trial ({info.days_left}d left)
+    </Link>
+  );
+}
+
 // ---------- Layout ----------
 function SuperAdminBanner({ me }) {
   if (!me?.is_super) return null;
@@ -512,12 +541,6 @@ function Layout({children}){
   const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
-
-  // Correct ordering + single source of truth for the trial badge
-  const info = trialInfo(me); // normalized {active, days_left, ends_at}
-  const actualPlan = String(me?.plan_actual || me?.plan || '').toLowerCase();
-  const adminPreview = (typeof localStorage!=='undefined' && (localStorage.getItem('admin_plan_preview')||'')).toLowerCase();
-  const showTrialBadge = info.active && (actualPlan === 'basic' || actualPlan === 'pro') && adminPreview !== 'pro_plus';
   return (
     <div>
       <div style={bar}>
@@ -534,25 +557,7 @@ function Layout({children}){
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
-          {showTrialBadge && (
-            <Link
-              to="/account"
-              style={{
-                marginRight:8,
-                padding:'4px 10px',
-                border:'1px solid #c69026',
-                background:'linear-gradient(180deg,#c6902633,#c690261a)',
-                borderRadius:999,
-                fontSize:12,
-                color:'#fff',
-                textDecoration:'none',
-                boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'
-              }}
-              title="Your Pro+ trial is active — click to manage plan"
-            >
-              Pro+ trial ({info.days_left}d left)
-            </Link>
-          )}
+          <TrialCountdownBadge me={me} />
           {authed ? (
             <button
               style={btnGhost}
