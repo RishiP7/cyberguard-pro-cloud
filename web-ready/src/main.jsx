@@ -409,6 +409,10 @@ function AdminOpsRetention(){
     }catch(e){ setErr(e?.error || 'Failed to load buckets'); }
     finally{ setLoading(false); }
   }
+
+  // --- Usage Counts Exact API Example ---
+  // Example usage for /admin/ops/usage/counts endpoint (see backend route)
+  // To use: call apiGet('/admin/ops/usage/counts')
   React.useEffect(()=>{ load(); },[]);
 
   async function preview(){
@@ -474,6 +478,102 @@ function AdminOpsRetention(){
           </div>
           {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</div>}
           {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ---- Admin Ops: Audit (runs viewer) ----
+function AdminOpsAudit(){
+  const [me, setMe] = React.useState(null);
+  const [runs, setRuns] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [type, setType] = React.useState(""); // optional filter
+  const [limit, setLimit] = React.useState(25);
+
+  React.useEffect(()=>{ apiGet('/me').then(setMe).catch(()=>setMe(null)); },[]);
+
+  async function load(){
+    setErr(""); setLoading(true);
+    try{
+      const qs = new URLSearchParams();
+      if (type) qs.set('type', type);
+      if (limit) qs.set('limit', String(limit));
+      const path = `/admin/ops/runs${qs.toString()?`?${qs.toString()}`:''}`;
+      const j = await apiGet(path);
+      setRuns(Array.isArray(j?.runs) ? j.runs : []);
+    }catch(e){ setErr(e?.error || 'Failed to load runs'); }
+    finally{ setLoading(false); }
+  }
+
+  React.useEffect(()=>{ load(); },[]);
+
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
+
+  const cardS = { padding:16, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)' };
+  const ghost = { padding:'8px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer' };
+  const thS = { textAlign:'left', padding:'8px 6px', borderBottom:'1px solid rgba(255,255,255,.12)', opacity:.8 };
+  const tdS = { padding:'8px 6px', borderBottom:'1px solid rgba(255,255,255,.06)' };
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Ops ▸ Audit</h1>
+      <div style={{...cardS, marginBottom:12}}>
+        <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+          <label style={{display:'flex', alignItems:'center', gap:6}}>
+            <span style={{opacity:.8, fontSize:12}}>Type</span>
+            <select value={type} onChange={e=>setType(e.target.value)} style={{padding:'6px 8px',borderRadius:8,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.14)',color:'#e6e9ef'}}>
+              <option value="">(all)</option>
+              <option value="retention_run">retention_run</option>
+              <option value="seed_usage">seed_usage</option>
+              <option value="backup_diag">backup_diag</option>
+            </select>
+          </label>
+          <label style={{display:'flex', alignItems:'center', gap:6}}>
+            <span style={{opacity:.8, fontSize:12}}>Limit</span>
+            <input type="number" min="1" max="200" value={limit} onChange={e=>setLimit(Number(e.target.value||25))} style={{width:90,padding:'6px 8px',borderRadius:8,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.14)',color:'#e6e9ef'}} />
+          </label>
+          <button style={ghost} onClick={load} disabled={loading}>{loading? 'Loading…' : 'Refresh'}</button>
+        </div>
+      </div>
+
+      <div style={cardS}>
+        <div style={{fontWeight:700, marginBottom:8}}>Audit log</div>
+        {err && <div style={{marginBottom:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%', borderCollapse:'collapse'}}>
+            <thead>
+              <tr>
+                <th style={thS}>When (UTC)</th>
+                <th style={thS}>Type</th>
+                <th style={thS}>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(!runs || runs.length===0) && (
+                <tr><td style={tdS} colSpan={3}>
+                  {loading ? 'Loading…' : 'No runs found.'}
+                </td></tr>
+              )}
+              {runs && runs.map((r,i)=>{
+                const when = (()=>{
+                  const t = r.created_at; // seconds epoch
+                  if (typeof t === 'string' && t.includes('T')) return t;
+                  const n = Number(t||0) * 1000; return new Date(n).toISOString();
+                })();
+                const details = (r.details && typeof r.details === 'object') ? JSON.stringify(r.details) : String(r.details||'');
+                return (
+                  <tr key={r.id || i}>
+                    <td style={tdS}>{when}</td>
+                    <td style={tdS}><code>{r.run_type || '-'}</code></td>
+                    <td style={tdS}><code style={{whiteSpace:'pre-wrap'}}>{details}</code></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -641,6 +741,7 @@ function Layout({children}){
           <N to="/account">Account</N>
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/ops/retention">Ops</N>)}
+          {(me?.is_super || me?.role === 'owner') && (<N to="/admin/ops/audit">Ops Audit</N>)}
           <N to="/test">Test</N>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -1411,6 +1512,7 @@ function App(){
   <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>}/>
   <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
   <Route path="/admin/ops/retention" element={<RequireAuth><AdminOpsRetention /></RequireAuth>} />
+  <Route path="/admin/ops/audit" element={<RequireAuth><AdminOpsAudit /></RequireAuth>} />
   <Route path="/test" element={<RequireAuth><TestEvents api={API}/></RequireAuth>}/>
   <Route path="*" element={<Navigate to="/" replace />}/>
 </Routes>
