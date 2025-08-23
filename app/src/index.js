@@ -1549,7 +1549,7 @@ function planFromSubscription(sub) {
 // Stripe webhook endpoint (raw body required)
 app.post(
   "/billing/stripe/webhook",
-  require("express").raw({ type: "application/json" }),
+  express.raw({ type: "application/json" }),
   async (req, res) => {
     if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.status(501).json({ ok: false, error: "webhook not configured" });
     const sig = req.headers["stripe-signature"];
