@@ -1487,6 +1487,7 @@ app.post('/admin/ai/ask', authMiddleware, requireSuper, async (req,res)=>{
   }catch(e){ console.error(e); res.status(500).json({error:'ai failed'}); }
 });
 // ---------- billing mocks ----------
+
 app.post("/billing/mock-activate",authMiddleware,async (req,res)=>{
   try{
     const plan=(req.body?.plan||"").toLowerCase();
@@ -1503,6 +1504,140 @@ app.post("/billing/activate",authMiddleware,async (req,res)=>{
     await q(`UPDATE tenants SET plan=$1,updated_at=EXTRACT(EPOCH FROM NOW()) WHERE tenant_id=$2`,[plan,req.user.tenant_id]);
     res.json({ok:true,plan});
   }catch(e){ res.status(500).json({error:"activate failed"}); }
+});
+
+// ---- Stripe (webhook-enabled) ----
+import bodyParser from "body-parser";
+import Stripe from "stripe";
+
+const STRIPE_SECRET_KEY     = process.env.STRIPE_SECRET_KEY     || process.env.STRIPE_SECRET || "";
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const STRIPE_PRICE_BASIC    = process.env.STRIPE_PRICE_BASIC    || "";
+const STRIPE_PRICE_PRO      = process.env.STRIPE_PRICE_PRO      || "";
+const STRIPE_PRICE_PROPLUS  = process.env.STRIPE_PRICE_PROPLUS  || "";
+const STRIPE_DOMAIN         = process.env.STRIPE_DOMAIN         || process.env.PUBLIC_APP_URL || "";
+
+let stripe = null;
+try { if (STRIPE_SECRET_KEY) { stripe = Stripe(STRIPE_SECRET_KEY); } } catch(_) { stripe = null; }
+
+// Map Stripe price IDs to internal plan names
+function mapStripePriceToPlan(priceId) {
+  if (!priceId) return null;
+  if (priceId === STRIPE_PRICE_BASIC)   return "basic";
+  if (priceId === STRIPE_PRICE_PRO)     return "pro";
+  if (priceId === STRIPE_PRICE_PROPLUS) return "pro_plus";
+  return null;
+}
+
+// Apply plan to tenant from Stripe event
+async function applyPlanFromStripe(tenant_id, plan) {
+  if (!tenant_id || !plan) return;
+  await q(
+    `UPDATE tenants SET plan=$1, updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE tenant_id=$2`,
+    [plan, tenant_id]
+  );
+  console.log("[stripe] Plan set via webhook:", tenant_id, plan);
+}
+
+// Helper: derive plan from Stripe subscription object
+function planFromSubscription(sub) {
+  if (!sub || !sub.items || !sub.items.data || !sub.items.data.length) return null;
+  const priceId = sub.items.data[0].price.id;
+  return mapStripePriceToPlan(priceId);
+}
+
+// Stripe webhook endpoint (raw body required)
+app.post(
+  "/billing/stripe/webhook",
+  require("express").raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.status(501).json({ ok: false, error: "webhook not configured" });
+    const sig = req.headers["stripe-signature"];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.error("[stripe] webhook signature failed", err);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    try {
+      // Handle checkout.session.completed (subscription purchase)
+      if (event.type === "checkout.session.completed") {
+        const sess = event.data.object;
+        const plan = (sess.metadata && sess.metadata.plan) || "";
+        const tenant_id = (sess.metadata && sess.metadata.tenant_id) || "";
+        if (tenant_id && plan) {
+          await applyPlanFromStripe(tenant_id, plan === "proplus" ? "pro_plus" : plan);
+        }
+      }
+      // Handle subscription update events
+      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
+        const sub = event.data.object;
+        const plan = planFromSubscription(sub);
+        const tenant_id = sub.metadata?.tenant_id || null;
+        if (tenant_id && plan) {
+          await applyPlanFromStripe(tenant_id, plan);
+        }
+      }
+      // Optionally handle cancellation, etc.
+      res.json({ received: true });
+    } catch (e) {
+      console.error("[stripe] webhook handler error", e);
+      res.status(500).json({ ok: false });
+    }
+  }
+);
+
+// === Billing: Stripe Checkout & Portal ===
+app.post("/billing/create-checkout", async (req, res) => {
+  try {
+    if (!stripe) return res.status(501).json({ ok: false, error: "stripe not configured" });
+
+    const tenant_id = req.user.tenant_id;
+    const { plan, coupon } = req.body || {};
+    let price = null;
+    if (plan === "basic") price = STRIPE_PRICE_BASIC;
+    else if (plan === "pro") price = STRIPE_PRICE_PRO;
+    else if (plan === "pro_plus" || plan === "proplus" || plan === "pro+") price = STRIPE_PRICE_PROPLUS;
+    if (!price) return res.status(400).json({ ok: false, error: "invalid plan" });
+
+    const base = (STRIPE_DOMAIN || req.headers.origin || "").replace(/\/$/, "");
+    const success = `${base}/account?checkout=success`;
+    const cancel = `${base}/account?checkout=cancel`;
+
+    const customer = await stripe.customers.create({ metadata: { tenant_id } });
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customer.id,
+      line_items: [{ price, quantity: 1 }],
+      allow_promotion_codes: true,
+      discounts: coupon ? [{ coupon }] : undefined,
+      success_url: success,
+      cancel_url: cancel,
+      metadata: { tenant_id, plan }
+    });
+
+    return res.json({ ok: true, url: session.url });
+  } catch (e) {
+    console.error("create-checkout failed", e);
+    return res.status(500).json({ ok: false, error: "checkout failed", detail: String(e.message || e) });
+  }
+});
+
+app.post("/billing/create-portal", async (req, res) => {
+  try {
+    if (!stripe) return res.status(501).json({ ok: false, error: "stripe not configured" });
+    const tenant_id = req.user.tenant_id;
+    const customer = await stripe.customers.create({ metadata: { tenant_id } });
+    const returnUrl = (STRIPE_DOMAIN || req.headers.origin || "").replace(/\/$/, "") + "/account";
+    const portal = await stripe.billingPortal.sessions.create({ customer: customer.id, return_url: returnUrl });
+    return res.json({ ok: true, url: portal.url });
+  } catch (e) {
+    console.error("create-portal failed", e);
+    return res.status(500).json({ ok: false, error: "portal failed", detail: String(e.message || e) });
+  }
 });
 
 // ---------- policy ----------
