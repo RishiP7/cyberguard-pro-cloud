@@ -1534,7 +1534,7 @@ function Pricing(){
       <div style={s.grid}>
         <div style={s.card}>
           <div style={s.h}>Basic</div>
-          <div style={s.price}>£49/mo</div>
+          <div style={s.price}>£19.99/mo</div>
           <ul style={{opacity:.9,lineHeight:1.5}}>
             <li>Email threat scanning</li>
             <li>Core dashboards &amp; alerts</li>
@@ -1545,7 +1545,7 @@ function Pricing(){
 
         <div style={s.card}>
           <div style={s.h}>Pro</div>
-          <div style={s.price}>£149/mo</div>
+          <div style={s.price}>£39.99/mo</div>
           <ul style={{opacity:.9,lineHeight:1.5}}>
             <li>Everything in Basic</li>
             <li>Endpoint (EDR) &amp; DNS protection</li>
@@ -1556,7 +1556,7 @@ function Pricing(){
 
         <div style={s.card}>
           <div style={s.h}>Pro+</div>
-          <div style={s.price}>£399/mo</div>
+          <div style={s.price}>£99.99/mo</div>
           <ul style={{opacity:.9,lineHeight:1.5}}>
             <li>Everything in Pro</li>
             <li>UEBA &amp; Cloud security</li>
