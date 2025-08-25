@@ -2443,3 +2443,89 @@ app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
     return res.status(500).json({ ok:false, error: String(e.message||e) });
   }
 });
+
+// --------- Pricing Page React Component ---------
+function Pricing() {
+  async function handleCheckout(plan) {
+    try {
+      const res = await fetch("/billing/create-checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + localStorage.getItem("token"),
+        },
+        body: JSON.stringify({ plan }),
+      });
+      const j = await res.json();
+      if (j.ok && j.url) {
+        window.location.href = j.url;
+      } else {
+        alert("Checkout failed: " + (j.error || "unknown"));
+      }
+    } catch (e) {
+      console.error("Checkout error", e);
+      alert("Checkout error");
+    }
+  }
+
+  async function handlePortal() {
+    try {
+      const res = await fetch("/billing/create-portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + localStorage.getItem("token"),
+        },
+      });
+      const j = await res.json();
+      if (j.ok && j.url) {
+        window.location.href = j.url;
+      } else {
+        alert("Portal failed: " + (j.error || "unknown"));
+      }
+    } catch (e) {
+      console.error("Portal error", e);
+      alert("Portal error");
+    }
+  }
+
+  const plans = [
+    { id: "basic", name: "Basic", price: "£19.99/mo" },
+    { id: "pro", name: "Pro", price: "£39.99/mo" },
+    { id: "pro_plus", name: "Pro+", price: "£99.99/mo" },
+  ];
+
+  return (
+    <div className="pricing-page" style={{ padding: 24 }}>
+      <h1>Choose Your Plan</h1>
+      <div
+        className="plans"
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        }}
+      >
+        {plans.map((p) => (
+          <div
+            key={p.id}
+            className="plan-card"
+            style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16 }}
+          >
+            <h2 style={{ marginTop: 0 }}>{p.name}</h2>
+            <p style={{ fontSize: 18, fontWeight: 600 }}>{p.price}</p>
+            <button
+              onClick={() => handleCheckout(p.id)}
+              style={{ width: "100%", padding: 10 }}
+            >
+              Get {p.name}
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 24 }}>
+        <button onClick={handlePortal}>Manage Subscription</button>
+      </div>
+    </div>
+  );
+}
