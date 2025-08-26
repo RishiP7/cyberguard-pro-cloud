@@ -1602,9 +1602,9 @@ app.post("/billing/checkout", authMiddleware, async (req, res) => {
     const { plan } = req.body || {};
     const price = planToPrice(plan);
     if (!price) return res.status(400).json({ ok: false, error: "invalid plan" });
-    const base = (STRIPE_DOMAIN || req.headers.origin || "").replace(/\/$/, "");
-    const success = `${base}/account?checkout=success`;
-    const cancel = `${base}/account?checkout=cancel`;
+    const base = process.env.FRONTEND_URL || STRIPE_DOMAIN || req.headers.origin || "https://cyberguard-pro-cloud.onrender.com";
+const success = `${base}/?checkout=success`;
+const cancel  = `${base}/?checkout=cancel`;
     // Use tenant_id as customer metadata (or find existing)
     const customer = await stripe.customers.create({ metadata: { tenant_id } });
     const session = await stripe.checkout.sessions.create({
