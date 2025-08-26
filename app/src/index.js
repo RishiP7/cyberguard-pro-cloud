@@ -33,6 +33,15 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
+// Parse JSON for all routes except the Stripe webhook (which must remain raw)
+app.use((req, res, next) => {
+  if (req.originalUrl === '/billing/webhook') return next();
+  return express.json()(req, res, next);
+});
+app.use((req, res, next) => {
+  if (req.originalUrl === '/billing/webhook') return next();
+  return express.urlencoded({ extended: true })(req, res, next);
+});
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
@@ -2650,6 +2659,251 @@ setInterval(async ()=>{
     console.warn('background poller error', e);
   }
 }, 5*60*1000); // every 5 minutes
+
+
+// ====== AI Autonomy Backend Patch ======
+// --- SQL helpers for ai_policies, ai_actions, ai_jobs ---
+async function ensureAIAutonomySchema() {
+  // ai_policies: id, tenant_id, mode (manual|auto), rules (json), enabled, created_at, updated_at
+  await q(`
+    CREATE TABLE IF NOT EXISTS ai_policies (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'manual',
+      rules JSONB DEFAULT '{}'::jsonb,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+  `);
+  // ai_actions: id, tenant_id, policy_id, action, params, status, approved_by, result, created_at, updated_at
+  await q(`
+    CREATE TABLE IF NOT EXISTS ai_actions (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      policy_id TEXT,
+      action TEXT NOT NULL,
+      params JSONB DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'proposed',
+      approved_by TEXT,
+      result JSONB,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+  `);
+  // ai_jobs: id, tenant_id, type, status, payload, result, created_at, updated_at
+  await q(`
+    CREATE TABLE IF NOT EXISTS ai_jobs (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      payload JSONB DEFAULT '{}'::jsonb,
+      result JSONB,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+  `);
+}
+ensureAIAutonomySchema().catch(()=>{});
+
+// --- Helper: isProPlus ---
+async function isProPlus(tenant_id) {
+  const { rows } = await q(`SELECT plan,trial_status,trial_ends_at FROM tenants WHERE tenant_id=$1`, [tenant_id]);
+  if (!rows.length) return false;
+  const plan = (rows[0].plan || '').toLowerCase();
+  if (plan === 'pro_plus') return true;
+  // Allow trial users to access Pro+ features if trial_status is active
+  if (rows[0].trial_status === 'active' && Number(rows[0].trial_ends_at || 0) > now()) return true;
+  return false;
+}
+
+// --- Helper: withinRateLimit (stub) ---
+async function withinRateLimit(tenant_id, action) {
+  // TODO: implement actual rate limiting if needed
+  return true;
+}
+
+// --- Helper: proposeActions (stub) ---
+async function proposeActions(tenant_id, context) {
+  // TODO: Use LLM or rules engine to propose actions.
+  // For now, return an example action.
+  return [
+    {
+      action: "quarantine_device",
+      params: { device_id: context?.device_id || "dev123" },
+      reason: "Suspicious activity detected"
+    }
+  ];
+}
+
+// --- Helper: executeAction (stub) ---
+async function executeAction(ai_action) {
+  // Simulate action execution
+  return { ok: true, executed: true, action: ai_action.action, params: ai_action.params, ts: now() };
+}
+
+// --- Middleware: requireProPlus ---
+async function requireProPlus(req, res, next) {
+  if (!(await isProPlus(req.user.tenant_id))) {
+    return res.status(402).json({ ok:false, error: "Requires Pro+ plan" });
+  }
+  next();
+}
+
+// --- GET /ai/policies ---
+app.get('/ai/policies', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+  try {
+    const { rows } = await q(`SELECT * FROM ai_policies WHERE tenant_id=$1 ORDER BY updated_at DESC`, [req.user.tenant_id]);
+    res.json({ ok:true, policies: rows });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'load failed' });
+  }
+});
+
+// --- POST /ai/policies ---
+app.post('/ai/policies', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+  try {
+    const { mode, rules, enabled } = req.body || {};
+    const id = 'pol_' + uuidv4();
+    const t = now();
+    await q(`
+      INSERT INTO ai_policies(id, tenant_id, mode, rules, enabled, created_at, updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$6)
+      ON CONFLICT (id) DO UPDATE SET
+        mode=EXCLUDED.mode,
+        rules=EXCLUDED.rules,
+        enabled=EXCLUDED.enabled,
+        updated_at=EXCLUDED.updated_at
+    `, [id, req.user.tenant_id, mode||'manual', rules||{}, !!enabled, t]);
+    const { rows } = await q(`SELECT * FROM ai_policies WHERE id=$1`, [id]);
+    res.json({ ok:true, policy: rows[0] });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'save failed' });
+  }
+});
+
+// --- GET /ai/actions ---
+app.get('/ai/actions', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+  try {
+    const { rows } = await q(`SELECT * FROM ai_actions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200`, [req.user.tenant_id]);
+    res.json({ ok:true, actions: rows });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'load failed' });
+  }
+});
+
+// --- POST /ai/propose ---
+app.post('/ai/propose', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+  try {
+    const context = req.body?.context || {};
+    if (!(await withinRateLimit(req.user.tenant_id, 'propose'))) {
+      return res.status(429).json({ ok:false, error: 'rate limit' });
+    }
+    const actions = await proposeActions(req.user.tenant_id, context);
+    // Record proposed actions in ai_actions
+    const t = now();
+    const policy = await q(`SELECT * FROM ai_policies WHERE tenant_id=$1 AND enabled=true ORDER BY updated_at DESC LIMIT 1`, [req.user.tenant_id]).then(r=>r.rows[0]);
+    const policy_id = policy?.id || null;
+    const ids = [];
+    for(const a of actions) {
+      const id = 'act_' + uuidv4();
+      ids.push(id);
+      await q(`
+        INSERT INTO ai_actions(id, tenant_id, policy_id, action, params, status, created_at, updated_at)
+        VALUES($1,$2,$3,$4,$5,'proposed',$6,$6)
+      `, [id, req.user.tenant_id, policy_id, a.action, a.params||{}, t]);
+    }
+    try { await recordOpsRun('ai_propose', { tenant_id: req.user.tenant_id, actions }); } catch(_e){}
+    res.json({ ok:true, actions, ids });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'propose failed' });
+  }
+});
+
+// --- POST /ai/approve ---
+app.post('/ai/approve', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+  try {
+    const { action_id } = req.body || {};
+    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
+    // Only allow approving own tenant's actions
+    const { rows } = await q(`SELECT * FROM ai_actions WHERE id=$1 AND tenant_id=$2`, [action_id, req.user.tenant_id]);
+    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' });
+    const t = now();
+    await q(`
+      UPDATE ai_actions
+         SET status='approved', approved_by=$1, updated_at=$2
+       WHERE id=$3
+    `, [req.user.email||'user', t, action_id]);
+    res.json({ ok:true });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'approve failed' });
+  }
+});
+
+// --- POST /ai/execute (internal trigger) ---
+app.post('/ai/execute', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+  try {
+    const { action_id } = req.body || {};
+    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
+    const { rows } = await q(`SELECT * FROM ai_actions WHERE id=$1 AND tenant_id=$2`, [action_id, req.user.tenant_id]);
+    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' });
+    const action = rows[0];
+    if (action.status !== 'approved' && action.status !== 'auto_approved') {
+      return res.status(400).json({ ok:false, error:'not approved' });
+    }
+    // Execute
+    const result = await executeAction(action);
+    const t = now();
+    await q(`
+      UPDATE ai_actions
+         SET status='executed', result=$1, updated_at=$2
+       WHERE id=$3
+    `, [result, t, action_id]);
+    try { await recordOpsRun('ai_execute', { tenant_id: req.user.tenant_id, action_id, result }); } catch(_e){}
+    res.json({ ok:true, result });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'execute failed' });
+  }
+});
+
+// --- Interval loop: auto-execute approved actions for tenants with mode=auto ---
+setInterval(async ()=>{
+  try {
+    // Find tenants with auto mode enabled
+    const { rows: tenants } = await q(`
+      SELECT tenant_id, id FROM ai_policies
+       WHERE enabled=true AND mode='auto'
+    `);
+    for(const pol of tenants) {
+      // For each, get approved/unexecuted actions
+      const { rows: acts } = await q(`
+        SELECT * FROM ai_actions
+         WHERE tenant_id=$1 AND policy_id=$2 AND status IN ('approved', 'auto_approved')
+         ORDER BY created_at ASC LIMIT 10
+      `, [pol.tenant_id, pol.id]);
+      for(const a of acts) {
+        try {
+          const result = await executeAction(a);
+          await q(`
+            UPDATE ai_actions
+               SET status='executed', result=$1, updated_at=$2
+             WHERE id=$3
+          `, [result, now(), a.id]);
+          try { await recordOpsRun('ai_execute', { tenant_id: pol.tenant_id, action_id: a.id, result }); } catch(_e){}
+        } catch(e) {
+          // log but continue
+          console.warn('[ai/auto-exec] failed', a.id, e?.message||e);
+        }
+      }
+    }
+  } catch(e) {
+    // log but don't crash
+    console.warn('[ai/auto-exec] error', e?.message||e);
+  }
+}, 60*1000); // every 1 minute
+
+// ====== END AI Autonomy Patch ======
 
 // ---------- start ----------
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
