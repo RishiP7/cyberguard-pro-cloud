@@ -845,10 +845,11 @@ function Layout({children}){
         </div>
         <div style={navRow}>
           <N to="/">Dashboard</N>
-          <N to="/integrations">Integrations</N>
-          <N to="/policy">Policy</N>
-          <N to="/pricing">Pricing</N>
-          <N to="/account">Account</N>
+<N to="/integrations">Integrations</N>
+<N to="/policy">Policy</N>
+<N to="/pricing">Pricing</N>
+<N to="/account">Account</N>
+<N to="/billing">Billing</N>
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/console/trial">Admin Console</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/ops/retention">Ops</N>)}
@@ -1772,6 +1773,7 @@ function App(){
           <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
           <Route path="/pricing" element={<RequireAuth><Pricing/></RequireAuth>} />
           <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>}/>
+<Route path="/billing" element={<RequireAuth><BillingPanel /></RequireAuth>} />
           <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
           <Route path="/admin/ops/retention" element={<RequireAuth><AdminOpsRetention /></RequireAuth>} />
           <Route path="/admin/ops/audit" element={<RequireAuth><AdminOpsAudit /></RequireAuth>} />
@@ -2420,6 +2422,170 @@ function planCapabilities(plan, me){
     cloud: effective === 'pro_plus',
     ai:    effective === 'pro_plus'
   };
+}
+// --- BillingPanel: self-serve subscriptions (Basic/Pro/Pro+) + Portal ---
+
+function BillingPanel() {
+  const [me, setMe] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function api(path, opts = {}) {
+    const token = localStorage.getItem("token") || "";
+    const url = `${API_ORIGIN}${path.startsWith('/') ? path : '/' + path}`;
+    const res = await fetch(url, {
+      method: opts.method || "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(opts.headers || {})
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch { json = { ok:false, error:text }; }
+    if (!res.ok) throw Object.assign(new Error(json.error || res.statusText), { detail: json });
+    return json;
+  }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const j = await api("/me");
+        setMe(j);
+      } catch (e) {
+        setErr(e?.message || "failed to load profile");
+      }
+    })();
+  }, []);
+
+  async function startCheckout(planKey) {
+    setLoading(true); setErr("");
+    try {
+      const j = await api("/billing/checkout", { method: "POST", body: { plan: planKey } });
+      if (j?.ok && j?.url) {
+        window.location.href = j.url;
+      } else {
+        setErr(j?.error || "checkout failed");
+      }
+    } catch (e) {
+      setErr(e?.detail?.error || e?.message || "checkout error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openPortal() {
+    setLoading(true); setErr("");
+    try {
+      const j = await api("/billing/portal", { method: "POST" });
+      if (j?.ok && j?.url) {
+        window.location.href = j.url;
+      } else {
+        setErr(j?.error || "portal failed");
+      }
+    } catch (e) {
+      setErr(e?.detail?.error || e?.message || "portal error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const trialDays = me?.trial?.days_left ?? 0;
+  const effective = me?.effective_plan || me?.plan_actual || me?.plan || "none";
+
+  return (
+    <div style={{ maxWidth: 840, margin: "32px auto", padding: 24 }}>
+      <h2 style={{ marginBottom: 8 }}>Billing</h2>
+      <p style={{ color: "#666", marginTop: 0 }}>
+        Current plan: <b>{String(effective).toUpperCase()}</b>
+        {me?.trial?.active ? (
+          <> — trial active, <b>{trialDays}</b> day{trialDays===1?"":"s"} left</>
+        ) : null}
+      </p>
+
+      {err ? (
+        <div style={{ background: "#fee", border: "1px solid #f99", padding: 12, borderRadius: 6, marginBottom: 12 }}>
+          {String(err)}
+        </div>
+      ) : null}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px,1fr))", gap: 16 }}>
+        <PlanCard
+          name="Basic"
+          price="£19.99/mo"
+          features={[
+            "Email threat scanning",
+            "Core alerts & dashboard",
+            "API access (rate-limited)"
+          ]}
+          onChoose={() => startCheckout("basic")}
+          loading={loading}
+        />
+        <PlanCard
+          name="Pro"
+          price="£39.99/mo"
+          features={[
+            "Everything in Basic",
+            "EDR & DNS ingest",
+            "Advanced policy controls"
+          ]}
+          onChoose={() => startCheckout("pro")}
+          loading={loading}
+        />
+        <PlanCard
+          name="Pro+"
+          price="£99.99/mo"
+          features={[
+            "Everything in Pro",
+            "Cloud & UEBA ingest",
+            "Priority support"
+          ]}
+          onChoose={() => startCheckout("pro_plus")}
+          loading={loading}
+          highlight
+        />
+      </div>
+
+      <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
+        <button onClick={openPortal} disabled={loading} style={{ padding: "10px 14px" }}>
+          Manage billing (Stripe portal)
+        </button>
+        <Link to="/" style={{ alignSelf: "center" }}>← Back to dashboard</Link>
+      </div>
+    </div>
+  );
+}
+
+function PlanCard({ name, price, features, onChoose, loading, highlight }) {
+  return (
+    <div style={{
+      border: "1px solid " + (highlight ? "#65a" : "#ddd"),
+      borderRadius: 8,
+      padding: 16,
+      boxShadow: highlight ? "0 2px 10px rgba(0,0,0,0.06)" : "none"
+    }}>
+      <h3 style={{ marginTop: 0 }}>{name}</h3>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{price}</div>
+      <ul style={{ paddingLeft: 18, marginTop: 8 }}>
+        {features.map((f, i) => <li key={i}>{f}</li>)}
+      </ul>
+      <button
+        onClick={onChoose}
+        disabled={loading}
+        style={{ marginTop: 12, width: "100%", padding: "10px 12px" }}
+      >
+        {loading ? "Please wait…" : `Choose ${name}`}
+      </button>
+    </div>
+  );
 }
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
