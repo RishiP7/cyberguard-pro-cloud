@@ -874,7 +874,35 @@ function Layout({children}){
       </div>
       <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>
         <SuperAdminBanner me={me} />
-        <TrialNotice me={me} />
+        <TrialBanner me={me} />
+function TrialBanner({ me }) {
+  if (!me) return null;
+
+  const t = me.trial || {};
+  const effective = String(me.effective_plan || me.plan_actual || me.plan || '').toLowerCase();
+
+  // If trial is active
+  if (t.active) {
+    return (
+      <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10}}>
+        Trial active — <b>{t.days_left}</b> day{t.days_left===1?'':'s'} left.{" "}
+        <Link to="/pricing" style={{color:"#1f6feb",textDecoration:"none"}}>Upgrade now</Link>
+      </div>
+    );
+  }
+
+  // If trial ended and user is back to basic/pro
+  if (!t.active && effective !== 'pro_plus' && (effective === 'basic' || effective === 'pro')) {
+    return (
+      <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #ff6b6b",background:"#ff6b6b22",borderRadius:10}}>
+        Your trial has ended. You are on <b>{effective.toUpperCase()}</b>.{" "}
+        <Link to="/pricing" style={{color:"#1f6feb",textDecoration:"none"}}>Upgrade to Pro+</Link>
+      </div>
+    );
+  }
+
+  return null;
+}
         {!me?.is_super && typeof localStorage!=='undefined' && localStorage.getItem('admin_token_backup') && (
           <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div><b>Impersonating tenant</b> — you’re viewing the app as a customer.</div>
