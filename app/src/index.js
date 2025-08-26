@@ -607,6 +607,16 @@ await q(`
     created_at BIGINT NOT NULL
   );
 `);
+
+// Stripe events idempotency ledger
+await q(`
+  CREATE TABLE IF NOT EXISTS stripe_events(
+    id TEXT PRIMARY KEY,
+    type TEXT,
+    raw JSONB,
+    created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
+  );
+`);
   await q(`
   -- Integrations / connectors state
   CREATE TABLE IF NOT EXISTS connectors (
@@ -1578,6 +1588,65 @@ async function getOrCreateStripeCustomer(tenant_id) {
   return customerId;
 }
 
+// --- Billing helpers: idempotency + plan sync + auditing ---
+async function hasStripeEvent(id){
+  const r = await q(`SELECT 1 FROM stripe_events WHERE id=$1 LIMIT 1`, [id]);
+  return !!r.rowCount;
+}
+async function markStripeEvent(id, type, raw){
+  try{
+    await q(
+      `INSERT INTO stripe_events(id,type,raw,created_at)
+       VALUES($1,$2,$3,EXTRACT(EPOCH FROM NOW())) ON CONFLICT DO NOTHING`,
+      [id, String(type||''), raw||{}]
+    );
+  }catch(_e){}
+}
+function mapPriceToPlan(priceId){
+  if (!priceId) return null;
+  if (priceId === STRIPE_PRICE_BASIC) return "basic";
+  if (priceId === STRIPE_PRICE_PRO) return "pro";
+  if (priceId === STRIPE_PRICE_PROPLUS) return "pro_plus";
+  return null;
+}
+async function setTenantPlanFromPrice(opts){
+  // opts: { tenant_id?, customer_id?, price_id?, fallback_plan?, end_trial?: boolean }
+  let { tenant_id, customer_id, price_id, fallback_plan, end_trial } = opts || {};
+  let plan = mapPriceToPlan(price_id) || (fallback_plan ? String(fallback_plan).toLowerCase() : null);
+  // resolve tenant via customer id if needed
+  if (!tenant_id && customer_id){
+    const r = await q(`SELECT tenant_id FROM tenants WHERE stripe_customer_id=$1 LIMIT 1`, [customer_id]);
+    tenant_id = r.rows[0]?.tenant_id || null;
+  }
+  if (!tenant_id || !plan) return { ok:false, reason: "missing tenant or plan", tenant_id, plan };
+  // normalize proplus aliases from metadata
+  if (plan === "proplus") plan = "pro_plus";
+  const params = [plan, tenant_id];
+  let sql = `
+    UPDATE tenants
+       SET plan = $1,
+           updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+     WHERE tenant_id = $2
+  `;
+  if (end_trial){
+    sql = `
+      UPDATE tenants
+         SET plan = $1,
+             trial_status = 'ended',
+             trial_ends_at = EXTRACT(EPOCH FROM NOW())::BIGINT,
+             updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+       WHERE tenant_id = $2
+    `;
+  }
+  await q(sql, params);
+  return { ok:true, tenant_id, plan };
+}
+async function logStripeRun(kind, details){
+  try{
+    await recordOpsRun(kind, details || {});
+  }catch(_e){}
+}
+
 // Probe endpoint for config
 app.get("/billing/_config", (req, res) => {
   res.json({
@@ -1591,90 +1660,153 @@ app.get("/billing/_config", (req, res) => {
   });
 });
 
-// Stripe webhook endpoint (raw body required)
+// Stripe webhook endpoint (idempotent, synced)
 app.post(
   "/billing/webhook",
   express.raw({ type: "application/json" }),
   async (req, res) => {
-    if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.status(501).json({ ok: false, error: "webhook not configured" });
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+      return res.status(501).json({ ok:false, error:"webhook not configured" });
+    }
     const sig = req.headers["stripe-signature"];
     let event;
     try {
       event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
     } catch (err) {
-      console.error("[stripe] webhook signature failed", err);
+      console.error("[stripe] webhook signature failed", err?.message || err);
+      await logStripeRun("stripe_bad_sig", { error: String(err?.message||err) });
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
+
+    const eid = String(event.id || "");
+    const etype = String(event.type || "");
+    // Idempotency: drop if we've seen this id
+    if (!eid) return res.status(400).json({ ok:false, error:"missing event id" });
+    if (await hasStripeEvent(eid)) {
+      return res.json({ ok:true, dedup:true });
+    }
+
+    // Persist raw event early (best-effort)
+    try { await markStripeEvent(eid, etype, event); } catch(_e) {}
+
     try {
-      // Handle checkout.session.completed (subscription purchase)
-      if (event.type === "checkout.session.completed") {
-        const sess = event.data.object;
-        const plan = (sess.metadata && sess.metadata.plan) || "";
-        const tenant_id = (sess.metadata && sess.metadata.tenant_id) || "";
-        if (tenant_id && plan) {
-          await q(
-            `UPDATE tenants SET plan=$1, updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE tenant_id=$2`,
-            [plan === "proplus" ? "pro_plus" : plan, tenant_id]
-          );
-          console.log("[stripe] Plan set via webhook:", tenant_id, plan);
+      let tenant_id = null;
+      let customer_id = null;
+
+      const finalize = async (info) => {
+        await logStripeRun("stripe_webhook", {
+          event_id: eid,
+          type: etype,
+          ...info
+        });
+      };
+
+      switch (etype) {
+        case "checkout.session.completed": {
+          const sess = event.data.object;
+          tenant_id = sess?.metadata?.tenant_id || null;
+          customer_id = sess?.customer || null;
+          // store customer id if new
+          if (tenant_id && customer_id) {
+            await q(
+              `UPDATE tenants
+                 SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
+                     updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+               WHERE tenant_id=$1`,
+              [tenant_id, customer_id]
+            );
+          }
+          // Try to resolve plan from line item or metadata
+          let priceId = null;
+          try {
+            // Expand line items when possible
+            priceId = sess?.line_items?.data?.[0]?.price?.id || null;
+          } catch(_){}
+          const metaPlan = (sess?.metadata?.plan || "").toLowerCase();
+          const planFromPrice = mapPriceToPlan(priceId);
+          const fallback = metaPlan || null;
+          const r = await setTenantPlanFromPrice({
+            tenant_id,
+            customer_id,
+            price_id: priceId,
+            fallback_plan: fallback,
+            end_trial: true    // end trial on first successful checkout
+          });
+          await finalize({ tenant_id: r.tenant_id || tenant_id, action: "checkout.session.completed", plan: r.plan || planFromPrice || fallback || null });
+          break;
         }
-        // Persist the Stripe customer ID on the tenant (if not already set)
-        const custId = sess.customer || null;
-        if (tenant_id && custId) {
-          await q(
-            `UPDATE tenants
-               SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
-                   updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
-             WHERE tenant_id=$1`,
-            [tenant_id, custId]
-          );
+
+        case "customer.subscription.created":
+        case "customer.subscription.updated": {
+          const sub = event.data.object;
+          customer_id = sub?.customer || null;
+          tenant_id = sub?.metadata?.tenant_id || null;
+          const priceId = sub?.items?.data?.[0]?.price?.id || null;
+          // fallback tenant via stored customer mapping
+          if (!tenant_id && customer_id) {
+            const r = await q(`SELECT tenant_id FROM tenants WHERE stripe_customer_id=$1 LIMIT 1`, [customer_id]);
+            tenant_id = r.rows[0]?.tenant_id || null;
+          }
+          const r = await setTenantPlanFromPrice({
+            tenant_id,
+            customer_id,
+            price_id: priceId,
+            end_trial: true
+          });
+          // Always persist customer id on the tenant
+          if (tenant_id && customer_id) {
+            await q(
+              `UPDATE tenants
+                 SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
+                     updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+               WHERE tenant_id=$1`,
+              [tenant_id, customer_id]
+            );
+          }
+          await finalize({ tenant_id: r.tenant_id || tenant_id, action: etype, plan: r.plan || mapPriceToPlan(priceId) });
+          break;
+        }
+
+        case "invoice.paid":
+        case "invoice.payment_succeeded": {
+          const inv = event.data.object;
+          customer_id = inv?.customer || null;
+          const priceId = inv?.lines?.data?.[0]?.price?.id || null;
+          const r = await setTenantPlanFromPrice({
+            customer_id,
+            price_id: priceId,
+            end_trial: true
+          });
+          await finalize({ tenant_id: r.tenant_id, action: etype, plan: r.plan || mapPriceToPlan(priceId) });
+          break;
+        }
+
+        case "customer.subscription.deleted": {
+          const sub = event.data.object;
+          customer_id = sub?.customer || null;
+          // When subscription deleted, revert to basic (or keep last known plan if you prefer)
+          const r = await setTenantPlanFromPrice({
+            customer_id,
+            price_id: null,
+            fallback_plan: "basic",
+            end_trial: false
+          });
+          await finalize({ tenant_id: r.tenant_id, action: etype, plan: r.plan });
+          break;
+        }
+
+        default: {
+          // Unhandled types are stored but not acted upon
+          await finalize({ info: "ignored" });
+          break;
         }
       }
-      // Handle subscription update events
-      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
-        const sub = event.data.object;
-        const priceId = sub.items?.data?.[0]?.price?.id;
-        let plan = null;
-        if (priceId === STRIPE_PRICE_BASIC) plan = "basic";
-        else if (priceId === STRIPE_PRICE_PRO) plan = "pro";
-        else if (priceId === STRIPE_PRICE_PROPLUS) plan = "pro_plus";
-        let tenant_id = sub.metadata?.tenant_id || null;
 
-        // Fallback: resolve tenant by saved stripe_customer_id when metadata is missing
-        if (!tenant_id && sub.customer) {
-          const r = await q(
-            `SELECT tenant_id FROM tenants WHERE stripe_customer_id = $1 LIMIT 1`,
-            [sub.customer]
-          );
-          tenant_id = r.rows[0]?.tenant_id || null;
-        }
-
-        if (tenant_id && plan) {
-          await q(
-            `UPDATE tenants
-               SET plan = $1,
-                   updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
-             WHERE tenant_id = $2`,
-            [plan, tenant_id]
-          );
-          console.log("[stripe] Plan set via webhook:", tenant_id, plan);
-        }
-
-        // Always persist customer id to tenant when possible
-        if (tenant_id && sub.customer) {
-          await q(
-            `UPDATE tenants
-               SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
-                   updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
-             WHERE tenant_id = $1`,
-            [tenant_id, sub.customer]
-          );
-        }
-      }
-      res.json({ received: true });
+      return res.json({ received: true });
     } catch (e) {
       console.error("[stripe] webhook handler error", e);
-      res.status(500).json({ ok: false });
+      await logStripeRun("stripe_error", { event_id: String(event?.id||""), type: String(event?.type||""), error: String(e?.message||e) });
+      return res.status(500).json({ ok:false });
     }
   }
 );
