@@ -1506,6 +1506,138 @@ app.post("/billing/activate",authMiddleware,async (req,res)=>{
   }catch(e){ res.status(500).json({error:"activate failed"}); }
 });
 
+// ---- Stripe Billing (modern endpoints) ----
+import Stripe from "stripe";
+
+const STRIPE_SECRET_KEY     = process.env.STRIPE_SECRET_KEY     || process.env.STRIPE_SECRET || "";
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const STRIPE_PRICE_BASIC    = process.env.STRIPE_PRICE_BASIC    || "";
+const STRIPE_PRICE_PRO      = process.env.STRIPE_PRICE_PRO      || "";
+const STRIPE_PRICE_PROPLUS  = process.env.STRIPE_PRICE_PROPLUS  || "";
+const STRIPE_DOMAIN         = process.env.STRIPE_DOMAIN         || process.env.PUBLIC_APP_URL || "";
+
+const STRIPE_ENABLED = !!(STRIPE_SECRET_KEY && STRIPE_PRICE_BASIC && STRIPE_PRICE_PRO && STRIPE_PRICE_PROPLUS);
+let stripe = null;
+try { if (STRIPE_SECRET_KEY) { stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" }); } } catch(_) { stripe = null; }
+
+function planToPrice(plan) {
+  plan = String(plan || "").toLowerCase();
+  if (plan === "basic") return STRIPE_PRICE_BASIC;
+  if (plan === "pro") return STRIPE_PRICE_PRO;
+  if (plan === "pro_plus" || plan === "proplus" || plan === "pro+") return STRIPE_PRICE_PROPLUS;
+  return null;
+}
+
+// Probe endpoint for config
+app.get("/billing/_config", (req, res) => {
+  res.json({
+    ok: true,
+    stripe_enabled: STRIPE_ENABLED,
+    prices: {
+      basic: !!STRIPE_PRICE_BASIC,
+      pro: !!STRIPE_PRICE_PRO,
+      pro_plus: !!STRIPE_PRICE_PROPLUS
+    }
+  });
+});
+
+// Stripe webhook endpoint (raw body required)
+app.post(
+  "/billing/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) return res.status(501).json({ ok: false, error: "webhook not configured" });
+    const sig = req.headers["stripe-signature"];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.error("[stripe] webhook signature failed", err);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+    try {
+      // Handle checkout.session.completed (subscription purchase)
+      if (event.type === "checkout.session.completed") {
+        const sess = event.data.object;
+        const plan = (sess.metadata && sess.metadata.plan) || "";
+        const tenant_id = (sess.metadata && sess.metadata.tenant_id) || "";
+        if (tenant_id && plan) {
+          await q(
+            `UPDATE tenants SET plan=$1, updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE tenant_id=$2`,
+            [plan === "proplus" ? "pro_plus" : plan, tenant_id]
+          );
+          console.log("[stripe] Plan set via webhook:", tenant_id, plan);
+        }
+      }
+      // Handle subscription update events
+      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
+        const sub = event.data.object;
+        const priceId = sub.items?.data?.[0]?.price?.id;
+        let plan = null;
+        if (priceId === STRIPE_PRICE_BASIC) plan = "basic";
+        else if (priceId === STRIPE_PRICE_PRO) plan = "pro";
+        else if (priceId === STRIPE_PRICE_PROPLUS) plan = "pro_plus";
+        const tenant_id = sub.metadata?.tenant_id || null;
+        if (tenant_id && plan) {
+          await q(
+            `UPDATE tenants SET plan=$1, updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE tenant_id=$2`,
+            [plan, tenant_id]
+          );
+          console.log("[stripe] Plan set via webhook:", tenant_id, plan);
+        }
+      }
+      res.json({ received: true });
+    } catch (e) {
+      console.error("[stripe] webhook handler error", e);
+      res.status(500).json({ ok: false });
+    }
+  }
+);
+
+// Stripe Checkout endpoint
+app.post("/billing/checkout", authMiddleware, async (req, res) => {
+  if (!STRIPE_ENABLED || !stripe) return res.status(501).json({ ok: false, error: "stripe not configured" });
+  try {
+    const tenant_id = req.user.tenant_id;
+    const { plan } = req.body || {};
+    const price = planToPrice(plan);
+    if (!price) return res.status(400).json({ ok: false, error: "invalid plan" });
+    const base = (STRIPE_DOMAIN || req.headers.origin || "").replace(/\/$/, "");
+    const success = `${base}/account?checkout=success`;
+    const cancel = `${base}/account?checkout=cancel`;
+    // Use tenant_id as customer metadata (or find existing)
+    const customer = await stripe.customers.create({ metadata: { tenant_id } });
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customer.id,
+      line_items: [{ price, quantity: 1 }],
+      allow_promotion_codes: true,
+      success_url: success,
+      cancel_url: cancel,
+      metadata: { tenant_id, plan }
+    });
+    return res.json({ ok: true, url: session.url });
+  } catch (e) {
+    console.error("billing/checkout failed", e);
+    return res.status(500).json({ ok: false, error: "checkout failed", detail: String(e.message || e) });
+  }
+});
+
+// Stripe Portal endpoint
+app.post("/billing/portal", authMiddleware, async (req, res) => {
+  if (!STRIPE_ENABLED || !stripe) return res.status(501).json({ ok: false, error: "stripe not configured" });
+  try {
+    const tenant_id = req.user.tenant_id;
+    const customer = await stripe.customers.create({ metadata: { tenant_id } });
+    const returnUrl = (STRIPE_DOMAIN || req.headers.origin || "").replace(/\/$/, "") + "/account";
+    const portal = await stripe.billingPortal.sessions.create({ customer: customer.id, return_url: returnUrl });
+    return res.json({ ok: true, url: portal.url });
+  } catch (e) {
+    console.error("billing/portal failed", e);
+    return res.status(500).json({ ok: false, error: "portal failed", detail: String(e.message || e) });
+  }
+});
+
 // ---- Stripe (webhook-enabled) ----
 import bodyParser from "body-parser";
 import Stripe from "stripe";
