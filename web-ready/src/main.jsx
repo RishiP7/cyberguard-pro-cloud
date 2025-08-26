@@ -1773,10 +1773,7 @@ function App(){
           <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
           <Route path="/pricing" element={<RequireAuth><Pricing/></RequireAuth>} />
           <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>}/>
-<Route path="/billing" element={<RequireAuth><BillingPanel /></RequireAuth>} />
           <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
-          <Route path="/admin/ops/retention" element={<RequireAuth><AdminOpsRetention /></RequireAuth>} />
-          <Route path="/admin/ops/audit" element={<RequireAuth><AdminOpsAudit /></RequireAuth>} />
           <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
           <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
           <Route path="/admin/console/retention" element={<RequireAuth><AdminConsolePage page="retention" /></RequireAuth>} />

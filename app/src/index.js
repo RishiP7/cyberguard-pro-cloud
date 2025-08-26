@@ -523,6 +523,7 @@ async function gmailList(tenant_id, qStr = 'newer_than:1d', max = 25){
   ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_started_at BIGINT;
   ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at BIGINT;
   ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_status TEXT;
+  ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
   CREATE TABLE IF NOT EXISTS users(
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,
@@ -1521,11 +1522,60 @@ let stripe = null;
 try { if (STRIPE_SECRET_KEY) { stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" }); } } catch(_) { stripe = null; }
 
 function planToPrice(plan) {
-  plan = String(plan || "").toLowerCase();
-  if (plan === "basic") return STRIPE_PRICE_BASIC;
-  if (plan === "pro") return STRIPE_PRICE_PRO;
-  if (plan === "pro_plus" || plan === "proplus" || plan === "pro+") return STRIPE_PRICE_PROPLUS;
+  const raw = String(plan ?? "").trim().toLowerCase();
+  // Remove spaces/underscores consistently to make matching lenient
+  const compact = raw.replace(/\s+/g, "").replace(/_/g, "");
+  // Map common aliases -> canonical keys
+  // e.g. "Pro +", "pro+", "proplus", "pro_plus" => "pro_plus"
+  let canonical = null;
+  if (compact === "basic") canonical = "basic";
+  else if (compact === "pro") canonical = "pro";
+  else if (compact === "proplus" || compact === "pro+") canonical = "pro_plus";
+
+  if (canonical === "basic") return STRIPE_PRICE_BASIC;
+  if (canonical === "pro") return STRIPE_PRICE_PRO;
+  if (canonical === "pro_plus") return STRIPE_PRICE_PROPLUS;
   return null;
+}
+
+// Ensure a stable Stripe customer per tenant (create once, reuse)
+async function getOrCreateStripeCustomer(tenant_id) {
+  if (!stripe) return null;
+  // fetch current record
+  const rec = await q(
+    `SELECT stripe_customer_id, name, contact_email FROM tenants WHERE tenant_id=$1`,
+    [tenant_id]
+  ).then(r => r.rows[0]);
+
+  let customerId = rec?.stripe_customer_id || null;
+
+  // If we have a customer id, make sure it still exists in Stripe (best-effort)
+  if (customerId) {
+    try {
+      await stripe.customers.retrieve(customerId);
+    } catch (_) {
+      customerId = null;
+    }
+  }
+
+  // Create if missing
+  if (!customerId) {
+    const created = await stripe.customers.create({
+      metadata: { tenant_id },
+      name: rec?.name || tenant_id,
+      email: rec?.contact_email || undefined
+    });
+    customerId = created.id;
+    await q(
+      `UPDATE tenants
+         SET stripe_customer_id = $2,
+             updated_at = EXTRACT(EPOCH FROM NOW())
+       WHERE tenant_id = $1`,
+      [tenant_id, customerId]
+    );
+  }
+
+  return customerId;
 }
 
 // Probe endpoint for config
@@ -1568,6 +1618,17 @@ app.post(
           );
           console.log("[stripe] Plan set via webhook:", tenant_id, plan);
         }
+        // Persist the Stripe customer ID on the tenant (if not already set)
+        const custId = sess.customer || null;
+        if (tenant_id && custId) {
+          await q(
+            `UPDATE tenants
+               SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
+                   updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+             WHERE tenant_id=$1`,
+            [tenant_id, custId]
+          );
+        }
       }
       // Handle subscription update events
       if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
@@ -1577,13 +1638,37 @@ app.post(
         if (priceId === STRIPE_PRICE_BASIC) plan = "basic";
         else if (priceId === STRIPE_PRICE_PRO) plan = "pro";
         else if (priceId === STRIPE_PRICE_PROPLUS) plan = "pro_plus";
-        const tenant_id = sub.metadata?.tenant_id || null;
+        let tenant_id = sub.metadata?.tenant_id || null;
+
+        // Fallback: resolve tenant by saved stripe_customer_id when metadata is missing
+        if (!tenant_id && sub.customer) {
+          const r = await q(
+            `SELECT tenant_id FROM tenants WHERE stripe_customer_id = $1 LIMIT 1`,
+            [sub.customer]
+          );
+          tenant_id = r.rows[0]?.tenant_id || null;
+        }
+
         if (tenant_id && plan) {
           await q(
-            `UPDATE tenants SET plan=$1, updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE tenant_id=$2`,
+            `UPDATE tenants
+               SET plan = $1,
+                   updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+             WHERE tenant_id = $2`,
             [plan, tenant_id]
           );
           console.log("[stripe] Plan set via webhook:", tenant_id, plan);
+        }
+
+        // Always persist customer id to tenant when possible
+        if (tenant_id && sub.customer) {
+          await q(
+            `UPDATE tenants
+               SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
+                   updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
+             WHERE tenant_id = $1`,
+            [tenant_id, sub.customer]
+          );
         }
       }
       res.json({ received: true });
@@ -1599,22 +1684,29 @@ app.post("/billing/checkout", authMiddleware, async (req, res) => {
   if (!STRIPE_ENABLED || !stripe) return res.status(501).json({ ok: false, error: "stripe not configured" });
   try {
     const tenant_id = req.user.tenant_id;
-    const { plan } = req.body || {};
-    const price = planToPrice(plan);
-    if (!price) return res.status(400).json({ ok: false, error: "invalid plan" });
+    const incomingPlan = (req.body?.plan ?? req.query?.plan ?? "");
+    const price = planToPrice(incomingPlan);
+    if (!price) {
+      return res.status(400).json({
+        ok: false,
+        error: "invalid plan",
+        received: String(incomingPlan || ""),
+        accepted: ["basic","pro","pro_plus","pro+","pro plus"]
+      });
+    }
     const base = process.env.FRONTEND_URL || STRIPE_DOMAIN || req.headers.origin || "https://cyberguard-pro-cloud.onrender.com";
-const success = `${base}/?checkout=success`;
-const cancel  = `${base}/?checkout=cancel`;
+    const success = `${base}/?checkout=success`;
+    const cancel  = `${base}/?checkout=cancel`;
     // Use tenant_id as customer metadata (or find existing)
-    const customer = await stripe.customers.create({ metadata: { tenant_id } });
+    const customerId = await getOrCreateStripeCustomer(tenant_id);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer: customer.id,
+      customer: customerId,
       line_items: [{ price, quantity: 1 }],
       allow_promotion_codes: true,
       success_url: success,
       cancel_url: cancel,
-      metadata: { tenant_id, plan }
+      metadata: { tenant_id, plan: incomingPlan }
     });
     return res.json({ ok: true, url: session.url });
   } catch (e) {
@@ -1628,10 +1720,10 @@ app.post("/billing/portal", authMiddleware, async (req, res) => {
   if (!STRIPE_ENABLED || !stripe) return res.status(501).json({ ok: false, error: "stripe not configured" });
   try {
     const tenant_id = req.user.tenant_id;
-    const customer = await stripe.customers.create({ metadata: { tenant_id } });
+    const customerId = await getOrCreateStripeCustomer(tenant_id);
     const base = process.env.FRONTEND_URL || STRIPE_DOMAIN || req.headers.origin || "https://cyberguard-pro-cloud.onrender.com";
     const returnUrl = base.replace(/\/$/, "");
-    const portal = await stripe.billingPortal.sessions.create({ customer: customer.id, return_url: returnUrl });
+    const portal = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
     return res.json({ ok: true, url: portal.url });
   } catch (e) {
     console.error("billing/portal failed", e);
