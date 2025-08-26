@@ -845,15 +845,12 @@ function Layout({children}){
         </div>
         <div style={navRow}>
           <N to="/">Dashboard</N>
-<N to="/integrations">Integrations</N>
+          <N to="/integrations">Integrations</N>
 <N to="/policy">Policy</N>
 <N to="/pricing">Pricing</N>
 <N to="/account">Account</N>
-<N to="/billing">Billing</N>
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/console/trial">Admin Console</N>)}
-          {(me?.is_super || me?.role === 'owner') && (<N to="/admin/ops/retention">Ops</N>)}
-          {(me?.is_super || me?.role === 'owner') && (<N to="/admin/ops/audit">Ops Audit</N>)}
           <N to="/test">Test</N>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
