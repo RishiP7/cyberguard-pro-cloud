@@ -1629,7 +1629,8 @@ app.post("/billing/portal", authMiddleware, async (req, res) => {
   try {
     const tenant_id = req.user.tenant_id;
     const customer = await stripe.customers.create({ metadata: { tenant_id } });
-    const returnUrl = (STRIPE_DOMAIN || req.headers.origin || "").replace(/\/$/, "") + "/account";
+    const base = process.env.FRONTEND_URL || STRIPE_DOMAIN || req.headers.origin || "https://cyberguard-pro-cloud.onrender.com";
+    const returnUrl = base.replace(/\/$/, "");
     const portal = await stripe.billingPortal.sessions.create({ customer: customer.id, return_url: returnUrl });
     return res.json({ ok: true, url: portal.url });
   } catch (e) {
