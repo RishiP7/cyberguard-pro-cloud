@@ -1357,6 +1357,7 @@ app.get("/trial/status", authMiddleware, async (req,res)=>{
   }
 });
 
+
 // ---- Admin: start trial (Basic/Pro only) ----
 app.post('/admin/trial/start', authMiddleware, requireSuper, async (req, res) => {
   try{
