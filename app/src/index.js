@@ -1230,20 +1230,6 @@ app.use("/auth",authLimiter);
 app.use(["/email/scan","/edr/ingest","/dns/ingest","/logs/ingest","/cloud/ingest"],ingestLimiter);
 
 
-// ---------- body parsers (conditional for Stripe webhook) ----------
-// Body parsers (skip for Stripe webhook so we can verify the raw body)
-const jsonParser = express.json({ limit: '2mb' });
-const urlencodedParser = express.urlencoded({ extended: true });
-app.use((req, res, next) => {
-  // IMPORTANT: Stripe requires the raw request body for signature verification
-  if (req.originalUrl && req.originalUrl.startsWith('/billing/webhook')) return next();
-  // Apply JSON first; then urlencoded (no-op if content-type is JSON)
-  jsonParser(req, res, (err) => {
-    if (err) return next(err);
-    return urlencodedParser(req, res, next);
-  });
-});
-
 // ---------- health ----------
 app.get("/",(_req,res)=>res.json({ok:true,service:BRAND,version:"2.3.0"}));
 app.get("/health",async (_req,res)=>{
@@ -1688,7 +1674,7 @@ app.get("/billing/_config", (req, res) => {
 // Stripe webhook endpoint (idempotent, synced)
 app.post(
   "/billing/webhook",
-  express.raw({ type: "application/json" }),
+  express.raw({ type: "*/*" }),
   async (req, res) => {
     if (!stripe || !STRIPE_WEBHOOK_SECRET) {
       return res.status(501).json({ ok:false, error:"webhook not configured" });
@@ -1835,6 +1821,20 @@ app.post(
     }
   }
 );
+
+// ---------- body parsers (conditional for Stripe webhook) ----------
+// Body parsers (skip for Stripe webhook so we can verify the raw body)
+const jsonParser = express.json({ limit: '2mb' });
+const urlencodedParser = express.urlencoded({ extended: true });
+app.use((req, res, next) => {
+  // IMPORTANT: Stripe requires the raw request body for signature verification
+  if (req.originalUrl && req.originalUrl.startsWith('/billing/webhook')) return next();
+  // Apply JSON first; then urlencoded (no-op if content-type is JSON)
+  jsonParser(req, res, (err) => {
+    if (err) return next(err);
+    return urlencodedParser(req, res, next);
+  });
+});
 
 // Stripe Checkout endpoint
 app.post("/billing/checkout", authMiddleware, async (req, res) => {
