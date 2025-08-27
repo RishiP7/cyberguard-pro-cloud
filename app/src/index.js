@@ -1229,6 +1229,20 @@ const ingestLimiter=rateLimit({windowMs:60*1000,max:180,standardHeaders:true,leg
 app.use("/auth",authLimiter);
 app.use(["/email/scan","/edr/ingest","/dns/ingest","/logs/ingest","/cloud/ingest"],ingestLimiter);
 
+// ---------- body parsers (conditional for Stripe webhook) ----------
+// Body parsers (skip for Stripe webhook so we can verify the raw body)
+const jsonParser = express.json({ limit: '2mb' });
+const urlencodedParser = express.urlencoded({ extended: true });
+app.use((req, res, next) => {
+  // IMPORTANT: Stripe requires the raw request body for signature verification
+  if (req.originalUrl === '/billing/webhook') return next();
+  // Apply JSON first; then urlencoded (no-op if content-type is JSON)
+  jsonParser(req, res, (err) => {
+    if (err) return next(err);
+    return urlencodedParser(req, res, next);
+  });
+});
+
 // ---------- health ----------
 app.get("/",(_req,res)=>res.json({ok:true,service:BRAND,version:"2.3.0"}));
 app.get("/health",async (_req,res)=>{
