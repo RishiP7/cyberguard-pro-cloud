@@ -1677,6 +1677,18 @@ app.post(
   "/billing/webhook",
   express.raw({ type: "*/*" }),
   async (req, res) => {
+    // DEBUG: verify raw body vs parsed body for Stripe webhook
+    try {
+      console.log("[stripe] webhook debug", {
+        typeofBody: typeof req.body,
+        isBuffer: Buffer.isBuffer(req.body),
+        contentType: req.headers["content-type"] || null,
+        hasSig: !!req.headers["stripe-signature"],
+        length: req.headers["content-length"] || null,
+      });
+    } catch (e) {
+      console.warn("[stripe] debug log failed", e?.message || e);
+    }
     if (!stripe || !STRIPE_WEBHOOK_SECRET) {
       return res.status(501).json({ ok:false, error:"webhook not configured" });
     }
