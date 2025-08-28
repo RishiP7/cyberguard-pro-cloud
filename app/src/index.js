@@ -1672,12 +1672,11 @@ app.get("/billing/_config", (req, res) => {
   });
 });
 
-// Ensure Stripe webhook always receives the raw body for signature verification
-app.use('/billing/webhook', express.raw({ type: '*/*' }));
 
 // Stripe webhook endpoint (idempotent, synced)
 app.post(
   "/billing/webhook",
+  express.raw({ type: 'application/json' }),
   async (req, res) => {
     // DEBUG: verify raw body vs parsed body for Stripe webhook
     try {
@@ -1837,19 +1836,10 @@ app.post(
   }
 );
 
-// ---------- body parsers (conditional for Stripe webhook) ----------
-// Body parsers (skip for Stripe webhook so we can verify the raw body)
-const jsonParser = express.json({ limit: '2mb' });
-const urlencodedParser = express.urlencoded({ extended: true });
-app.use((req, res, next) => {
-  // IMPORTANT: Stripe requires the raw request body for signature verification
-  if (req.originalUrl && req.originalUrl.startsWith('/billing/webhook')) return next();
-  // Apply JSON first; then urlencoded (no-op if content-type is JSON)
-  jsonParser(req, res, (err) => {
-    if (err) return next(err);
-    return urlencodedParser(req, res, next);
-  });
-});
+// ---------- body parsers (global) ----------
+// Stripe webhook is declared above with express.raw, so it's safe to use global parsers here.
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // Stripe Checkout endpoint
 app.post("/billing/checkout", authMiddleware, async (req, res) => {
