@@ -1837,9 +1837,19 @@ app.post(
 );
 
 // ---------- body parsers (global) ----------
-// Stripe webhook is declared above with express.raw, so it's safe to use global parsers here.
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Stripe webhook is declared above with express.raw. To be extra safe,
+// conditionally apply parsers so /billing/webhook never gets parsed.
+const jsonParser = express.json({ limit: '2mb' });
+const urlParser  = express.urlencoded({ extended: true });
+
+app.use((req, res, next) => {
+  const p = req.originalUrl || req.url || "";
+  if (p.startsWith("/billing/webhook")) return next(); // leave body raw for Stripe
+  jsonParser(req, res, (err) => {
+    if (err) return next(err);
+    urlParser(req, res, next);
+  });
+});
 
 // Stripe Checkout endpoint
 app.post("/billing/checkout", authMiddleware, async (req, res) => {
