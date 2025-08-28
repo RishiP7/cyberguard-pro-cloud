@@ -1528,6 +1528,7 @@ app.post("/billing/activate",authMiddleware,async (req,res)=>{
   }catch(e){ res.status(500).json({error:"activate failed"}); }
 });
 
+
 // ---- Stripe Billing (modern endpoints) ----
 import Stripe from "stripe";
 
@@ -2348,23 +2349,6 @@ app.get("/admin/tenant/:id/keys", authMiddleware, requireSuper, async (req,res)=
   res.json({ok:true,keys:rows});
 });
 
-// New admin route for listing keys (duplicate, for compatibility)
-app.get('/admin/tenant/:id/keys', authMiddleware, requireSuper, async (req,res)=>{
-  try{
-    const tid = req.params.id;
-    const { rows } = await q(
-      `SELECT id, revoked, created_at
-         FROM apikeys
-        WHERE tenant_id=$1
-        ORDER BY created_at DESC`,
-      [tid]
-    );
-    return res.json({ ok:true, keys: rows });
-  }catch(e){
-    console.error('admin keys list failed', e);
-    return res.status(500).json({ error: 'keys list failed' });
-  }
-});
 app.post("/admin/revoke-key", authMiddleware, requireSuper, async (req,res)=>{
   const {id}=req.body||{}; if(!id) return res.status(400).json({error:"id required"});
   await q(`UPDATE apikeys SET revoked=true WHERE id=$1`,[id]);
