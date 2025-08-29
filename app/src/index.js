@@ -1673,6 +1673,8 @@ app.get("/billing/_config", (req, res) => {
 });
 
 
+// Ensure Stripe webhook receives raw Buffer body for signature verification
+app.use('/billing/webhook', express.raw({ type: '*/*' }));
 // --- keep a copy of the raw body for Stripe signature verification ---
 // Only save rawBody for Stripe webhook endpoint
 const rawSaver = (req, res, buf) => {
@@ -1688,7 +1690,7 @@ app.post(
   async (req, res, next) => {
     // DEBUG: verify raw body vs parsed body for Stripe webhook
     try {
-      console.log('[stripe] webhook debug', {
+      console.log('[stripe] webhook debug', JSON.stringify({
         typeofBody: typeof req.body,
         isBuffer: Buffer.isBuffer(req.body),
         hasRawBody: !!req.rawBody,
@@ -1696,19 +1698,23 @@ app.post(
         contentType: req.headers['content-type'] || null,
         hasSig: !!req.headers['stripe-signature'],
         length: req.headers['content-length'] || null,
-      });
+      }, null, 2));
     } catch (e) {
       console.warn('[stripe] debug log failed', e?.message || e);
     }
     if (!stripe || !STRIPE_WEBHOOK_SECRET) {
       return res.status(501).json({ ok:false, error:"webhook not configured" });
     }
-    const sig = req.headers["stripe-signature"];
-    // Always use req.rawBody and reject if not a Buffer
-    const bodyForSig = req.rawBody;
-    if (!Buffer.isBuffer(bodyForSig)) {
-      console.error("[stripe] rawBody missing or not a Buffer");
-      return res.status(400).send("Webhook Error: Raw body required for signature verification");
+    const sig = req.headers['stripe-signature'];
+    // Prefer req.body when express.raw is active; else fall back to req.rawBody
+    const bodyForSig = Buffer.isBuffer(req.body)
+      ? req.body
+      : (Buffer.isBuffer(req.rawBody) ? req.rawBody : null);
+
+    if (!bodyForSig) {
+      console.error('[stripe] missing Buffer body for signature verification');
+      await logStripeRun('stripe_bad_sig', { error: 'no buffer body' });
+      return res.status(400).send('Webhook Error: Raw Buffer body required for signature verification');
     }
     let event;
     try {
