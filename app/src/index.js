@@ -1673,6 +1673,14 @@ app.get("/billing/_config", (req, res) => {
 });
 
 
+// --- keep a copy of the raw body for Stripe signature verification ---
+const rawSaver = (req, res, buf) => {
+  try {
+    if ((req.originalUrl || req.url || '').startsWith('/billing/webhook')) {
+      req.rawBody = buf;
+    }
+  } catch (_) {}
+};
 // Stripe webhook endpoint (idempotent, synced)
 app.post(
   "/billing/webhook",
@@ -1683,6 +1691,8 @@ app.post(
       console.log('[stripe] webhook debug', {
         typeofBody: typeof req.body,
         isBuffer: Buffer.isBuffer(req.body),
+        hasRawBody: !!req.rawBody,
+        rawIsBuffer: Buffer.isBuffer(req.rawBody || null),
         contentType: req.headers['content-type'] || null,
         hasSig: !!req.headers['stripe-signature'],
         length: req.headers['content-length'] || null,
@@ -1694,9 +1704,10 @@ app.post(
       return res.status(501).json({ ok:false, error:"webhook not configured" });
     }
     const sig = req.headers["stripe-signature"];
+    const bodyForSig = req.rawBody ?? req.body; // prefer raw buffer
     let event;
     try {
-      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+      event = stripe.webhooks.constructEvent(bodyForSig, sig, STRIPE_WEBHOOK_SECRET);
     } catch (err) {
       console.error("[stripe] webhook signature failed", err?.message || err);
       await logStripeRun("stripe_bad_sig", { error: String(err?.message||err) });
@@ -1837,10 +1848,10 @@ app.post(
 );
 
 // ---------- body parsers (global) ----------
-// Stripe webhook is declared above with express.raw. To be extra safe,
-// conditionally apply parsers so /billing/webhook never gets parsed.
-const jsonParser = express.json({ limit: '2mb' });
-const urlParser  = express.urlencoded({ extended: true });
+// Stripe webhook is declared above with express.raw. We also use a verify hook
+// so that if any parser runs, we still retain req.rawBody for signature checks.
+const jsonParser = express.json({ limit: '2mb', verify: rawSaver });
+const urlParser  = express.urlencoded({ extended: true, verify: rawSaver });
 
 app.use((req, res, next) => {
   const p = req.originalUrl || req.url || "";
