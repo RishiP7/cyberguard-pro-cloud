@@ -1688,17 +1688,18 @@ const rawSaver = (req, res, buf) => {
 app.post(
   "/billing/webhook",
   async (req, res, next) => {
-    // DEBUG: verify raw body vs parsed body for Stripe webhook
+    // Simplified, safe debug (no JSON.stringify)
     try {
-      console.log('[stripe] webhook debug', JSON.stringify({
-        typeofBody: typeof req.body,
+      const dbg = {
+        type: typeof req.body,
         isBuffer: Buffer.isBuffer(req.body),
         hasRawBody: !!req.rawBody,
         rawIsBuffer: Buffer.isBuffer(req.rawBody || null),
         contentType: req.headers['content-type'] || null,
         hasSig: !!req.headers['stripe-signature'],
         length: req.headers['content-length'] || null,
-      }, null, 2));
+      };
+      console.log('[stripe] webhook debug', dbg);
     } catch (e) {
       console.warn('[stripe] debug log failed', e?.message || e);
     }
