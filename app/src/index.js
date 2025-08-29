@@ -1674,11 +1674,11 @@ app.get("/billing/_config", (req, res) => {
 
 
 // --- keep a copy of the raw body for Stripe signature verification ---
+// Only save rawBody for Stripe webhook endpoint
 const rawSaver = (req, res, buf) => {
-  try {
-    // Always save rawBody for all requests
+  if (req.originalUrl.startsWith("/billing/webhook")) {
     req.rawBody = buf;
-  } catch (_) {}
+  }
 };
 
 // Stripe webhook endpoint (idempotent, synced)
@@ -1704,13 +1704,11 @@ app.post(
       return res.status(501).json({ ok:false, error:"webhook not configured" });
     }
     const sig = req.headers["stripe-signature"];
-    // Use req.rawBody if it is a Buffer, else fallback to stringified req.body
-    let bodyForSig = req.rawBody;
+    // Always use req.rawBody and reject if not a Buffer
+    const bodyForSig = req.rawBody;
     if (!Buffer.isBuffer(bodyForSig)) {
-      // fallback to stringified req.body (should not happen if rawBody is set)
-      bodyForSig = typeof req.body === "string"
-        ? req.body
-        : JSON.stringify(req.body);
+      console.error("[stripe] rawBody missing or not a Buffer");
+      return res.status(400).send("Webhook Error: Raw body required for signature verification");
     }
     let event;
     try {
@@ -1855,13 +1853,12 @@ app.post(
 );
 
 // ---------- body parsers (global) ----------
-// Use a verify hook (rawSaver) that always sets req.rawBody, but skip parsing for /billing/webhook
+// Only save req.rawBody for /billing/webhook, and skip all JSON parsing for /billing/webhook
 const jsonParser = express.json({ limit: '2mb', verify: rawSaver });
 const urlParser  = express.urlencoded({ extended: true, verify: rawSaver });
 
 app.use((req, res, next) => {
-  const p = req.originalUrl || req.url || "";
-  if (p.startsWith("/billing/webhook")) return next(); // skip parsing for Stripe webhook
+  if (req.originalUrl.startsWith("/billing/webhook")) return next();
   jsonParser(req, res, (err) => {
     if (err) return next(err);
     urlParser(req, res, next);
