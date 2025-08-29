@@ -1434,10 +1434,24 @@ app.get("/usage",authMiddleware,async (req,res)=>{
   res.json({ok:true,month_events:rows[0]?.events||0,month_starts_at:startEpoch});
 });
 app.post('/admin/impersonate', authMiddleware, requireSuper, async (req,res)=>{
-  const { tenant_id } = req.body || {};
-  if(!tenant_id) return res.status(400).json({error:'missing tenant_id'});
-  const token = jwt.sign({ tenant_id, email: req.user.email, role:'owner', is_super:false }, JWT_SECRET, { expiresIn: '2h' });
-  res.json({ok:true, token});
+  try{
+    const { tenant_id } = req.body || {};
+    if(!tenant_id) return res.status(400).json({ error:'tenant_id required' });
+
+    // 15-minute short-lived impersonation token
+    const token = jwt.sign(
+      { tenant_id, role: 'impersonated', orig_admin: req.user.email || 'admin', ia: true },
+      JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    // Audit trail
+    try { await recordOpsRun('admin_impersonate', { admin: req.user.email || null, tenant_id }); } catch(_e){}
+
+    return res.json({ ok:true, token });
+  }catch(e){
+    return res.status(500).json({ ok:false, error:'impersonate failed' });
+  }
 });
 
 app.post('/admin/tenants/suspend', authMiddleware, requireSuper, async (req,res)=>{
@@ -1535,7 +1549,7 @@ const STRIPE_SECRET_KEY     = process.env.STRIPE_SECRET_KEY     || process.env.S
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 const STRIPE_PRICE_BASIC    = process.env.STRIPE_PRICE_BASIC    || "";
 const STRIPE_PRICE_PRO      = process.env.STRIPE_PRICE_PRO      || "";
-const STRIPE_PRICE_PROPLUS  = process.env.STRIPE_PRICE_PROPLUS  || "";
+const STRIPE_PRICE_PROPLUS  = process.env.STRIPE_PRICE_PROPLUS  || process.env.STRIPE_PRICE_PRO_PLUS || "";
 const STRIPE_DOMAIN         = process.env.STRIPE_DOMAIN         || process.env.PUBLIC_APP_URL || "";
 
 const STRIPE_ENABLED = !!(STRIPE_SECRET_KEY && STRIPE_PRICE_BASIC && STRIPE_PRICE_PRO && STRIPE_PRICE_PROPLUS);
@@ -1558,6 +1572,22 @@ function planToPrice(plan) {
   if (canonical === "pro_plus") return STRIPE_PRICE_PROPLUS;
   return null;
 }
+
+
+function canonicalPlan(plan){
+  const raw = String(plan ?? "").trim().toLowerCase();
+  const compact = raw.replace(/\s+/g, "").replace(/_/g, "");
+  if (compact === "basic") return "basic";
+  if (compact === "pro") return "pro";
+  if (compact === "proplus" || compact === "pro+") return "pro_plus";
+  return null;
+}
+
+// Debug endpoint: test canonicalization of plan input
+app.get('/billing/_debug', authMiddleware, requireSuper, (req, res) => {
+  const plan = req.query?.plan || '';
+  res.json({ ok: true, input: plan, canonical: canonicalPlan(plan) });
+});
 
 // Ensure a stable Stripe customer per tenant (create once, reuse)
 async function getOrCreateStripeCustomer(tenant_id) {
@@ -1757,7 +1787,7 @@ app.post(
           try {
             if (sessId) {
               // expand line items for price mapping
-              sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ["line_items"] });
+              sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ["line_items.data.price"] });
             }
           } catch (_) { /* non-fatal; fallback to received object */ }
 
@@ -1917,7 +1947,7 @@ app.post("/billing/checkout", authMiddleware, async (req, res) => {
       allow_promotion_codes: true,
       success_url: success,
       cancel_url: cancel,
-      metadata: { tenant_id, plan: incomingPlan }
+      metadata: { tenant_id, plan: canonicalPlan(incomingPlan) || String(incomingPlan || "") }
     });
     return res.json({ ok: true, url: session.url });
   } catch (e) {
@@ -2010,11 +2040,21 @@ async function withApikeysRetry(op){
     throw e;
   }
 }
-
+// --- Paid plan guard (applies to API key routes) ---
+function requirePaidPlan(req, res, next) {
+  try{
+    const plan = String(req.user?.plan_actual || req.user?.plan || '').toLowerCase();
+    const ok = ['basic','pro','pro_plus'].includes(plan);
+    if (!ok) return res.status(402).json({ error: 'Paid plan required' });
+    next();
+  }catch(_e){
+    return res.status(402).json({ error: 'Paid plan required' });
+  }
+}
 // ---------- apikeys ----------
 // New API key endpoints (string keys)
 import crypto from "crypto";
-app.post('/apikeys', authMiddleware, async (req,res)=>{
+app.post('/apikeys', authMiddleware, requirePaidPlan, async (req,res)=>{
   try{
     // Super Admin can always create (testing/impersonation)
     if(!(req.user?.is_super)){
@@ -2041,7 +2081,7 @@ app.post('/apikeys', authMiddleware, async (req,res)=>{
   }
 });
 
-app.post('/apikeys/create', authMiddleware, async (req,res)=>{
+app.post('/apikeys/create', authMiddleware, requirePaidPlan, async (req,res)=>{
   try{
     // Super Admin can always create (testing/impersonation)
     if(!(req.user?.is_super)){
@@ -2067,11 +2107,11 @@ app.post('/apikeys/create', authMiddleware, async (req,res)=>{
     return res.status(500).json({ error: 'key create failed' });
   }
 });
-app.get("/apikeys",authMiddleware,async (req,res)=>{
+app.get("/apikeys",authMiddleware,requirePaidPlan,async (req,res)=>{
   const {rows}=await q(`SELECT id,revoked,created_at FROM apikeys WHERE tenant_id=$1 ORDER BY created_at DESC`,[req.user.tenant_id]);
   res.json({ok:true,keys:rows});
 });
-app.post("/apikeys/revoke",authMiddleware,async (req,res)=>{
+app.post("/apikeys/revoke",authMiddleware,requirePaidPlan,async (req,res)=>{
   const {id}=req.body||{};
   await q(`UPDATE apikeys SET revoked=true WHERE id=$1 AND tenant_id=$2`,[id,req.user.tenant_id]);
   res.json({ok:true});
@@ -2517,7 +2557,9 @@ app.get('/admin/ops/runs', authMiddleware, requireSuper, async (req, res) => {
 });
 // Super Admin: seed usage events for retention testing
 // Super Admin: seed usage events for retention testing (gated by ALLOW_ADMIN_SEED)
-app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res) => {
+app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res) => { if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ ok:false, error: 'disabled in production' });
+  }
   try {
     if (!ALLOW_ADMIN_SEED) {
       return res.status(403).json({ ok:false, error: 'disabled in this environment' });
