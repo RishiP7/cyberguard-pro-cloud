@@ -1676,16 +1676,16 @@ app.get("/billing/_config", (req, res) => {
 // --- keep a copy of the raw body for Stripe signature verification ---
 const rawSaver = (req, res, buf) => {
   try {
-    if ((req.originalUrl || req.url || '').startsWith('/billing/webhook')) {
-      req.rawBody = buf;
-    }
+    // Always save rawBody for all requests
+    req.rawBody = buf;
   } catch (_) {}
 };
+
 // Stripe webhook endpoint (idempotent, synced)
+// Use no body parser here; just rely on req.rawBody set by verify, or fallback to req.body if needed.
 app.post(
   "/billing/webhook",
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
+  async (req, res, next) => {
     // DEBUG: verify raw body vs parsed body for Stripe webhook
     try {
       console.log('[stripe] webhook debug', {
@@ -1704,7 +1704,14 @@ app.post(
       return res.status(501).json({ ok:false, error:"webhook not configured" });
     }
     const sig = req.headers["stripe-signature"];
-    const bodyForSig = req.rawBody ?? req.body; // prefer raw buffer
+    // Use req.rawBody if it is a Buffer, else fallback to stringified req.body
+    let bodyForSig = req.rawBody;
+    if (!Buffer.isBuffer(bodyForSig)) {
+      // fallback to stringified req.body (should not happen if rawBody is set)
+      bodyForSig = typeof req.body === "string"
+        ? req.body
+        : JSON.stringify(req.body);
+    }
     let event;
     try {
       event = stripe.webhooks.constructEvent(bodyForSig, sig, STRIPE_WEBHOOK_SECRET);
@@ -1848,14 +1855,13 @@ app.post(
 );
 
 // ---------- body parsers (global) ----------
-// Stripe webhook is declared above with express.raw. We also use a verify hook
-// so that if any parser runs, we still retain req.rawBody for signature checks.
+// Use a verify hook (rawSaver) that always sets req.rawBody, but skip parsing for /billing/webhook
 const jsonParser = express.json({ limit: '2mb', verify: rawSaver });
 const urlParser  = express.urlencoded({ extended: true, verify: rawSaver });
 
 app.use((req, res, next) => {
   const p = req.originalUrl || req.url || "";
-  if (p.startsWith("/billing/webhook")) return next(); // leave body raw for Stripe
+  if (p.startsWith("/billing/webhook")) return next(); // skip parsing for Stripe webhook
   jsonParser(req, res, (err) => {
     if (err) return next(err);
     urlParser(req, res, next);
