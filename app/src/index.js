@@ -101,7 +101,6 @@ app.options("*", cors({
   optionsSuccessStatus: 204
 }));
 app.use(helmet());
-app.use(express.json({ limit: "1mb" }));
 
 // redacted request logging
 morgan.token("body",req=>{
