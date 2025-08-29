@@ -1972,6 +1972,22 @@ app.post("/billing/portal", authMiddleware, async (req, res) => {
   }
 });
 
+// Stripe Portal endpoint (GET alias)
+app.get("/billing/portal", authMiddleware, async (req, res) => {
+  if (!STRIPE_ENABLED || !stripe) return res.status(501).json({ ok: false, error: "stripe not configured" });
+  try {
+    const tenant_id = req.user.tenant_id;
+    const customerId = await getOrCreateStripeCustomer(tenant_id);
+    const base = process.env.FRONTEND_URL || STRIPE_DOMAIN || req.headers.origin || "https://cyberguard-pro-cloud.onrender.com";
+    const returnUrl = base.replace(/\/$/, "");
+    const portal = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
+    return res.json({ ok: true, url: portal.url });
+  } catch (e) {
+    console.error("billing/portal failed (GET)", e);
+    return res.status(500).json({ ok: false, error: "portal failed", detail: String(e.message || e) });
+  }
+});
+
 app.get("/policy",authMiddleware,async (req,res)=>{
   const {rows}=await q(`SELECT tenant_id,enabled,threshold,allow_quarantine,allow_dns_deny,allow_disable_account,dry_run,feeds FROM policy WHERE tenant_id=$1`,[req.user.tenant_id]);
   if(!rows.length){
@@ -2051,10 +2067,27 @@ function requirePaidPlan(req, res, next) {
     return res.status(402).json({ error: 'Paid plan required' });
   }
 }
+
+// Ensures we always use fresh plan info from DB (not what's baked into old JWTs)
+async function attachFreshTenantPlan(req, res, next) {
+  try {
+    const tid = req.user?.tenant_id;
+    if (!tid) return next();
+    const rows = await q(`select plan, plan_actual, trial_ends_at from tenants where tenant_id = $1 limit 1`, [tid]);
+    if (rows && rows[0]) {
+      req.user.plan = rows[0].plan ?? req.user.plan;
+      req.user.plan_actual = rows[0].plan_actual ?? req.user.plan_actual;
+      req.user.trial_ends_at = rows[0].trial_ends_at ?? req.user.trial_ends_at;
+    }
+  } catch (_e) {
+    // non-fatal; fall back to token values
+  }
+  next();
+}
 // ---------- apikeys ----------
 // New API key endpoints (string keys)
 import crypto from "crypto";
-app.post('/apikeys', authMiddleware, requirePaidPlan, async (req,res)=>{
+app.post('/apikeys', authMiddleware, attachFreshTenantPlan, requirePaidPlan, async (req,res)=>{
   try{
     // Super Admin can always create (testing/impersonation)
     if(!(req.user?.is_super)){
@@ -2081,7 +2114,7 @@ app.post('/apikeys', authMiddleware, requirePaidPlan, async (req,res)=>{
   }
 });
 
-app.post('/apikeys/create', authMiddleware, requirePaidPlan, async (req,res)=>{
+app.post('/apikeys/create', authMiddleware, attachFreshTenantPlan, requirePaidPlan, async (req,res)=>{
   try{
     // Super Admin can always create (testing/impersonation)
     if(!(req.user?.is_super)){
@@ -2107,11 +2140,11 @@ app.post('/apikeys/create', authMiddleware, requirePaidPlan, async (req,res)=>{
     return res.status(500).json({ error: 'key create failed' });
   }
 });
-app.get("/apikeys",authMiddleware,requirePaidPlan,async (req,res)=>{
+app.get("/apikeys",authMiddleware,attachFreshTenantPlan,requirePaidPlan,async (req,res)=>{
   const {rows}=await q(`SELECT id,revoked,created_at FROM apikeys WHERE tenant_id=$1 ORDER BY created_at DESC`,[req.user.tenant_id]);
   res.json({ok:true,keys:rows});
 });
-app.post("/apikeys/revoke",authMiddleware,requirePaidPlan,async (req,res)=>{
+app.post("/apikeys/revoke",authMiddleware,attachFreshTenantPlan,requirePaidPlan,async (req,res)=>{
   const {id}=req.body||{};
   await q(`UPDATE apikeys SET revoked=true WHERE id=$1 AND tenant_id=$2`,[id,req.user.tenant_id]);
   res.json({ok:true});
