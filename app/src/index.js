@@ -1750,36 +1750,55 @@ app.post(
 
       switch (etype) {
         case "checkout.session.completed": {
-          const sess = event.data.object;
-          tenant_id = sess?.metadata?.tenant_id || null;
-          customer_id = sess?.customer || null;
-          // store customer id if new
+          // Always re-retrieve the session with line items so we can read price.id
+          const sessId = event?.data?.object?.id;
+          let sess = event?.data?.object || null;
+
+          try {
+            if (sessId) {
+              // expand line items for price mapping
+              sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ["line_items"] });
+            }
+          } catch (_) { /* non-fatal; fallback to received object */ }
+
+          const tenant_id = sess?.metadata?.tenant_id || null;
+          const customer_id = sess?.customer || null;
+
+          // Persist customer on first checkout (don’t overwrite an existing one)
           if (tenant_id && customer_id) {
             await q(
               `UPDATE tenants
                  SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
                      updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
-               WHERE tenant_id=$1`,
+               WHERE tenant_id = $1`,
               [tenant_id, customer_id]
             );
           }
-          // Try to resolve plan from line item or metadata
-          let priceId = null;
-          try {
-            // Expand line items when possible
-            priceId = sess?.line_items?.data?.[0]?.price?.id || null;
-          } catch(_){}
+
+          // Price resolution (prefer expanded line item)
+          const priceId =
+            sess?.line_items?.data?.[0]?.price?.id ||
+            sess?.subscription_details?.plan?.id ||
+            null;
+
           const metaPlan = (sess?.metadata?.plan || "").toLowerCase();
-          const planFromPrice = mapPriceToPlan(priceId);
-          const fallback = metaPlan || null;
           const r = await setTenantPlanFromPrice({
             tenant_id,
             customer_id,
             price_id: priceId,
-            fallback_plan: fallback,
-            end_trial: true    // end trial on first successful checkout
+            fallback_plan: metaPlan || null,
+            end_trial: true // first successful checkout ends trial
           });
-          await finalize({ tenant_id: r.tenant_id || tenant_id, action: "checkout.session.completed", plan: r.plan || planFromPrice || fallback || null });
+
+          await logStripeRun("stripe_webhook", {
+            event_id: eid,
+            type: etype,
+            action: "checkout.session.completed",
+            tenant_id: r.tenant_id || tenant_id || null,
+            plan: r.plan || null,
+            price_id: priceId || null,
+            had_metadata: !!sess?.metadata
+          });
           break;
         }
 
