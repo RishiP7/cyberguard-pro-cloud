@@ -1632,24 +1632,6 @@ async function setTenantPlan(tenantId, plan, opts = {}) {
   }
 }
 
-// Track transient billing issues (e.g., past_due/payment_failed) for UI banners
-async function setTenantBillingStatus(tenantId, status) {
-  try {
-    // Ensure column exists (idempotent)
-    await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`);
-    await q(
-      `UPDATE tenants
-          SET billing_status = $1,
-              updated_at     = EXTRACT(EPOCH FROM NOW())
-        WHERE id = $2 OR tenant_id = $2`,
-      [status, tenantId]
-    );
-    try { await recordOpsRun('billing_status_set', { tenant_id: tenantId, status }); } catch (_e) {}
-  } catch (e) {
-    try { await recordOpsRun('billing_status_error', { tenant_id: tenantId, msg: e.message || String(e) }); } catch (_e) {}
-  }
-}
-
 // Debug endpoint: test canonicalization of plan input
 app.get('/billing/_debug', authMiddleware, requireSuper, (req, res) => {
   const plan = req.query?.plan || '';
