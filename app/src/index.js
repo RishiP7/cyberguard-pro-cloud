@@ -2816,16 +2816,56 @@ setInterval(async ()=>{
 // ---------- Connector health ----------
 app.get('/connectors/status', authMiddleware, async (req, res) => {
   try {
-    const { rows } = await q(`
-      SELECT provider, status, last_error, last_sync_at, updated_at
-        FROM connectors
-       WHERE tenant_id=$1 AND type='email'
-       ORDER BY updated_at DESC
-    `, [req.user.tenant_id]);
-    res.json({ ok: true, connectors: rows });
+    const tid = req.user.tenant_id;
+    // Try full schema first
+    try {
+      const { rows } = await q(`
+        SELECT provider,
+               status,
+               last_error,
+               last_sync_at,
+               updated_at
+          FROM connectors
+         WHERE tenant_id=$1 AND type='email'
+         ORDER BY updated_at DESC
+      `, [tid]);
+      return res.json({ ok:true, connectors: rows });
+    } catch (_e1) {
+      // Fallback: older schema without status/last_sync_at/last_error
+      try {
+        const { rows } = await q(`
+          SELECT provider,
+                 'unknown'::text AS status,
+                 NULL::text      AS last_error,
+                 NULL::bigint    AS last_sync_at,
+                 updated_at
+            FROM connectors
+           WHERE tenant_id=$1 AND type='email'
+           ORDER BY updated_at DESC
+        `, [tid]);
+        return res.json({ ok:true, connectors: rows, note: 'partial schema' });
+      } catch (_e2) {
+        // Final fallback: minimal columns
+        const { rows } = await q(`
+          SELECT provider,
+                 updated_at
+            FROM connectors
+           WHERE tenant_id=$1 AND type='email'
+           ORDER BY updated_at DESC
+        `, [tid]);
+        const mapped = rows.map(r => ({
+          provider: r.provider,
+          status: 'unknown',
+          last_error: null,
+          last_sync_at: null,
+          updated_at: r.updated_at
+        }));
+        return res.json({ ok:true, connectors: mapped, note: 'minimal schema' });
+      }
+    }
   } catch (e) {
     console.error('connectors/status failed', e);
-    res.status(500).json({ ok:false, error: 'status failed' });
+    return res.status(500).json({ ok:false, error: 'status failed' });
   }
 });
 
