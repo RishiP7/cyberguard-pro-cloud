@@ -3776,15 +3776,17 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     // Hardened: prevent odd values from breaking the export; truncate long strings (JSON only)
     const MAX_SUBJECT = 300;
     const MAX_PREVIEW = 1000; // JSON only; CSV keeps full text
-    const alerts = rows.map(r => {
+
+    // Helper to coerce a single row safely
+    const toAlert = (r) => {
       const subj = (r.subject !== null && r.subject !== undefined) ? String(r.subject) : '';
       const prev = (r.preview !== null && r.preview !== undefined) ? String(r.preview) : '';
       return {
-        id: String(r.id),
-        tenant_id: String(r.tenant_id),
-        score: (r.score !== null && r.score !== undefined) ? Number(r.score) : null,
+        id: (r.id != null ? String(r.id) : ''),
+        tenant_id: (r.tenant_id != null ? String(r.tenant_id) : ''),
+        score: (r.score !== null && r.score !== undefined && !Number.isNaN(Number(r.score))) ? Number(r.score) : null,
         status: (r.status !== null && r.status !== undefined) ? String(r.status) : null,
-        created_at: (r.created_at !== null && r.created_at !== undefined) ? Number(r.created_at) : null,
+        created_at: (r.created_at !== null && r.created_at !== undefined && !Number.isNaN(Number(r.created_at))) ? Number(r.created_at) : null,
         from: (r.from_addr !== null && r.from_addr !== undefined) ? String(r.from_addr) : null,
         type: (r.evt_type !== null && r.evt_type !== undefined) ? String(r.evt_type) : null,
         subject: subj.slice(0, MAX_SUBJECT),
@@ -3796,7 +3798,27 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
           return s === 'true' || s === '1' || s === 'yes';
         })(r.anomaly_txt)
       };
-    });
+    };
+
+    let alerts = [];
+    try {
+      // Try fast path mapping
+      alerts = rows.map(toAlert);
+    } catch (mapErr) {
+      // Log details and attempt per-row conversion so one bad row doesn't kill the whole export
+      console.error('alerts/export map failed', mapErr?.message || mapErr);
+      try { await recordOpsRun('alerts_export_map_error', { err: String(mapErr?.message || mapErr), sample_row: rows && rows[0] ? Object.keys(rows[0]) : null }); } catch(_e) {}
+      alerts = [];
+      for (const r of rows) {
+        try {
+          alerts.push(toAlert(r));
+        } catch (rowErr) {
+          // Skip bad row but log minimal info
+          console.warn('alerts/export row skipped', rowErr?.message || rowErr);
+          try { await recordOpsRun('alerts_export_row_skip', { err: String(rowErr?.message || rowErr) }); } catch(_e) {}
+        }
+      }
+    }
 
     // Some drivers may still surface BigInt somewhere; use a replacer just in case
     const safeStringify = (obj) => JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? Number(v) : v));
