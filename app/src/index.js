@@ -3093,11 +3093,15 @@ async function hasBillingStatusColumn() {
 // ---------- /me route ----------
 app.get('/me', authMiddleware, async (req, res) => {
   try {
+    try { await recordOpsRun('me_stage', { s: 'start', tid: req.user?.tenant_id || null }); } catch (_e) {}
     // Fetch tenant row exactly like /me_dbg
+    try { await recordOpsRun('me_stage', { s: 'before_select', tid: req.user?.tenant_id || null }); } catch (_e) {}
     const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
     const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
+    try { await recordOpsRun('me_stage', { s: 'after_select', n: rows.length, tid: req.user?.tenant_id || null }); } catch (_e) {}
     if (!rows.length) return res.status(404).json({ error: 'not found' });
     const t = rows[0];
+    try { await recordOpsRun('me_stage', { s: 'have_row', plan: t?.plan || null, tid: req.user?.tenant_id || null }); } catch (_e) {}
 
     // Safe numbers for epoch fields
     const toNum = (v) => {
@@ -3136,13 +3140,15 @@ app.get('/me', authMiddleware, async (req, res) => {
       }
     };
 
+    try { await recordOpsRun('me_stage', { s: 'about_to_return', tid: req.user?.tenant_id || null }); } catch (_e) {}
+    res.setHeader('X-ME', 'ok');
     return res.json(payload);
   } catch (e) {
     const msg = e?.message || String(e);
     const stack = e?.stack || null;
     console.error('GET /me failed', stack || msg);
-    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, v: 'me_v2' }); } catch (_e) {}
-    // include detail for now to debug
+    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, v: 'me_v3' }); } catch (_e) {}
+    res.setHeader('X-ME', 'err');
     return res.status(500).json({ error: 'me failed', detail: msg });
   }
 });
