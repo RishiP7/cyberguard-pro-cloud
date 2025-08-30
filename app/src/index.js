@@ -3741,6 +3741,11 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
        LIMIT $3
     `, [tid, since, limit]);
 
+    // Optional debug: quickly inspect shape without running mapping
+    if (String(req.query?.debug || '') === '1') {
+      return res.json({ ok: true, mode: fmt, rows: rows.length, sample_keys: rows[0] ? Object.keys(rows[0]) : null });
+    }
+
     if (fmt === 'csv') {
       // Minimal CSV encoder (no external deps)
       const headers = ['id','tenant_id','score','status','created_at','from','type','subject','preview','anomaly'];
@@ -3832,8 +3837,9 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
       return res.status(200).send(safeStringify({ ok: true, count: minimal.length, days, alerts: minimal }));
     }
   } catch (e) {
-    console.error('alerts/export failed', e?.message || e);
-    return res.status(500).json({ ok:false, error: 'export failed' });
+    const msg = e?.message || String(e);
+    console.error('alerts/export failed', msg);
+    return res.status(500).json({ ok:false, error: 'export failed', detail: msg });
   }
 });
 
