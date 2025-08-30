@@ -2737,6 +2737,20 @@ app.get('/admin/ops/usage/counts', authMiddleware, requireSuper, async (req, res
   }
 });
 
+// Super Admin: ensure connectors health columns (temporary helper)
+app.post('/admin/ops/ensure_connectors', authMiddleware, requireSuper, async (_req, res) => {
+  try {
+    if (typeof ensureConnectorHealthColumns !== 'function') {
+      return res.status(500).json({ ok:false, error: 'ensureConnectorHealthColumns not available' });
+    }
+    await ensureConnectorHealthColumns();
+    return res.json({ ok:true, ensured: ['status','last_error','last_sync_at'] });
+  } catch (e) {
+    console.error('ensure_connectors failed', e);
+    return res.status(500).json({ ok:false, error: 'ensure_connectors failed' });
+  }
+});
+
 // Daily retention at 03:15 UTC
 (function scheduleDailyRetention(){
   function msUntilNext(hourUTC, minuteUTC){
