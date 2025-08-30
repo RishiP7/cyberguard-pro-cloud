@@ -3141,6 +3141,29 @@ app.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+
+// ---------- debug & diagnostics ----------
+// Report commit/version (Render exposes RENDER_GIT_COMMIT)
+app.get('/__version', (_req, res) => {
+  res.json({ ok: true, commit: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || null, started_at: new Date().toISOString() });
+});
+
+// Minimal /me variant that always returns error detail to help diagnose
+app.get('/me_dbg', authMiddleware, async (req, res) => {
+  try {
+    const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
+    const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    const t = rows[0];
+    return res.json({ ok: true, tenant: t });
+  } catch (e) {
+    const msg = e?.message || String(e);
+    const stack = e?.stack || null;
+    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, dbg: true }); } catch (_e) {}
+    return res.status(500).json({ error: 'me failed', detail: msg });
+  }
+});
+
 // ---------- start ----------
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
