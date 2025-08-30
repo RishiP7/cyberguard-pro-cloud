@@ -491,6 +491,7 @@ function AdminOpsAudit(){
   const [err, setErr] = React.useState("");
   const [type, setType] = React.useState(""); // optional filter
   const [limit, setLimit] = React.useState(25);
+  const [showBadSig, setShowBadSig] = React.useState(false);
 
   React.useEffect(()=>{ apiGet('/me').then(setMe).catch(()=>setMe(null)); },[]);
 
@@ -500,6 +501,7 @@ function AdminOpsAudit(){
       const qs = new URLSearchParams();
       if (type) qs.set('type', type);
       if (limit) qs.set('limit', String(limit));
+      if (showBadSig) qs.set('show_bad_sig', '1'); // include bad-sig rows when toggled on
       const path = `/admin/ops/runs${qs.toString()?`?${qs.toString()}`:''}`;
       const j = await apiGet(path);
       setRuns(Array.isArray(j?.runs) ? j.runs : []);
@@ -534,6 +536,14 @@ function AdminOpsAudit(){
           <label style={{display:'flex', alignItems:'center', gap:6}}>
             <span style={{opacity:.8, fontSize:12}}>Limit</span>
             <input type="number" min="1" max="200" value={limit} onChange={e=>setLimit(Number(e.target.value||25))} style={{width:90,padding:'6px 8px',borderRadius:8,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.14)',color:'#e6e9ef'}} />
+          </label>
+          <label style={{display:'flex', alignItems:'center', gap:6}}>
+            <input
+              type="checkbox"
+              checked={showBadSig}
+              onChange={e=>setShowBadSig(e.target.checked)}
+            />
+            <span style={{opacity:.8, fontSize:12}}>Show webhook signature errors</span>
           </label>
           <button style={ghost} onClick={load} disabled={loading}>{loading? 'Loading…' : 'Refresh'}</button>
         </div>
