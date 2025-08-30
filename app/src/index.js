@@ -1307,7 +1307,7 @@ app.post("/auth/register",async (req,res)=>{
 // ---------- me / usage ----------
 app.get("/me",authMiddleware,async (req,res)=>{
   try{
-    const {rows}=await q(`SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
+    const {rows}=await q(`SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at,billing_status FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
     if(!rows.length) return res.status(404).json({error:"tenant not found"});
     const me = rows[0];
     const eff = await getEffectivePlan(req.user.tenant_id, req);
@@ -1632,6 +1632,24 @@ async function setTenantPlan(tenantId, plan, opts = {}) {
   }
 }
 
+// Track transient billing issues (e.g., past_due/payment_failed) for UI banners
+async function setTenantBillingStatus(tenantId, status) {
+  try {
+    // Ensure column exists (idempotent)
+    await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`);
+    await q(
+      `UPDATE tenants
+          SET billing_status = $1,
+              updated_at     = EXTRACT(EPOCH FROM NOW())
+        WHERE id = $2 OR tenant_id = $2`,
+      [status, tenantId]
+    );
+    try { await recordOpsRun('billing_status_set', { tenant_id: tenantId, status }); } catch (_e) {}
+  } catch (e) {
+    try { await recordOpsRun('billing_status_error', { tenant_id: tenantId, msg: e.message || String(e) }); } catch (_e) {}
+  }
+}
+
 // Debug endpoint: test canonicalization of plan input
 app.get('/billing/_debug', authMiddleware, requireSuper, (req, res) => {
   const plan = req.query?.plan || '';
@@ -1821,6 +1839,15 @@ app.post("/billing/webhook", async (req, res) => {
         } else {
           await recordOpsRun('stripe_plan_unresolved', { event: etype, tenantId, priceId });
         }
+        // Reflect subscription status in billing_status (past_due/unpaid/incomplete => show banner)
+        const subStatus = String(sub?.status || '').toLowerCase();
+        if (tenantId) {
+          if (subStatus === 'past_due' || subStatus === 'unpaid' || subStatus === 'incomplete') {
+            await setTenantBillingStatus(tenantId, 'past_due');
+          } else {
+            await setTenantBillingStatus(tenantId, null);
+          }
+        }
         break;
       }
 
@@ -1849,6 +1876,9 @@ app.post("/billing/webhook", async (req, res) => {
         } else {
           await recordOpsRun('stripe_plan_unresolved', { event: etype, tenantId, priceId });
         }
+        if (tenantId) {
+          await setTenantBillingStatus(tenantId, null);
+        }
         break;
       }
 
@@ -1857,6 +1887,9 @@ app.post("/billing/webhook", async (req, res) => {
         const tenantId = await resolveTenantIdFromEvent(inv);
         await recordOpsRun('stripe_payment_failed', { tenant_id: tenantId || null, invoice: inv.id, customer: inv.customer || null });
         // Optional: add grace logic later
+        if (tenantId) {
+          await setTenantBillingStatus(tenantId, 'payment_failed');
+        }
         break;
       }
 
