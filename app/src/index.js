@@ -3723,18 +3723,18 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     const limit = Math.min(5000, Math.max(1, parseInt(String(req.query?.limit || '1000'), 10) || 1000));
     const since = Math.floor(Date.now() / 1000) - (days * 86400);
 
-    // Match real schema: event JSONB + score/status fields
+    // Use flat columns for alerts export
     const { rows } = await q(`
       SELECT id,
              tenant_id,
              score,
              status,
              created_at,
-             event->>'from'    AS from_addr,
-             event->>'type'    AS evt_type,
-             event->>'subject' AS subject,
-             event->>'preview' AS preview,
-             event->>'anomaly' AS anomaly_txt
+             "from"   AS from_addr,
+             type      AS evt_type,
+             subject   AS subject,
+             preview   AS preview,
+             anomaly   AS anomaly_txt
         FROM alerts
        WHERE tenant_id=$1 AND created_at > $2
        ORDER BY created_at DESC
