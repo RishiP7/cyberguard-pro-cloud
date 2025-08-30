@@ -2529,13 +2529,37 @@ async function retentionRun(){
   `, [cutoffEpoch(RETAIN_USAGE_DAYS)]);
   return { alerts_deleted: a.rows[0]?.n || 0, usage_events_deleted: u.rows[0]?.n || 0 };
 }
-// Record administrative ops runs (auditing)
-const recordOpsRun = (type, details) =>
-  q(
-    `INSERT INTO ops_runs(id, run_type, details, created_at)
-     VALUES($1,$2,$3,$4)`,
-    [uuidv4(), String(type||'unknown'), details || {}, now()]
-  );
+// Record administrative ops runs (auditing) with throttle for noisy types
+const _badSigWindowMs = 60 * 1000; // 1 minute window
+const _badSigMaxPerWindow = Math.max(1, Number(process.env.STRIPE_BAD_SIG_MAX || 5));
+const _badSigBuckets = new Map(); // key: minute-bucket epoch, value: count
+
+const recordOpsRun = async (type, details) => {
+  try {
+    const t = String(type || 'unknown');
+    if (t === 'stripe_bad_sig') {
+      const nowMs = Date.now();
+      const bucket = Math.floor(nowMs / _badSigWindowMs);
+      const n = _badSigBuckets.get(bucket) || 0;
+      if (n >= _badSigMaxPerWindow) {
+        // Drop noisy event
+        return;
+      }
+      _badSigBuckets.set(bucket, n + 1);
+      // light cleanup of old buckets
+      for (const b of _badSigBuckets.keys()) {
+        if (b < bucket - 2) _badSigBuckets.delete(b);
+      }
+    }
+    await q(
+      `INSERT INTO ops_runs(id, run_type, details, created_at)
+       VALUES($1,$2,$3,$4)`,
+      [uuidv4(), t, details || {}, now()]
+    );
+  } catch (_e) {
+    // Non-fatal: never throw from audit logging
+  }
+};
 // Super Admin: retention preview
 app.get('/admin/ops/retention/preview', authMiddleware, requireSuper, async (_req, res) => {
   try{
@@ -2582,10 +2606,20 @@ app.get('/admin/ops/runs', authMiddleware, requireSuper, async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 50)));
     const type  = (req.query?.type || '').toString().trim(); // optional filter
+    const showBadSig = (req.query?.show_bad_sig || '').toString().trim() === '1';
 
     const params = [];
+    let whereClauses = [];
+    if (type) {
+      whereClauses.push(`run_type = $${params.length + 1}`);
+      params.push(type);
+    } else if (!showBadSig) {
+      // Hide noisy bad-sig logs by default unless explicitly requested
+      whereClauses.push(`run_type <> 'stripe_bad_sig'`);
+    }
+
     let sql = `SELECT id, run_type, details, created_at FROM ops_runs`;
-    if (type) { sql += ` WHERE run_type = $1`; params.push(type); }
+    if (whereClauses.length) sql += ` WHERE ` + whereClauses.join(' AND ');
     sql += ` ORDER BY created_at DESC LIMIT ${limit}`;
 
     const { rows } = await q(sql, params);
