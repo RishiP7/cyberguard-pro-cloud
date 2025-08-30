@@ -2779,37 +2779,70 @@ setInterval(async ()=>{
 // ---------- background email poller (provider-aware: M365 delta + Gmail) ----------
 setInterval(async ()=>{
   try{
-    // Pull a small batch of connected email connectors
+    // Ensure health columns exist
+    try { await ensureConnectorHealthColumns(); } catch(_e) {}
+
+    // Pull a small batch of email connectors (any status) so we can heal/retry
     const { rows } = await q(`
       SELECT tenant_id, provider
-      FROM connectors
-      WHERE type='email' AND status='connected'
-      ORDER BY updated_at DESC
-      LIMIT 100
+        FROM connectors
+       WHERE type='email'
+       ORDER BY updated_at DESC
+       LIMIT 100
     `);
 
-    for(const r of rows){
-      try{
+    for (const r of rows) {
+      try {
         let items = [];
-        if(r.provider === 'm365'){
-          try{
+        if (r.provider === 'm365') {
+          try {
             items = await fetchM365Delta(r.tenant_id, 25);
-          }catch(_e){
+          } catch (_e) {
             items = await fetchM365Inbox(r.tenant_id, 10);
           }
-        }else if(r.provider === 'google'){
+        } else if (r.provider === 'google') {
           items = await gmailList(r.tenant_id, 'newer_than:1d', 25);
-        }else{
-          continue; // unsupported
+        } else {
+          // unsupported provider — mark as error once and skip
+          await q(
+            `UPDATE connectors
+                SET status='error',
+                    last_error=$3,
+                    updated_at=$2
+              WHERE tenant_id=$1 AND type='email' AND provider=$4`,
+            [r.tenant_id, now(), 'unsupported provider', r.provider]
+          );
+          continue;
         }
 
         const created = await scanAndRecordEmails(r.tenant_id, items);
-        if(created>0) console.log('[poll]', r.tenant_id, r.provider, 'alerts:', created);
-      }catch(inner){
+
+        // Mark connector healthy on successful poll
+        await q(
+          `UPDATE connectors
+              SET status='connected',
+                  last_error=NULL,
+                  last_sync_at=$2,
+                  updated_at=$2
+            WHERE tenant_id=$1 AND type='email' AND provider=$3`,
+          [r.tenant_id, now(), r.provider]
+        );
+
+        if (created > 0) console.log('[poll]', r.tenant_id, r.provider, 'alerts:', created);
+      } catch (inner) {
+        // Mark connector as error on failure (do not throw)
+        await q(
+          `UPDATE connectors
+              SET status='error',
+                  last_error=$3,
+                  updated_at=$2
+            WHERE tenant_id=$1 AND type='email' AND provider=$4`,
+          [r.tenant_id, now(), String(inner.message || inner), r.provider]
+        );
         console.warn('[poll] tenant failed', r.tenant_id, r.provider, String(inner.message||inner));
       }
     }
-  }catch(e){
+  } catch (e) {
     console.warn('background poller error', e);
   }
 }, 5*60*1000); // every 5 minutes
@@ -3173,7 +3206,12 @@ async function hasBillingStatusColumn() {
     return false;
   }
 }
-
+// -- Ensure connectors health columns exist (safe, idempotent)
+async function ensureConnectorHealthColumns() {
+  try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch (_e) {}
+  try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
+  try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
+}
 
 
 // ---------- /me route ----------
