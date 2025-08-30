@@ -3773,29 +3773,42 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     }
 
     // default: JSON
-    // Map to clean keys for API consumers, and stringify with a BigInt-safe replacer
-    const alerts = rows.map(r => ({
-      id: String(r.id),
-      tenant_id: String(r.tenant_id),
-      score: (r.score !== null && r.score !== undefined) ? Number(r.score) : null,
-      status: (r.status !== null && r.status !== undefined) ? String(r.status) : null,
-      created_at: (r.created_at !== null && r.created_at !== undefined) ? Number(r.created_at) : null,
-      from: (r.from_addr !== null && r.from_addr !== undefined) ? String(r.from_addr) : null,
-      type: (r.evt_type !== null && r.evt_type !== undefined) ? String(r.evt_type) : null,
-      subject: (r.subject !== null && r.subject !== undefined) ? String(r.subject) : '',
-      preview: (r.preview !== null && r.preview !== undefined) ? String(r.preview) : '',
-      anomaly: (function(a){
-        if (a === true) return true;
-        if (a === false) return false;
-        const s = String(a || '').toLowerCase();
-        return s === 'true' || s === '1' || s === 'yes';
-      })(r.anomaly_txt)
-    }));
+    // Hardened: prevent odd values from breaking the export; truncate long strings (JSON only)
+    const MAX_SUBJECT = 300;
+    const MAX_PREVIEW = 1000; // JSON only; CSV keeps full text
+    const alerts = rows.map(r => {
+      const subj = (r.subject !== null && r.subject !== undefined) ? String(r.subject) : '';
+      const prev = (r.preview !== null && r.preview !== undefined) ? String(r.preview) : '';
+      return {
+        id: String(r.id),
+        tenant_id: String(r.tenant_id),
+        score: (r.score !== null && r.score !== undefined) ? Number(r.score) : null,
+        status: (r.status !== null && r.status !== undefined) ? String(r.status) : null,
+        created_at: (r.created_at !== null && r.created_at !== undefined) ? Number(r.created_at) : null,
+        from: (r.from_addr !== null && r.from_addr !== undefined) ? String(r.from_addr) : null,
+        type: (r.evt_type !== null && r.evt_type !== undefined) ? String(r.evt_type) : null,
+        subject: subj.slice(0, MAX_SUBJECT),
+        preview: prev.slice(0, MAX_PREVIEW),
+        anomaly: (function(a){
+          if (a === true) return true;
+          if (a === false) return false;
+          const s = String(a || '').toLowerCase();
+          return s === 'true' || s === '1' || s === 'yes';
+        })(r.anomaly_txt)
+      };
+    });
 
     // Some drivers may still surface BigInt somewhere; use a replacer just in case
     const safeStringify = (obj) => JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? Number(v) : v));
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    return res.status(200).send(safeStringify({ ok: true, count: alerts.length, days, alerts }));
+    try {
+      return res.status(200).send(safeStringify({ ok: true, count: alerts.length, days, alerts }));
+    } catch (jsonErr) {
+      // Fallback: emit a smaller, ultra-safe structure and log once
+      try { await recordOpsRun('alerts_export_warn', { err: String(jsonErr?.message || jsonErr) }); } catch(_e) {}
+      const minimal = alerts.map(a => ({ id: a.id, created_at: a.created_at, subject: a.subject, status: a.status }));
+      return res.status(200).send(safeStringify({ ok: true, count: minimal.length, days, alerts: minimal }));
+    }
   } catch (e) {
     console.error('alerts/export failed', e?.message || e);
     return res.status(500).json({ ok:false, error: 'export failed' });
