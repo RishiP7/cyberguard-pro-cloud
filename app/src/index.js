@@ -33,6 +33,11 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
+// Tap /me requests early to confirm which handler runs (must come before any /me route registrations)
+app.use('/me', (req, res, next) => {
+  try { res.setHeader('X-ME-TAP', '1'); } catch (_e) {}
+  next();
+});
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
@@ -3159,6 +3164,22 @@ app.get('/me', authMiddleware, async (req, res) => {
     }
   }
 });
+// Remove any older duplicate /me routes so only this handler remains
+try {
+  if (app && app._router && Array.isArray(app._router.stack)) {
+    let seen = 0;
+    for (let i = app._router.stack.length - 1; i >= 0; i--) {
+      const layer = app._router.stack[i];
+      if (layer && layer.route && layer.route.path === '/me' && layer.route.methods && layer.route.methods.get) {
+        seen++;
+        // keep the most recent (this one), remove older ones
+        if (seen > 1) {
+          app._router.stack.splice(i, 1);
+        }
+      }
+    }
+  }
+} catch (_e) { /* non-fatal */ }
 // ---------- debug & diagnostics ----------
 // Report commit/version (Render exposes RENDER_GIT_COMMIT)
 app.get('/__version', (_req, res) => {
