@@ -3093,58 +3093,56 @@ async function hasBillingStatusColumn() {
 // ---------- /me route ----------
 app.get('/me', authMiddleware, async (req, res) => {
   try {
-    // Single query; avoid schema coupling
+    // Fetch tenant row exactly like /me_dbg
     const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
     const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
     if (!rows.length) return res.status(404).json({ error: 'not found' });
     const t = rows[0];
 
-    // --- safe trial parsing to avoid intermittent errors ---
+    // Safe numbers for epoch fields
+    const toNum = (v) => {
+      const n = Number(v); return Number.isFinite(n) ? n : 0;
+    };
     const nowEpoch = Math.floor(Date.now() / 1000);
-    const trialEndsNum = Number(t.trial_ends_at || 0);
-    const trial_active = (t.trial_status === 'active') && trialEndsNum > nowEpoch;
+    const trialEndsNum = toNum(t.trial_ends_at);
+    const trialActive = (t.trial_status === 'active') && trialEndsNum > nowEpoch;
     let trialEndsISO = null;
-    if (trialEndsNum > 0) {
-      try { trialEndsISO = new Date(trialEndsNum * 1000).toISOString(); } catch (_e) { trialEndsISO = null; }
-    }
+    try { trialEndsISO = trialEndsNum > 0 ? new Date(trialEndsNum * 1000).toISOString() : null; } catch(_e) { trialEndsISO = null; }
 
     const role = req.user?.role || 'member';
     const is_super = !!req.user?.is_super;
 
-    const trial = {
-      active: trial_active,
-      days_left: trial_active ? Math.max(0, Math.floor((trialEndsNum - nowEpoch) / 86400)) : 0,
-      ends_at: trialEndsISO
-    };
-
-    const plan_actual = t.plan;
-    const effective_plan = t.plan;
-
-    return res.json({
+    const payload = {
       ok: true,
-      tenant_id: t.tenant_id,
-      name: t.name,
-      plan: t.plan,
-      contact_email: t.contact_email,
-      trial_started_at: t.trial_started_at,
-      trial_ends_at: t.trial_ends_at,
-      trial_status: t.trial_status,
-      created_at: t.created_at,
-      updated_at: t.updated_at,
+      tenant_id: t.tenant_id || t.id || req.user.tenant_id,
+      name: t.name || null,
+      plan: t.plan || null,
+      contact_email: t.contact_email ?? null,
+      trial_started_at: t.trial_started_at ?? null,
+      trial_ends_at: t.trial_ends_at ?? null,
+      trial_status: t.trial_status ?? null,
+      created_at: t.created_at ?? null,
+      updated_at: t.updated_at ?? null,
       billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status),
-      effective_plan,
-      trial_active,
-      plan_actual,
+      effective_plan: t.plan || null,
+      trial_active: trialActive,
+      plan_actual: t.plan || null,
       role,
       is_super,
-      trial
-    });
+      trial: {
+        active: trialActive,
+        days_left: trialActive ? Math.max(0, Math.floor((trialEndsNum - nowEpoch) / 86400)) : 0,
+        ends_at: trialEndsISO
+      }
+    };
+
+    return res.json(payload);
   } catch (e) {
     const msg = e?.message || String(e);
     const stack = e?.stack || null;
     console.error('GET /me failed', stack || msg);
-    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack }); } catch (_e) {}
-    // Always include detail temporarily to speed up debugging
+    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, v: 'me_v2' }); } catch (_e) {}
+    // include detail for now to debug
     return res.status(500).json({ error: 'me failed', detail: msg });
   }
 });
