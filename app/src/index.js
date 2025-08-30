@@ -3077,6 +3077,64 @@ setInterval(async ()=>{
 
 // ====== END AI Autonomy Patch ======
 
+// ---------- tenant billing status helpers ----------
+// Set billing status for a tenant (safe for upserts)
+async function setTenantBillingStatus(tenantId, status) {
+  await q(`UPDATE tenants SET billing_status=$2 WHERE tenant_id=$1`, [tenantId, status]);
+}
+
+// -- Ensure billing_status column exists (safe, idempotent)
+async function ensureBillingStatusColumn() {
+  try {
+    await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`);
+  } catch (_e) { /* ignore */ }
+}
+
+// ---------- /me route ----------
+app.get('/me', authMiddleware, async (req, res) => {
+  try {
+    // Ensure billing_status column exists before querying
+    await ensureBillingStatusColumn();
+    const {rows}=await q(`SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at,billing_status FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
+    if(!rows.length) return res.status(404).json({ error: 'not found' });
+    const t=rows[0];
+    const role = req.user?.role || 'member';
+    const is_super = !!req.user?.is_super;
+    const trial_active = t.trial_status==='active' && Number(t.trial_ends_at||0)>now();
+    // Compose trial object
+    const trial = {
+      active: trial_active,
+      days_left: trial_active ? Math.max(0, Math.floor((Number(t.trial_ends_at)-now())/86400)) : 0,
+      ends_at: t.trial_ends_at ? new Date(Number(t.trial_ends_at)*1000).toISOString() : null
+    };
+    // Compose effective plan
+    const plan_actual = t.plan;
+    const effective_plan = t.plan; // for now
+    res.json({
+      ok:true,
+      tenant_id: t.tenant_id,
+      name: t.name,
+      plan: t.plan,
+      contact_email: t.contact_email,
+      trial_started_at: t.trial_started_at,
+      trial_ends_at: t.trial_ends_at,
+      trial_status: t.trial_status,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      billing_status: t.billing_status,
+      effective_plan,
+      trial_active,
+      plan_actual,
+      role,
+      is_super,
+      trial
+    });
+  } catch (e) {
+    console.error('GET /me failed', e?.message || e);
+    return res.status(500).json({ error: 'me failed' });
+  }
+});
+
 // ---------- start ----------
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
