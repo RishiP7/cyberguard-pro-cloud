@@ -391,6 +391,45 @@ function TrialCountdownBadge({ me }) {
     </Link>
   );
 }
+
+// ---- Billing: Payment Issue Banner ----
+function PaymentIssueBanner({ me }) {
+  try {
+    const status = String(me?.billing_status || '').toLowerCase();
+    // Allow super admins to simulate via localStorage for testing
+    const adminFlag = (typeof localStorage !== 'undefined' && localStorage.getItem('admin_billing_flag')) || '';
+    const flag = adminFlag ? adminFlag.toLowerCase() : status;
+    const show = flag === 'past_due' || flag === 'payment_failed';
+    if (!show) return null;
+
+    const msg = flag === 'past_due'
+      ? 'Your subscription is past due — please update your payment method.'
+      : 'A recent payment failed — please update your payment method.';
+
+    async function openPortal() {
+      try {
+        const j = await apiGet('/billing/portal');
+        const url = j?.url;
+        if (url) window.open(url, '_blank', 'noopener');
+      } catch (_e) {
+        alert('Unable to open billing portal right now.');
+      }
+    }
+
+    return (
+      <div style={{margin:'8px 0 12px',padding:'10px 12px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <b>Billing issue</b> — {msg}
+        </div>
+        <button onClick={openPortal} style={{padding:'6px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',cursor:'pointer'}}>
+          Fix payment
+        </button>
+      </div>
+    );
+  } catch (_e) {
+    return null;
+  }
+}
 // ---- Admin Ops: Retention ----
 function AdminOpsRetention(){
   const [me, setMe] = React.useState(null);
@@ -885,6 +924,7 @@ function Layout({children}){
       <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>
         <SuperAdminBanner me={me} />
         <TrialBanner me={me} />
+        <PaymentIssueBanner me={me} />
         {!me?.is_super && typeof localStorage!=='undefined' && localStorage.getItem('admin_token_backup') && (
           <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div><b>Impersonating tenant</b> — you’re viewing the app as a customer.</div>
