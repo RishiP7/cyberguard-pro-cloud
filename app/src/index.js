@@ -2751,6 +2751,50 @@ app.post('/admin/ops/ensure_connectors', authMiddleware, requireSuper, async (_r
   }
 });
 
+// Super Admin: force reset connector (clear tokens/state) so tenant can re-auth
+// POST /admin/ops/connector/reset  { provider: "m365" | "google", type?: "email" }
+app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const provider = String(req.body?.provider || '').trim().toLowerCase();
+    const type = String(req.body?.type || 'email').trim().toLowerCase();
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+
+    // Discover token-ish columns present on connectors table
+    const { rows: cols } = await q(`
+      SELECT column_name
+        FROM information_schema.columns
+       WHERE table_name='connectors'
+    `);
+    const have = new Set((cols||[]).map(r => r.column_name));
+    const tokenish = [
+      'access_token','refresh_token','token','oauth_token','oauth_json',
+      'auth','auth_json','secrets','config','metadata'
+    ];
+
+    const setParts = [];
+    for (const c of tokenish) if (have.has(c)) setParts.push(`${c}=NULL`);
+    // Always wipe health fields too
+    if (have.has('status')) setParts.push(`status=NULL`);
+    if (have.has('last_error')) setParts.push(`last_error=NULL`);
+    if (have.has('last_sync_at')) setParts.push(`last_sync_at=NULL`);
+    setParts.push(`updated_at=$3`);
+
+    if (!setParts.length) {
+      return res.status(500).json({ ok:false, error:'no resettable columns found' });
+    }
+
+    const sql = `UPDATE connectors SET ${setParts.join(', ')} WHERE tenant_id=$1 AND type=$2 AND provider=$4`;
+    await q(sql, [tid, type, now(), provider]);
+
+    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, type }); } catch(_e) {}
+    return res.json({ ok:true, tenant_id: tid, provider, type, cleared: Array.from(have).filter(c => setParts.join(' ').includes(c)) });
+  } catch (e) {
+    console.error('connector/reset failed', e);
+    return res.status(500).json({ ok:false, error:'reset failed' });
+  }
+});
+
 // Daily retention at 03:15 UTC
 (function scheduleDailyRetention(){
   function msUntilNext(hourUTC, minuteUTC){
