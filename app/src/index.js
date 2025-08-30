@@ -3773,12 +3773,12 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     }
 
     // default: JSON
-    // Map to clean keys for API consumers, coerce BigInt/number to Number for JSON safety
+    // Map to clean keys for API consumers, and stringify with a BigInt-safe replacer
     const alerts = rows.map(r => ({
-      id: r.id,
-      tenant_id: r.tenant_id,
+      id: String(r.id),
+      tenant_id: String(r.tenant_id),
       score: (r.score !== null && r.score !== undefined) ? Number(r.score) : null,
-      status: r.status,
+      status: (r.status !== null && r.status !== undefined) ? String(r.status) : null,
       created_at: (r.created_at !== null && r.created_at !== undefined) ? Number(r.created_at) : null,
       from: r.from_addr,
       type: r.evt_type,
@@ -3786,7 +3786,11 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
       preview: r.preview,
       anomaly: !!r.anomaly
     }));
-    return res.json({ ok: true, count: alerts.length, days, alerts });
+
+    // Some drivers may still surface BigInt somewhere; use a replacer just in case
+    const safeStringify = (obj) => JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? Number(v) : v));
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.status(200).send(safeStringify({ ok: true, count: alerts.length, days, alerts }));
   } catch (e) {
     console.error('alerts/export failed', e?.message || e);
     return res.status(500).json({ ok:false, error: 'export failed' });
