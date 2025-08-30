@@ -3092,6 +3092,73 @@ async function hasBillingStatusColumn() {
 
 
 
+// ---------- /me route ----------
+app.get('/me', authMiddleware, async (req, res) => {
+  {
+    try {
+      // breadcrumbs for debugging
+      try { await recordOpsRun('me_stage', { s: 'start', tid: req.user?.tenant_id || null }); } catch (_e) {}
+
+      // Fetch tenant row (same shape as /me_dbg)
+      try { await recordOpsRun('me_stage', { s: 'before_select', tid: req.user?.tenant_id || null }); } catch (_e) {}
+      const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
+      const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
+      try { await recordOpsRun('me_stage', { s: 'after_select', n: rows.length, tid: req.user?.tenant_id || null }); } catch (_e) {}
+      if (!rows.length) {
+        res.setHeader('X-ME', 'notfound');
+        return res.status(404).json({ error: 'not found' });
+      }
+      const t = rows[0];
+      try { await recordOpsRun('me_stage', { s: 'have_row', plan: t?.plan || null, tid: req.user?.tenant_id || null }); } catch (_e) {}
+
+      // Safe numbers for epoch fields
+      const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const trialEndsNum = toNum(t.trial_ends_at);
+      const trialActive = (t.trial_status === 'active') && trialEndsNum > nowEpoch;
+      let trialEndsISO = null;
+      try { trialEndsISO = trialEndsNum > 0 ? new Date(trialEndsNum * 1000).toISOString() : null; } catch(_e) { trialEndsISO = null; }
+
+      const role = req.user?.role || 'member';
+      const is_super = !!req.user?.is_super;
+
+      const payload = {
+        ok: true,
+        tenant_id: t.tenant_id || t.id || req.user.tenant_id,
+        name: t.name || null,
+        plan: t.plan || null,
+        contact_email: t.contact_email ?? null,
+        trial_started_at: t.trial_started_at ?? null,
+        trial_ends_at: t.trial_ends_at ?? null,
+        trial_status: t.trial_status ?? null,
+        created_at: t.created_at ?? null,
+        updated_at: t.updated_at ?? null,
+        billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status),
+        effective_plan: t.plan || null,
+        trial_active: trialActive,
+        plan_actual: t.plan || null,
+        role,
+        is_super,
+        trial: {
+          active: trialActive,
+          days_left: trialActive ? Math.max(0, Math.floor((trialEndsNum - nowEpoch) / 86400)) : 0,
+          ends_at: trialEndsISO
+        }
+      };
+
+      try { await recordOpsRun('me_stage', { s: 'about_to_return', tid: req.user?.tenant_id || null }); } catch (_e) {}
+      res.setHeader('X-ME', 'ok');
+      return res.json(payload);
+    } catch (e) {
+      const msg = e?.message || String(e);
+      const stack = e?.stack || null;
+      console.error('GET /me failed', stack || msg);
+      try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, v: 'me_v4' }); } catch (_e) {}
+      res.setHeader('X-ME', 'err');
+      return res.status(500).json({ error: 'me failed', detail: msg });
+    }
+  }
+});
 // ---------- debug & diagnostics ----------
 // Report commit/version (Render exposes RENDER_GIT_COMMIT)
 app.get('/__version', (_req, res) => {
