@@ -2795,6 +2795,90 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
   }
 });
 
+// Super Admin: clear connector last_error (does not touch tokens)
+// POST /admin/ops/connector/clear_error  { provider: "m365"|"google", type?: "email" }
+app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const provider = String(req.body?.provider || '').trim().toLowerCase();
+    const type = String(req.body?.type || 'email').trim().toLowerCase();
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    await ensureConnectorHealthColumns().catch(()=>{});
+    await q(
+      `UPDATE connectors
+          SET last_error=NULL,
+              updated_at=$3
+        WHERE tenant_id=$1 AND type=$2 AND provider=$4`,
+      [tid, type, now(), provider]
+    );
+    try { await recordOpsRun('connector_clear_error', { tenant_id: tid, provider, type }); } catch(_e) {}
+    return res.json({ ok:true });
+  } catch (e) {
+    console.error('connector/clear_error failed', e);
+    return res.status(500).json({ ok:false, error:'clear_error failed' });
+  }
+});
+
+// Super Admin: run a one-shot poll now for this tenant (email connectors)
+// POST /admin/ops/poll/now  { limit?: number }
+app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const limit = Math.max(1, Math.min(100, Number(req.body?.limit || 25)));
+    await ensureConnectorHealthColumns().catch(()=>{});
+    const { rows } = await q(`
+      SELECT tenant_id, provider
+        FROM connectors
+       WHERE tenant_id=$1 AND type='email'
+       ORDER BY updated_at DESC
+       LIMIT 20
+    `, [tid]);
+    const results = [];
+    for (const r of rows) {
+      try {
+        let items = [];
+        if (r.provider === 'm365') {
+          try { items = await fetchM365Delta(r.tenant_id, limit); }
+          catch (_e) { items = await fetchM365Inbox(r.tenant_id, Math.min(10, limit)); }
+        } else if (r.provider === 'google') {
+          items = await gmailList(r.tenant_id, 'newer_than:1d', limit);
+        } else {
+          await q(
+            `UPDATE connectors
+                SET status='error', last_error=$3, updated_at=$2
+              WHERE tenant_id=$1 AND type='email' AND provider=$4`,
+            [r.tenant_id, now(), 'unsupported provider', r.provider]
+          );
+          results.push({ provider: r.provider, ok:false, error:'unsupported' });
+          continue;
+        }
+
+        const created = await scanAndRecordEmails(r.tenant_id, items);
+        await q(
+          `UPDATE connectors
+              SET status='connected', last_error=NULL, last_sync_at=$2, updated_at=$2
+            WHERE tenant_id=$1 AND type='email' AND provider=$3`,
+          [r.tenant_id, now(), r.provider]
+        );
+        results.push({ provider: r.provider, ok:true, alerts_created: created });
+      } catch (inner) {
+        await q(
+          `UPDATE connectors
+              SET status='error', last_error=$3, updated_at=$2
+            WHERE tenant_id=$1 AND type='email' AND provider=$4`,
+          [r.tenant_id, now(), String(inner.message || inner), r.provider]
+        );
+        results.push({ provider: r.provider, ok:false, error: String(inner.message||inner) });
+      }
+    }
+    try { await recordOpsRun('poll_now', { tenant_id: tid, results }); } catch(_e) {}
+    return res.json({ ok:true, results });
+  } catch (e) {
+    console.error('poll/now failed', e);
+    return res.status(500).json({ ok:false, error:'poll failed' });
+  }
+});
+
 // Daily retention at 03:15 UTC
 (function scheduleDailyRetention(){
   function msUntilNext(hourUTC, minuteUTC){
