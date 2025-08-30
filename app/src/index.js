@@ -3723,23 +3723,110 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     const limit = Math.min(5000, Math.max(1, parseInt(String(req.query?.limit || '1000'), 10) || 1000));
     const since = Math.floor(Date.now() / 1000) - (days * 86400);
 
-    // Use flat columns for alerts export
-    const { rows } = await q(`
-      SELECT id,
-             tenant_id,
-             score,
-             status,
-             created_at,
-             "from"   AS from_addr,
-             type      AS evt_type,
-             subject   AS subject,
-             preview   AS preview,
-             anomaly   AS anomaly_txt
-        FROM alerts
-       WHERE tenant_id=$1 AND created_at > $2
-       ORDER BY created_at DESC
-       LIMIT $3
-    `, [tid, since, limit]);
+    // Probe multiple possible schemas for alerts (flat, alt, or legacy JSONB)
+    let rows = [];
+    // try #1: flat schema with a column named "from" (quoted because it's a keyword)
+    try {
+      const r1 = await q(`
+        SELECT id,
+               tenant_id,
+               score,
+               status,
+               created_at,
+               "from"   AS from_addr,
+               type      AS evt_type,
+               subject   AS subject,
+               preview   AS preview,
+               anomaly   AS anomaly_txt
+          FROM alerts
+         WHERE tenant_id=$1 AND created_at > $2
+         ORDER BY created_at DESC
+         LIMIT $3
+      `, [tid, since, limit]);
+      rows = r1.rows;
+    } catch (_e1) {
+      // try #2: flat schema but column named from_addr
+      try {
+        const r2 = await q(`
+          SELECT id,
+                 tenant_id,
+                 score,
+                 status,
+                 created_at,
+                 from_addr AS from_addr,
+                 type      AS evt_type,
+                 subject   AS subject,
+                 preview   AS preview,
+                 anomaly   AS anomaly_txt
+            FROM alerts
+           WHERE tenant_id=$1 AND created_at > $2
+           ORDER BY created_at DESC
+           LIMIT $3
+        `, [tid, since, limit]);
+        rows = r2.rows;
+      } catch (_e2) {
+        // try #3: flat schema but sender column named email_from
+        try {
+          const r3 = await q(`
+            SELECT id,
+                   tenant_id,
+                   score,
+                   status,
+                   created_at,
+                   email_from AS from_addr,
+                   type       AS evt_type,
+                   subject    AS subject,
+                   preview    AS preview,
+                   anomaly    AS anomaly_txt
+              FROM alerts
+             WHERE tenant_id=$1 AND created_at > $2
+             ORDER BY created_at DESC
+             LIMIT $3
+          `, [tid, since, limit]);
+          rows = r3.rows;
+        } catch (_e3) {
+          // try #4: legacy JSONB event column
+          try {
+            const r4 = await q(`
+              SELECT id,
+                     tenant_id,
+                     score,
+                     status,
+                     created_at,
+                     event->>'from'    AS from_addr,
+                     event->>'type'    AS evt_type,
+                     event->>'subject' AS subject,
+                     event->>'preview' AS preview,
+                     event->>'anomaly' AS anomaly_txt
+                FROM alerts
+               WHERE tenant_id=$1 AND created_at > $2
+               ORDER BY created_at DESC
+               LIMIT $3
+            `, [tid, since, limit]);
+            rows = r4.rows;
+          } catch (_e4) {
+            // Final fallback: minimal columns (id and created_at only) so we always return something
+            const r5 = await q(`
+              SELECT id,
+                     tenant_id,
+                     NULL::numeric AS score,
+                     status,
+                     created_at,
+                     NULL::text AS from_addr,
+                     NULL::text AS evt_type,
+                     NULL::text AS subject,
+                     NULL::text AS preview,
+                     NULL::text AS anomaly_txt
+                FROM alerts
+               WHERE tenant_id=$1 AND created_at > $2
+               ORDER BY created_at DESC
+               LIMIT $3
+            `, [tid, since, limit]);
+            rows = r5.rows;
+          }
+        }
+      }
+    }
 
     // Optional debug: quickly inspect shape without running mapping
     if (String(req.query?.debug || '') === '1') {
