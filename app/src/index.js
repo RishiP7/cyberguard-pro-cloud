@@ -2813,6 +2813,21 @@ setInterval(async ()=>{
     console.warn('background poller error', e);
   }
 }, 5*60*1000); // every 5 minutes
+// ---------- Connector health ----------
+app.get('/connectors/status', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await q(`
+      SELECT provider, status, last_error, last_sync_at, updated_at
+        FROM connectors
+       WHERE tenant_id=$1 AND type='email'
+       ORDER BY updated_at DESC
+    `, [req.user.tenant_id]);
+    res.json({ ok: true, connectors: rows });
+  } catch (e) {
+    console.error('connectors/status failed', e);
+    res.status(500).json({ ok:false, error: 'status failed' });
+  }
+});
 
 
 // ====== AI Autonomy Backend Patch ======
@@ -3062,7 +3077,8 @@ setInterval(async ()=>{
 // ---------- tenant billing status helpers ----------
 // Set billing status for a tenant (safe for upserts)
 async function setTenantBillingStatus(tenantId, status) {
-  await q(`UPDATE tenants SET billing_status=$2 WHERE tenant_id=$1`, [tenantId, status]);
+  try { await ensureBillingStatusColumn(); } catch(_e) {}
+  await q(`UPDATE tenants SET billing_status=$2 WHERE tenant_id=$1`, [tenantId, status ?? null]);
 }
 
 // Map Stripe price IDs to internal plan codes
