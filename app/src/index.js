@@ -2057,14 +2057,19 @@ async function withApikeysRetry(op){
   }
 }
 // --- Paid plan guard (applies to API key routes) ---
-function requirePaidPlan(req, res, next) {
+async function requirePaidPlan(req, res, next) {
   try {
     // Super admins bypass plan checks (support/ops use)
     if (req.user?.is_super) return next();
 
     const plan = String(req.user?.plan_actual || req.user?.plan || '').toLowerCase();
     const ok = ['basic','pro','pro_plus'].includes(plan);
-    if (!ok) return res.status(402).json({ error: 'Paid plan required', plan });
+    if (!ok) {
+      try {
+        await recordOpsRun('paid_plan_denied', { tenant_id: req.user?.tenant_id || null, plan, route: req.path });
+      } catch (_e) {}
+      return res.status(402).json({ error: 'Paid plan required', plan });
+    }
     next();
   } catch (_e) {
     return res.status(402).json({ error: 'Paid plan required' });
