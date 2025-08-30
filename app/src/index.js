@@ -2058,16 +2058,18 @@ async function withApikeysRetry(op){
 }
 // --- Paid plan guard (applies to API key routes) ---
 function requirePaidPlan(req, res, next) {
-  try{
+  try {
+    // Super admins bypass plan checks (support/ops use)
+    if (req.user?.is_super) return next();
+
     const plan = String(req.user?.plan_actual || req.user?.plan || '').toLowerCase();
     const ok = ['basic','pro','pro_plus'].includes(plan);
-    if (!ok) return res.status(402).json({ error: 'Paid plan required' });
+    if (!ok) return res.status(402).json({ error: 'Paid plan required', plan });
     next();
-  }catch(_e){
+  } catch (_e) {
     return res.status(402).json({ error: 'Paid plan required' });
   }
 }
-
 // Ensures we always use fresh plan info from DB (not what's baked into old JWTs)
 async function attachFreshTenantPlan(req, res, next) {
   try {
