@@ -3099,14 +3099,22 @@ app.get('/me', authMiddleware, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'not found' });
     const t = rows[0];
 
+    // --- safe trial parsing to avoid intermittent errors ---
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const trialEndsNum = Number(t.trial_ends_at || 0);
+    const trial_active = (t.trial_status === 'active') && trialEndsNum > nowEpoch;
+    let trialEndsISO = null;
+    if (trialEndsNum > 0) {
+      try { trialEndsISO = new Date(trialEndsNum * 1000).toISOString(); } catch (_e) { trialEndsISO = null; }
+    }
+
     const role = req.user?.role || 'member';
     const is_super = !!req.user?.is_super;
-    const trial_active = (t.trial_status === 'active') && Number(t.trial_ends_at || 0) > now();
 
     const trial = {
       active: trial_active,
-      days_left: trial_active ? Math.max(0, Math.floor((Number(t.trial_ends_at) - now()) / 86400)) : 0,
-      ends_at: t.trial_ends_at ? new Date(Number(t.trial_ends_at) * 1000).toISOString() : null
+      days_left: trial_active ? Math.max(0, Math.floor((trialEndsNum - nowEpoch) / 86400)) : 0,
+      ends_at: trialEndsISO
     };
 
     const plan_actual = t.plan;
