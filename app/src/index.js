@@ -3198,29 +3198,30 @@ app.get('/me_dbg', authMiddleware, async (req, res) => {
 });
 
 // Route map (diagnostics): lists all registered routes and method stacks
-app.get('/__routes', (_req, res) => {
-  try {
-    const stack = (app._router && app._router.stack) ? app._router.stack : [];
-    const routes = [];
-    for (const layer of stack) {
-      if (layer.route && layer.route.path) {
-        const methods = Object.keys(layer.route.methods || {}).filter(m => layer.route.methods[m]);
-        routes.push({ path: layer.route.path, methods });
-      } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
-        for (const l2 of layer.handle.stack) {
-          if (l2.route && l2.route.path) {
-            const methods = Object.keys(l2.route.methods || {}).filter(m => l2.route.methods[m]);
-            routes.push({ path: l2.route.path, methods });
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/__routes', (_req, res) => {
+    try {
+      const stack = (app._router && app._router.stack) ? app._router.stack : [];
+      const routes = [];
+      for (const layer of stack) {
+        if (layer.route && layer.route.path) {
+          const methods = Object.keys(layer.route.methods || {}).filter(m => layer.route.methods[m]);
+          routes.push({ path: layer.route.path, methods });
+        } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
+          for (const l2 of layer.handle.stack) {
+            if (l2.route && l2.route.path) {
+              const methods = Object.keys(l2.route.methods || {}).filter(m => l2.route.methods[m]);
+              routes.push({ path: l2.route.path, methods });
+            }
           }
         }
       }
+      res.json({ ok: true, routes });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e.message || e) });
     }
-    res.json({ ok: true, routes });
-  } catch (e) {
-    res.status(500).json({ ok:false, error: String(e.message || e) });
-  }
-});
-
+  });
+}
 // ---------- start ----------
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
