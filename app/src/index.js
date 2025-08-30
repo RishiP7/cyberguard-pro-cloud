@@ -3072,35 +3072,50 @@ async function ensureBillingStatusColumn() {
   } catch (_e) { /* ignore */ }
 }
 
+// -- Check if billing_status column exists (with simple in-memory cache)
+let _billingStatusColumnKnown = false;
+let _billingStatusColumnHas = false;
+async function hasBillingStatusColumn() {
+  if (_billingStatusColumnKnown) return _billingStatusColumnHas;
+  try {
+    const r = await q(`SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='billing_status' LIMIT 1`);
+    _billingStatusColumnHas = r.rows && r.rows.length > 0;
+    _billingStatusColumnKnown = true;
+    return _billingStatusColumnHas;
+  } catch (_e) {
+    // On any error, assume not present
+    _billingStatusColumnKnown = true;
+    _billingStatusColumnHas = false;
+    return false;
+  }
+}
+
 // ---------- /me route ----------
 app.get('/me', authMiddleware, async (req, res) => {
   try {
-    // Ensure column (best-effort)
-    await ensureBillingStatusColumn();
+    // Fast path: try once to ensure column exists, but don't fail if it doesn't
+    try { await ensureBillingStatusColumn(); } catch (_e) {}
 
-    let rows = [];
-    try {
-      // Preferred: with billing_status
+    const includeBilling = await hasBillingStatusColumn();
+
+    let t;
+    if (includeBilling) {
       const r = await q(
         `SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at,billing_status
            FROM tenants WHERE tenant_id=$1`,
         [req.user.tenant_id]
       );
-      rows = r.rows;
-    } catch (e1) {
-      // Fallback if column is missing or any select error
-      console.warn('GET /me select with billing_status failed; falling back', e1?.message || e1);
-      await ensureBillingStatusColumn();
-      const r2 = await q(
+      t = r.rows[0];
+    } else {
+      const r = await q(
         `SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at
            FROM tenants WHERE tenant_id=$1`,
         [req.user.tenant_id]
       );
-      rows = r2.rows;
+      t = r.rows[0];
     }
 
-    if (!rows.length) return res.status(404).json({ error: 'not found' });
-    const t = rows[0];
+    if (!t) return res.status(404).json({ error: 'not found' });
 
     const role = req.user?.role || 'member';
     const is_super = !!req.user?.is_super;
@@ -3115,7 +3130,7 @@ app.get('/me', authMiddleware, async (req, res) => {
     const plan_actual = t.plan;
     const effective_plan = t.plan; // placeholder until advanced logic
 
-    res.json({
+    return res.json({
       ok: true,
       tenant_id: t.tenant_id,
       name: t.name,
