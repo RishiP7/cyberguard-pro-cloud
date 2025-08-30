@@ -3132,10 +3132,12 @@ app.get('/me', authMiddleware, async (req, res) => {
       trial
     });
   } catch (e) {
-    console.error('GET /me failed', e?.stack || e?.message || e);
-    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg: e?.message || String(e) }); } catch (_e) {}
-    const isSuper = !!req.user?.is_super;
-    return res.status(500).json(isSuper ? { error: 'me failed', detail: e?.message || String(e) } : { error: 'me failed' });
+    const msg = e?.message || String(e);
+    const stack = e?.stack || null;
+    console.error('GET /me failed', stack || msg);
+    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack }); } catch (_e) {}
+    // Always include detail temporarily to speed up debugging
+    return res.status(500).json({ error: 'me failed', detail: msg });
   }
 });
 
