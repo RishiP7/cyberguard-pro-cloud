@@ -1943,11 +1943,15 @@ app.post("/billing/checkout", authMiddleware, async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
+      client_reference_id: tenant_id,
       line_items: [{ price, quantity: 1 }],
       allow_promotion_codes: true,
       success_url: success,
       cancel_url: cancel,
-      metadata: { tenant_id, plan: canonicalPlan(incomingPlan) || String(incomingPlan || "") }
+      metadata: { tenant_id, plan: canonicalPlan(incomingPlan) || String(incomingPlan || "") },
+      subscription_data: {
+        metadata: { tenant_id, plan: canonicalPlan(incomingPlan) || String(incomingPlan || "") }
+      }
     });
     return res.json({ ok: true, url: session.url });
   } catch (e) {
