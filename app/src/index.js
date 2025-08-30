@@ -3773,13 +3773,13 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     }
 
     // default: JSON
-    // Map to clean keys for API consumers
+    // Map to clean keys for API consumers, coerce BigInt/number to Number for JSON safety
     const alerts = rows.map(r => ({
       id: r.id,
       tenant_id: r.tenant_id,
-      score: r.score,
+      score: (r.score !== null && r.score !== undefined) ? Number(r.score) : null,
       status: r.status,
-      created_at: r.created_at,
+      created_at: (r.created_at !== null && r.created_at !== undefined) ? Number(r.created_at) : null,
       from: r.from_addr,
       type: r.evt_type,
       subject: r.subject,
