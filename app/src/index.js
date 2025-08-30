@@ -1583,6 +1583,55 @@ function canonicalPlan(plan){
   return null;
 }
 
+// --- Stripe plan/tenant helpers ---
+function resolvePlanFromPriceId(priceId) {
+  if (!priceId) return null;
+  const map = {
+    [STRIPE_PRICE_BASIC]: 'basic',
+    [STRIPE_PRICE_PRO]: 'pro',
+    [STRIPE_PRICE_PROPLUS]: 'pro_plus'
+  };
+  return map[priceId] || null;
+}
+
+async function resolveTenantIdFromEvent(obj) {
+  try {
+    // Prefer explicit metadata / client ref
+    const metaTid = obj?.metadata?.tenant_id || obj?.client_reference_id || null;
+    if (metaTid) return String(metaTid);
+
+    // Fallback to DB mapping via Stripe customer id
+    const customerId = obj?.customer || obj?.customer_id || null;
+    if (customerId) {
+      const rows = await q(`select id from tenants where stripe_customer_id = $1 limit 1`, [String(customerId)]);
+      if (rows && rows[0] && rows[0].id) return rows[0].id;
+    }
+  } catch (_e) {}
+  return null;
+}
+
+async function setTenantPlan(tenantId, plan, opts = {}) {
+  const endTrial = !!opts.endTrial;
+  const key = String(plan || '').toLowerCase();
+
+  // Idempotent: only update when changed
+  try {
+    const cur = await q(`select plan_actual from tenants where id = $1 limit 1`, [tenantId]);
+    const current = cur && cur[0] ? String(cur[0].plan_actual || '').toLowerCase() : null;
+
+    if (current !== key) {
+      await q(`update tenants set plan=$1, plan_actual=$1 where id=$2`, [key, tenantId]);
+    }
+    if (endTrial) {
+      await q(`update tenants set trial_ends_at = 0 where id = $1`, [tenantId]);
+    }
+    await recordOpsRun('stripe_plan_set', { tenant_id: tenantId, plan: key, changed: current !== key });
+  } catch (e) {
+    await recordOpsRun('stripe_plan_set_error', { tenant_id: tenantId, plan: key, msg: e.message || String(e) });
+    throw e;
+  }
+}
+
 // Debug endpoint: test canonicalization of plan input
 app.get('/billing/_debug', authMiddleware, requireSuper, (req, res) => {
   const plan = req.query?.plan || '';
@@ -1712,200 +1761,117 @@ const rawSaver = (req, res, buf) => {
   }
 };
 
-// Stripe webhook endpoint (idempotent, synced)
-// Use no body parser here; just rely on req.rawBody set by verify, or fallback to req.body if needed.
-app.post(
-  "/billing/webhook",
-  async (req, res, next) => {
-    // Simplified, safe debug (no JSON.stringify)
-    try {
-      const dbg = {
-        type: typeof req.body,
-        isBuffer: Buffer.isBuffer(req.body),
-        hasRawBody: !!req.rawBody,
-        rawIsBuffer: Buffer.isBuffer(req.rawBody || null),
-        contentType: req.headers['content-type'] || null,
-        hasSig: !!req.headers['stripe-signature'],
-        length: req.headers['content-length'] || null,
-      };
-      console.log('[stripe] webhook debug', dbg);
-    } catch (e) {
-      console.warn('[stripe] debug log failed', e?.message || e);
-    }
-    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
-      return res.status(501).json({ ok:false, error:"webhook not configured" });
-    }
-    const sig = req.headers['stripe-signature'];
-    // Prefer req.body when express.raw is active; else fall back to req.rawBody
-    const bodyForSig = Buffer.isBuffer(req.body)
-      ? req.body
-      : (Buffer.isBuffer(req.rawBody) ? req.rawBody : null);
+app.post("/billing/webhook", async (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+    return res.status(501).json({ ok:false, error:"webhook not configured" });
+  }
 
-    if (!bodyForSig) {
-      console.error('[stripe] missing Buffer body for signature verification');
-      await logStripeRun('stripe_bad_sig', { error: 'no buffer body' });
-      return res.status(400).send('Webhook Error: Raw Buffer body required for signature verification');
-    }
-    let event;
-    try {
-      event = stripe.webhooks.constructEvent(bodyForSig, sig, STRIPE_WEBHOOK_SECRET);
-    } catch (err) {
-      console.error("[stripe] webhook signature failed", err?.message || err);
-      await logStripeRun("stripe_bad_sig", { error: String(err?.message||err) });
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
+  // Use Buffer body for signature validation (express.raw is mounted earlier)
+  const sig = req.headers['stripe-signature'];
+  const bodyForSig = Buffer.isBuffer(req.body)
+    ? req.body
+    : (Buffer.isBuffer(req.rawBody) ? req.rawBody : null);
 
-    const eid = String(event.id || "");
-    const etype = String(event.type || "");
-    // Idempotency: drop if we've seen this id
-    if (!eid) return res.status(400).json({ ok:false, error:"missing event id" });
-    if (await hasStripeEvent(eid)) {
-      return res.json({ ok:true, dedup:true });
-    }
+  if (!bodyForSig) {
+    await recordOpsRun('stripe_bad_sig', { error: 'no buffer body' });
+    return res.status(400).send('Webhook Error: Raw Buffer body required for signature verification');
+  }
 
-    // Persist raw event early (best-effort)
-    try { await markStripeEvent(eid, etype, event); } catch(_e) {}
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(bodyForSig, sig, STRIPE_WEBHOOK_SECRET);
+  } catch (e) {
+    await recordOpsRun('stripe_bad_sig', { error: e.message || String(e) });
+    return res.status(400).send(`Webhook Error: ${e.message}`);
+  }
 
-    try {
-      let tenant_id = null;
-      let customer_id = null;
+  const etype = String(event.type || '');
+  const eid   = String(event.id || '');
 
-      const finalize = async (info) => {
-        await logStripeRun("stripe_webhook", {
-          event_id: eid,
-          type: etype,
-          ...info
-        });
-      };
+  // Idempotency
+  if (!eid) return res.status(400).json({ ok:false, error:"missing event id" });
+  if (await hasStripeEvent(eid)) return res.json({ ok:true, dedup:true });
+  try { await markStripeEvent(eid, etype, event); } catch(_e) {}
 
-      switch (etype) {
-        case "checkout.session.completed": {
-          // Always re-retrieve the session with line items so we can read price.id
-          const sessId = event?.data?.object?.id;
-          let sess = event?.data?.object || null;
-
-          try {
-            if (sessId) {
-              // expand line items for price mapping
-              sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ["line_items.data.price"] });
-            }
-          } catch (_) { /* non-fatal; fallback to received object */ }
-
-          const tenant_id = sess?.metadata?.tenant_id || null;
-          const customer_id = sess?.customer || null;
-
-          // Persist customer on first checkout (don’t overwrite an existing one)
-          if (tenant_id && customer_id) {
-            await q(
-              `UPDATE tenants
-                 SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
-                     updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
-               WHERE tenant_id = $1`,
-              [tenant_id, customer_id]
-            );
-          }
-
-          // Price resolution (prefer expanded line item)
-          const priceId =
-            sess?.line_items?.data?.[0]?.price?.id ||
-            sess?.subscription_details?.plan?.id ||
-            null;
-
-          const metaPlan = (sess?.metadata?.plan || "").toLowerCase();
-          const r = await setTenantPlanFromPrice({
-            tenant_id,
-            customer_id,
-            price_id: priceId,
-            fallback_plan: metaPlan || null,
-            end_trial: true // first successful checkout ends trial
-          });
-
-          await logStripeRun("stripe_webhook", {
-            event_id: eid,
-            type: etype,
-            action: "checkout.session.completed",
-            tenant_id: r.tenant_id || tenant_id || null,
-            plan: r.plan || null,
-            price_id: priceId || null,
-            had_metadata: !!sess?.metadata
-          });
-          break;
+  try {
+    switch (etype) {
+      case 'checkout.session.completed': {
+        const sessId = event.data.object.id;
+        const sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ['line_items.data.price'] });
+        const tenantId = await resolveTenantIdFromEvent(sess);
+        const priceId  = sess?.line_items?.data?.[0]?.price?.id || null;
+        const plan     = resolvePlanFromPriceId(priceId) || canonicalPlan(sess?.metadata?.plan);
+        if (tenantId && plan) {
+          await setTenantPlan(tenantId, plan, { endTrial: true });
+        } else {
+          await recordOpsRun('stripe_plan_unresolved', { event: etype, tenantId, priceId, metaPlan: sess?.metadata?.plan || null });
         }
-
-        case "customer.subscription.created":
-        case "customer.subscription.updated": {
-          const sub = event.data.object;
-          customer_id = sub?.customer || null;
-          tenant_id = sub?.metadata?.tenant_id || null;
-          const priceId = sub?.items?.data?.[0]?.price?.id || null;
-          // fallback tenant via stored customer mapping
-          if (!tenant_id && customer_id) {
-            const r = await q(`SELECT tenant_id FROM tenants WHERE stripe_customer_id=$1 LIMIT 1`, [customer_id]);
-            tenant_id = r.rows[0]?.tenant_id || null;
-          }
-          const r = await setTenantPlanFromPrice({
-            tenant_id,
-            customer_id,
-            price_id: priceId,
-            end_trial: true
-          });
-          // Always persist customer id on the tenant
-          if (tenant_id && customer_id) {
-            await q(
-              `UPDATE tenants
-                 SET stripe_customer_id = COALESCE(stripe_customer_id, $2),
-                     updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT
-               WHERE tenant_id=$1`,
-              [tenant_id, customer_id]
-            );
-          }
-          await finalize({ tenant_id: r.tenant_id || tenant_id, action: etype, plan: r.plan || mapPriceToPlan(priceId) });
-          break;
-        }
-
-        case "invoice.paid":
-        case "invoice.payment_succeeded": {
-          const inv = event.data.object;
-          customer_id = inv?.customer || null;
-          const priceId = inv?.lines?.data?.[0]?.price?.id || null;
-          const r = await setTenantPlanFromPrice({
-            customer_id,
-            price_id: priceId,
-            end_trial: true
-          });
-          await finalize({ tenant_id: r.tenant_id, action: etype, plan: r.plan || mapPriceToPlan(priceId) });
-          break;
-        }
-
-        case "customer.subscription.deleted": {
-          const sub = event.data.object;
-          customer_id = sub?.customer || null;
-          // When subscription deleted, revert to basic (or keep last known plan if you prefer)
-          const r = await setTenantPlanFromPrice({
-            customer_id,
-            price_id: null,
-            fallback_plan: "basic",
-            end_trial: false
-          });
-          await finalize({ tenant_id: r.tenant_id, action: etype, plan: r.plan });
-          break;
-        }
-
-        default: {
-          // Unhandled types are stored but not acted upon
-          await finalize({ info: "ignored" });
-          break;
-        }
+        break;
       }
 
-      return res.json({ received: true });
-    } catch (e) {
-      console.error("[stripe] webhook handler error", e);
-      await logStripeRun("stripe_error", { event_id: String(event?.id||""), type: String(event?.type||""), error: String(e?.message||e) });
-      return res.status(500).json({ ok:false });
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated': {
+        const subId = event.data.object.id;
+        const sub   = await stripe.subscriptions.retrieve(subId, { expand: ['items.data.price'] });
+        const tenantId = await resolveTenantIdFromEvent(sub);
+        const priceId  = sub?.items?.data?.[0]?.price?.id || null;
+        const plan     = resolvePlanFromPriceId(priceId) || canonicalPlan(sub?.metadata?.plan);
+        if (tenantId && plan) {
+          await setTenantPlan(tenantId, plan, { endTrial: true });
+        } else {
+          await recordOpsRun('stripe_plan_unresolved', { event: etype, tenantId, priceId });
+        }
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object;
+        const tenantId = await resolveTenantIdFromEvent(sub);
+        if (tenantId) {
+          await setTenantPlan(tenantId, 'basic', { endTrial: false });
+        } else {
+          await recordOpsRun('stripe_plan_unresolved', { event: etype, reason: 'no tenant_id', customer: sub?.customer || null });
+        }
+        break;
+      }
+
+      case 'invoice.payment_succeeded':
+      case 'invoice.paid': {
+        const invId = event.data.object.id;
+        const inv   = await stripe.invoices.retrieve(invId, { expand: ['lines.data.price', 'subscription.items.data.price'] });
+        const tenantId = await resolveTenantIdFromEvent(inv);
+        const priceId  = inv?.lines?.data?.[0]?.price?.id
+                         || inv?.subscription?.items?.data?.[0]?.price?.id
+                         || null;
+        const plan     = resolvePlanFromPriceId(priceId) || canonicalPlan(inv?.metadata?.plan);
+        if (tenantId && plan) {
+          await setTenantPlan(tenantId, plan, { endTrial: true });
+        } else {
+          await recordOpsRun('stripe_plan_unresolved', { event: etype, tenantId, priceId });
+        }
+        break;
+      }
+
+      case 'invoice.payment_failed': {
+        const inv = event.data.object;
+        const tenantId = await resolveTenantIdFromEvent(inv);
+        await recordOpsRun('stripe_payment_failed', { tenant_id: tenantId || null, invoice: inv.id, customer: inv.customer || null });
+        // Optional: add grace logic later
+        break;
+      }
+
+      default:
+        // Acknowledge unhandled events to prevent Stripe retries
+        break;
     }
+
+    try { await recordOpsRun('stripe_webhook', { type: etype, event_id: eid }); } catch(_e) {}
+    return res.json({ received: true });
+  } catch (e) {
+    await recordOpsRun('stripe_webhook_handler_error', { type: etype, msg: e.message || String(e) });
+    return res.status(500).json({ error: 'handler failed' });
   }
-);
+});
 
 // ---------- body parsers (global) ----------
 // Only save req.rawBody for /billing/webhook, and skip all JSON parsing for /billing/webhook
