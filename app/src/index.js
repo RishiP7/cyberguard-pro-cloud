@@ -3326,7 +3326,17 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
             try { await q(`UPDATE tenants SET trial_status='ended', trial_ends_at=$2 WHERE tenant_id=$1 AND (trial_status IS NULL OR trial_status <> 'ended')`, [tenantId, Math.floor(Date.now()/1000)]); } catch(_e) {}
           }
         }
-        try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'checkout.session.completed', event_id: event.id, price_id: (sess.line_items && sess.line_items.data[0]?.price?.id) || null, tenant_id: tenantId, had_metadata: !!tenantId }); } catch(_e) {}
+        try {
+          await recordOpsRun('stripe_webhook', {
+            type: event.type,
+            action: 'checkout.session.completed',
+            event_id: event.id,
+            price_id: (sess.line_items && sess.line_items.data[0]?.price?.id) || null,
+            customer_id: customerId || null,
+            tenant_id: tenantId || null,
+            had_metadata: !!tenantId
+          });
+        } catch(_e) {}
         break;
       }
 
@@ -3367,17 +3377,35 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
 
       case 'invoice.payment_failed': {
         const inv = event.data.object;
-        const tenantId = await tenantIdByStripeCustomerId(inv.customer);
+        const customerId = inv.customer;
+        const tenantId = await tenantIdByStripeCustomerId(customerId);
         if (tenantId) await safeSetBilling(tenantId, 'payment_failed');
-        try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'invoice.payment_failed', event_id: event.id, tenant_id: tenantId }); } catch(_e) {}
+        try {
+          await recordOpsRun('stripe_webhook', {
+            type: event.type,
+            action: 'invoice.payment_failed',
+            event_id: event.id,
+            customer_id: customerId || null,
+            tenant_id: tenantId || null
+          });
+        } catch(_e) {}
         break;
       }
 
       case 'invoice.paid': {
         const inv = event.data.object;
-        const tenantId = await tenantIdByStripeCustomerId(inv.customer);
+        const customerId = inv.customer;
+        const tenantId = await tenantIdByStripeCustomerId(customerId);
         if (tenantId) await safeSetBilling(tenantId, 'active');
-        try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'invoice.paid', event_id: event.id, tenant_id: tenantId }); } catch(_e) {}
+        try {
+          await recordOpsRun('stripe_webhook', {
+            type: event.type,
+            action: 'invoice.paid',
+            event_id: event.id,
+            customer_id: customerId || null,
+            tenant_id: tenantId || null
+          });
+        } catch(_e) {}
         break;
       }
 
@@ -3410,6 +3438,39 @@ app.get('/billing/portal', authMiddleware, async (req,res)=>{
   }catch(e){
     console.error('portal failed', e);
     return res.status(500).json({ ok:false, error: 'portal failed' });
+  }
+});
+
+// Super Admin: backfill/sync billing state for the current tenant from Stripe
+app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [tid]);
+    const customer = cur.rows && cur.rows[0] ? cur.rows[0].stripe_customer_id : null;
+    if (!customer) {
+      return res.status(400).json({ ok:false, error: 'no stripe_customer_id on tenant' });
+    }
+    // Pull latest subscription for this customer
+    const subs = await stripe.subscriptions.list({ customer, status: 'all', limit: 1 });
+    if (!subs.data || subs.data.length === 0) {
+      await setTenantBillingStatus(tid, null);
+      return res.json({ ok:true, updated: false, note: 'no subscriptions found' });
+    }
+    const sub = subs.data[0];
+    const status = sub.status || null; // active, trialing, past_due, canceled, unpaid
+    const priceId = (sub.items && sub.items.data[0] && sub.items.data[0].price && sub.items.data[0].price.id) || null;
+    const plan = planFromPriceId(priceId) || normalizePlan(sub.metadata?.plan);
+
+    if (plan) {
+      try { await setTenantPlan(tid, plan); } catch(_e) {}
+    }
+    try { await setTenantBillingStatus(tid, status); } catch(_e) {}
+
+    try { await recordOpsRun('billing_sync', { tenant_id: tid, customer_id: customer, status, price_id: priceId, plan }); } catch(_e) {}
+    return res.json({ ok:true, plan: plan || null, billing_status: status || null });
+  } catch (e) {
+    console.error('admin billing sync failed', e);
+    return res.status(500).json({ ok:false, error: 'sync failed' });
   }
 });
 
