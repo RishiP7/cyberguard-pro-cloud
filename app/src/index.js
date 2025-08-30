@@ -3075,25 +3075,48 @@ async function ensureBillingStatusColumn() {
 // ---------- /me route ----------
 app.get('/me', authMiddleware, async (req, res) => {
   try {
-    // Ensure billing_status column exists before querying
+    // Ensure column (best-effort)
     await ensureBillingStatusColumn();
-    const {rows}=await q(`SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at,billing_status FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
-    if(!rows.length) return res.status(404).json({ error: 'not found' });
-    const t=rows[0];
+
+    let rows = [];
+    try {
+      // Preferred: with billing_status
+      const r = await q(
+        `SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at,billing_status
+           FROM tenants WHERE tenant_id=$1`,
+        [req.user.tenant_id]
+      );
+      rows = r.rows;
+    } catch (e1) {
+      // Fallback if column is missing or any select error
+      console.warn('GET /me select with billing_status failed; falling back', e1?.message || e1);
+      await ensureBillingStatusColumn();
+      const r2 = await q(
+        `SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at
+           FROM tenants WHERE tenant_id=$1`,
+        [req.user.tenant_id]
+      );
+      rows = r2.rows;
+    }
+
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    const t = rows[0];
+
     const role = req.user?.role || 'member';
     const is_super = !!req.user?.is_super;
-    const trial_active = t.trial_status==='active' && Number(t.trial_ends_at||0)>now();
-    // Compose trial object
+    const trial_active = t.trial_status === 'active' && Number(t.trial_ends_at || 0) > now();
+
     const trial = {
       active: trial_active,
-      days_left: trial_active ? Math.max(0, Math.floor((Number(t.trial_ends_at)-now())/86400)) : 0,
-      ends_at: t.trial_ends_at ? new Date(Number(t.trial_ends_at)*1000).toISOString() : null
+      days_left: trial_active ? Math.max(0, Math.floor((Number(t.trial_ends_at) - now()) / 86400)) : 0,
+      ends_at: t.trial_ends_at ? new Date(Number(t.trial_ends_at) * 1000).toISOString() : null
     };
-    // Compose effective plan
+
     const plan_actual = t.plan;
-    const effective_plan = t.plan; // for now
+    const effective_plan = t.plan; // placeholder until advanced logic
+
     res.json({
-      ok:true,
+      ok: true,
       tenant_id: t.tenant_id,
       name: t.name,
       plan: t.plan,
@@ -3103,7 +3126,7 @@ app.get('/me', authMiddleware, async (req, res) => {
       trial_status: t.trial_status,
       created_at: t.created_at,
       updated_at: t.updated_at,
-      billing_status: t.billing_status,
+      billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status),
       effective_plan,
       trial_active,
       plan_actual,
