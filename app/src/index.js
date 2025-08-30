@@ -3723,8 +3723,18 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     const limit = Math.min(5000, Math.max(1, parseInt(String(req.query?.limit || '1000'), 10) || 1000));
     const since = Math.floor(Date.now() / 1000) - (days * 86400);
 
+    // Match real schema: event JSONB + score/status fields
     const { rows } = await q(`
-      SELECT id, tenant_id, severity, source, subject, summary, created_at
+      SELECT id,
+             tenant_id,
+             score,
+             status,
+             created_at,
+             event->>'from'    AS from_addr,
+             event->>'type'    AS evt_type,
+             event->>'subject' AS subject,
+             event->>'preview' AS preview,
+             (event->>'anomaly')::boolean AS anomaly
         FROM alerts
        WHERE tenant_id=$1 AND created_at > $2
        ORDER BY created_at DESC
@@ -3733,11 +3743,11 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 
     if (fmt === 'csv') {
       // Minimal CSV encoder (no external deps)
-      const headers = ['id','tenant_id','severity','source','subject','summary','created_at'];
+      const headers = ['id','tenant_id','score','status','created_at','from','type','subject','preview','anomaly'];
       const esc = (v) => {
         if (v === null || v === undefined) return '';
         const s = String(v);
-        if (/[\",\\n]/.test(s)) return '\"' + s.replace(/\"/g, '\"\"') + '\"';
+        if (/[\",\\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
         return s;
       };
       const lines = [headers.join(',')];
@@ -3745,11 +3755,14 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
         lines.push([
           esc(r.id),
           esc(r.tenant_id),
-          esc(r.severity),
-          esc(r.source),
+          esc(r.score),
+          esc(r.status),
+          esc(r.created_at),
+          esc(r.from_addr),
+          esc(r.evt_type),
           esc(r.subject),
-          esc(r.summary),
-          esc(r.created_at)
+          esc(r.preview),
+          esc(r.anomaly)
         ].join(','));
       }
       const csv = lines.join('\n');
@@ -3760,7 +3773,20 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     }
 
     // default: JSON
-    return res.json({ ok: true, count: rows.length, days, alerts: rows });
+    // Map to clean keys for API consumers
+    const alerts = rows.map(r => ({
+      id: r.id,
+      tenant_id: r.tenant_id,
+      score: r.score,
+      status: r.status,
+      created_at: r.created_at,
+      from: r.from_addr,
+      type: r.evt_type,
+      subject: r.subject,
+      preview: r.preview,
+      anomaly: !!r.anomaly
+    }));
+    return res.json({ ok: true, count: alerts.length, days, alerts });
   } catch (e) {
     console.error('alerts/export failed', e?.message || e);
     return res.status(500).json({ ok:false, error: 'export failed' });
