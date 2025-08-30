@@ -3710,6 +3710,63 @@ app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) =
   }
 });
 
+// ---------- Alerts export (JSON/CSV) ----------
+// GET /alerts/export?format=json|csv&days=7&limit=1000
+// - format: json (default) or csv
+// - days: lookback window (default 7, max 90)
+// - limit: max number of rows (default 1000, max 5000)
+app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const fmt = String(req.query?.format || 'json').toLowerCase();
+    const days = Math.min(90, Math.max(1, parseInt(String(req.query?.days || '7'), 10) || 7));
+    const limit = Math.min(5000, Math.max(1, parseInt(String(req.query?.limit || '1000'), 10) || 1000));
+    const since = Math.floor(Date.now() / 1000) - (days * 86400);
+
+    const { rows } = await q(`
+      SELECT id, tenant_id, severity, source, subject, summary, created_at
+        FROM alerts
+       WHERE tenant_id=$1 AND created_at > $2
+       ORDER BY created_at DESC
+       LIMIT $3
+    `, [tid, since, limit]);
+
+    if (fmt === 'csv') {
+      // Minimal CSV encoder (no external deps)
+      const headers = ['id','tenant_id','severity','source','subject','summary','created_at'];
+      const esc = (v) => {
+        if (v === null || v === undefined) return '';
+        const s = String(v);
+        if (/[\",\\n]/.test(s)) return '\"' + s.replace(/\"/g, '\"\"') + '\"';
+        return s;
+      };
+      const lines = [headers.join(',')];
+      for (const r of rows) {
+        lines.push([
+          esc(r.id),
+          esc(r.tenant_id),
+          esc(r.severity),
+          esc(r.source),
+          esc(r.subject),
+          esc(r.summary),
+          esc(r.created_at)
+        ].join(','));
+      }
+      const csv = lines.join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      const fname = `alerts_${tid}_${days}d_${Date.now()}.csv`;
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+      return res.status(200).send(csv);
+    }
+
+    // default: JSON
+    return res.json({ ok: true, count: rows.length, days, alerts: rows });
+  } catch (e) {
+    console.error('alerts/export failed', e?.message || e);
+    return res.status(500).json({ ok:false, error: 'export failed' });
+  }
+});
+
 // ---------- start ----------
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
