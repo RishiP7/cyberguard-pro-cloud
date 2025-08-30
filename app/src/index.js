@@ -2971,6 +2971,61 @@ setInterval(async ()=>{
         );
 
         if (created > 0) console.log('[poll]', r.tenant_id, r.provider, 'alerts:', created);
+        // -- Denormalize alert detail columns for this tenant (after creation)
+        try { await ensureAlertDetailColumns(); await denormalizeAlertsForTenant(r.tenant_id); } catch(_) {}
+// ---------- Alerts detail schema helpers ----------
+async function ensureAlertDetailColumns() {
+  try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS from_addr TEXT`); } catch(_) {}
+  try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS type TEXT`); } catch(_) {}
+  try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS subject TEXT`); } catch(_) {}
+  try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS preview TEXT`); } catch(_) {}
+  try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS anomaly BOOLEAN`); } catch(_) {}
+  // score already exists in most schemas; keep optional add for safety
+  try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS score NUMERIC`); } catch(_) {}
+}
+
+// Best-effort denormalization from legacy JSONB `event` into flat columns
+async function denormalizeAlertsForTenant(tenantId) {
+  try {
+    // Only run updates where flat columns are NULL and event JSON exists
+    await q(`
+      UPDATE alerts
+         SET from_addr = COALESCE(from_addr, event->>'from'),
+             type      = COALESCE(type,      event->>'type'),
+             subject   = COALESCE(subject,   event->>'subject'),
+             preview   = COALESCE(preview,   event->>'preview'),
+             anomaly   = COALESCE(anomaly,   NULLIF((event->>'anomaly')::text, '')::boolean)
+       WHERE tenant_id=$1
+         AND (from_addr IS NULL OR type IS NULL OR subject IS NULL OR preview IS NULL OR anomaly IS NULL)
+         AND event IS NOT NULL
+    `, [tenantId]);
+  } catch (_) { /* if event column doesn't exist, ignore */ }
+}
+
+// Periodic background denormalization (lightweight)
+setInterval(async ()=>{
+  try {
+    await ensureAlertDetailColumns();
+    // touch most recent tenant IDs from alerts
+    const r = await q(`SELECT DISTINCT tenant_id FROM alerts ORDER BY created_at DESC LIMIT 25`);
+    for (const row of (r.rows || [])) {
+      await denormalizeAlertsForTenant(row.tenant_id);
+    }
+  } catch(e) {
+    // non-fatal
+  }
+}, 5*60*1000); // every 5 minutes
+
+// Super Admin: denormalize alerts for current tenant from legacy event JSON
+app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    await ensureAlertDetailColumns();
+    await denormalizeAlertsForTenant(req.user.tenant_id);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok:false, error: 'denormalize failed', detail: String(e?.message||e) });
+  }
+});
       } catch (inner) {
         // Mark connector as error on failure (do not throw)
         await q(
@@ -3725,35 +3780,36 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 
     // Probe multiple possible schemas for alerts (flat, alt, or legacy JSONB)
     let rows = [];
-    // try #1: flat schema with a column named "from" (quoted because it's a keyword)
+    // try #0: coalesce flat + legacy JSONB if both exist
     try {
-      const r1 = await q(`
+      const r0 = await q(`
         SELECT id,
                tenant_id,
                score,
                status,
                created_at,
-               "from"   AS from_addr,
-               type      AS evt_type,
-               subject   AS subject,
-               preview   AS preview,
-               anomaly   AS anomaly_txt
+               COALESCE(from_addr, event->>'from')    AS from_addr,
+               COALESCE(type,      event->>'type')    AS evt_type,
+               COALESCE(subject,   event->>'subject') AS subject,
+               COALESCE(preview,   event->>'preview') AS preview,
+               COALESCE(CAST(anomaly AS TEXT), event->>'anomaly') AS anomaly_txt
           FROM alerts
          WHERE tenant_id=$1 AND created_at > $2
          ORDER BY created_at DESC
          LIMIT $3
       `, [tid, since, limit]);
-      rows = r1.rows;
-    } catch (_e1) {
-      // try #2: flat schema but column named from_addr
+      rows = r0.rows;
+    } catch(_e0) { /* fall through to other probes */ }
+    if (!rows || rows.length === 0) {
+      // try #1: flat schema with a column named "from" (quoted because it's a keyword)
       try {
-        const r2 = await q(`
+        const r1 = await q(`
           SELECT id,
                  tenant_id,
                  score,
                  status,
                  created_at,
-                 from_addr AS from_addr,
+                 "from"   AS from_addr,
                  type      AS evt_type,
                  subject   AS subject,
                  preview   AS preview,
@@ -3763,66 +3819,87 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
            ORDER BY created_at DESC
            LIMIT $3
         `, [tid, since, limit]);
-        rows = r2.rows;
-      } catch (_e2) {
-        // try #3: flat schema but sender column named email_from
+        rows = r1.rows;
+      } catch (_e1) {
+        // try #2: flat schema but column named from_addr
         try {
-          const r3 = await q(`
+          const r2 = await q(`
             SELECT id,
                    tenant_id,
                    score,
                    status,
                    created_at,
-                   email_from AS from_addr,
-                   type       AS evt_type,
-                   subject    AS subject,
-                   preview    AS preview,
-                   anomaly    AS anomaly_txt
+                   from_addr AS from_addr,
+                   type      AS evt_type,
+                   subject   AS subject,
+                   preview   AS preview,
+                   anomaly   AS anomaly_txt
               FROM alerts
              WHERE tenant_id=$1 AND created_at > $2
              ORDER BY created_at DESC
              LIMIT $3
           `, [tid, since, limit]);
-          rows = r3.rows;
-        } catch (_e3) {
-          // try #4: legacy JSONB event column
+          rows = r2.rows;
+        } catch (_e2) {
+          // try #3: flat schema but sender column named email_from
           try {
-            const r4 = await q(`
+            const r3 = await q(`
               SELECT id,
                      tenant_id,
                      score,
                      status,
                      created_at,
-                     event->>'from'    AS from_addr,
-                     event->>'type'    AS evt_type,
-                     event->>'subject' AS subject,
-                     event->>'preview' AS preview,
-                     event->>'anomaly' AS anomaly_txt
+                     email_from AS from_addr,
+                     type       AS evt_type,
+                     subject    AS subject,
+                     preview    AS preview,
+                     anomaly    AS anomaly_txt
                 FROM alerts
                WHERE tenant_id=$1 AND created_at > $2
                ORDER BY created_at DESC
                LIMIT $3
             `, [tid, since, limit]);
-            rows = r4.rows;
-          } catch (_e4) {
-            // Final fallback: minimal columns (id and created_at only) so we always return something
-            const r5 = await q(`
-              SELECT id,
-                     tenant_id,
-                     NULL::numeric AS score,
-                     status,
-                     created_at,
-                     NULL::text AS from_addr,
-                     NULL::text AS evt_type,
-                     NULL::text AS subject,
-                     NULL::text AS preview,
-                     NULL::text AS anomaly_txt
-                FROM alerts
-               WHERE tenant_id=$1 AND created_at > $2
-               ORDER BY created_at DESC
-               LIMIT $3
-            `, [tid, since, limit]);
-            rows = r5.rows;
+            rows = r3.rows;
+          } catch (_e3) {
+            // try #4: legacy JSONB event column
+            try {
+              const r4 = await q(`
+                SELECT id,
+                       tenant_id,
+                       score,
+                       status,
+                       created_at,
+                       event->>'from'    AS from_addr,
+                       event->>'type'    AS evt_type,
+                       event->>'subject' AS subject,
+                       event->>'preview' AS preview,
+                       event->>'anomaly' AS anomaly_txt
+                  FROM alerts
+                 WHERE tenant_id=$1 AND created_at > $2
+                 ORDER BY created_at DESC
+                 LIMIT $3
+              `, [tid, since, limit]);
+              rows = r4.rows;
+            } catch (_e4) {
+              // Final fallback: minimal columns (id and created_at only) so we always return something
+              const r5 = await q(`
+                SELECT id,
+                       tenant_id,
+                       NULL::numeric AS score,
+                       status,
+                       created_at,
+                       NULL::text AS from_addr,
+                       NULL::text AS evt_type,
+                       NULL::text AS subject,
+                       NULL::text AS preview,
+                       NULL::text AS anomaly_txt
+                  FROM alerts
+                 WHERE tenant_id=$1 AND created_at > $2
+                 ORDER BY created_at DESC
+                 LIMIT $3
+              `, [tid, since, limit]);
+              rows = r5.rows;
+            }
           }
         }
       }
