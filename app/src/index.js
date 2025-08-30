@@ -33,11 +33,6 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
-// Tap /me requests early to confirm which handler runs (must come before any /me route registrations)
-app.use('/me', (req, res, next) => {
-  try { res.setHeader('X-ME-TAP', '1'); } catch (_e) {}
-  next();
-});
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
@@ -1312,7 +1307,7 @@ app.post("/auth/register",async (req,res)=>{
 // ---------- me / usage ----------
 app.get("/me",authMiddleware,async (req,res)=>{
   try{
-    const {rows}=await q(`SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at,billing_status FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
+const {rows}=await q(`SELECT * FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
     if(!rows.length) return res.status(404).json({error:"tenant not found"});
     const me = rows[0];
     const eff = await getEffectivePlan(req.user.tenant_id, req);
