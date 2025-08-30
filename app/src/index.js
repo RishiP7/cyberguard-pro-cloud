@@ -3734,7 +3734,7 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
              event->>'type'    AS evt_type,
              event->>'subject' AS subject,
              event->>'preview' AS preview,
-             (event->>'anomaly')::boolean AS anomaly
+             event->>'anomaly' AS anomaly_txt
         FROM alerts
        WHERE tenant_id=$1 AND created_at > $2
        ORDER BY created_at DESC
@@ -3762,7 +3762,7 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
           esc(r.evt_type),
           esc(r.subject),
           esc(r.preview),
-          esc(r.anomaly)
+          esc(r.anomaly_txt)
         ].join(','));
       }
       const csv = lines.join('\n');
@@ -3780,11 +3780,16 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
       score: (r.score !== null && r.score !== undefined) ? Number(r.score) : null,
       status: (r.status !== null && r.status !== undefined) ? String(r.status) : null,
       created_at: (r.created_at !== null && r.created_at !== undefined) ? Number(r.created_at) : null,
-      from: r.from_addr,
-      type: r.evt_type,
-      subject: r.subject,
-      preview: r.preview,
-      anomaly: !!r.anomaly
+      from: (r.from_addr !== null && r.from_addr !== undefined) ? String(r.from_addr) : null,
+      type: (r.evt_type !== null && r.evt_type !== undefined) ? String(r.evt_type) : null,
+      subject: (r.subject !== null && r.subject !== undefined) ? String(r.subject) : '',
+      preview: (r.preview !== null && r.preview !== undefined) ? String(r.preview) : '',
+      anomaly: (function(a){
+        if (a === true) return true;
+        if (a === false) return false;
+        const s = String(a || '').toLowerCase();
+        return s === 'true' || s === '1' || s === 'yes';
+      })(r.anomaly_txt)
     }));
 
     // Some drivers may still surface BigInt somewhere; use a replacer just in case
