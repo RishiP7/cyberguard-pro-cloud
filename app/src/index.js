@@ -3095,8 +3095,9 @@ app.get('/me', authMiddleware, async (req, res) => {
   try {
     // Single query; avoid schema coupling
     const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
-    if (!r.rows.length) return res.status(404).json({ error: 'not found' });
-    const t = r.rows[0];
+    const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    const t = rows[0];
 
     const role = req.user?.role || 'member';
     const is_super = !!req.user?.is_super;
@@ -3132,7 +3133,9 @@ app.get('/me', authMiddleware, async (req, res) => {
     });
   } catch (e) {
     console.error('GET /me failed', e?.stack || e?.message || e);
-    return res.status(500).json({ error: 'me failed' });
+    try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg: e?.message || String(e) }); } catch (_e) {}
+    const isSuper = !!req.user?.is_super;
+    return res.status(500).json(isSuper ? { error: 'me failed', detail: e?.message || String(e) } : { error: 'me failed' });
   }
 });
 
