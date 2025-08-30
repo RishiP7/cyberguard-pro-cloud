@@ -3090,6 +3090,11 @@ async function hasBillingStatusColumn() {
   }
 }
 
+// Tap /me requests early to prove which handler runs
+app.use('/me', (req, res, next) => {
+  try { res.setHeader('X-ME-TAP', '1'); } catch (_e) {}
+  next();
+});
 // ---------- /me route ----------
 app.get('/me', authMiddleware, async (req, res) => {
   try {
@@ -3173,6 +3178,30 @@ app.get('/me_dbg', authMiddleware, async (req, res) => {
     const stack = e?.stack || null;
     try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, dbg: true }); } catch (_e) {}
     return res.status(500).json({ error: 'me failed', detail: msg });
+  }
+});
+
+// Route map (diagnostics): lists all registered routes and method stacks
+app.get('/__routes', (_req, res) => {
+  try {
+    const stack = (app._router && app._router.stack) ? app._router.stack : [];
+    const routes = [];
+    for (const layer of stack) {
+      if (layer.route && layer.route.path) {
+        const methods = Object.keys(layer.route.methods || {}).filter(m => layer.route.methods[m]);
+        routes.push({ path: layer.route.path, methods });
+      } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
+        for (const l2 of layer.handle.stack) {
+          if (l2.route && l2.route.path) {
+            const methods = Object.keys(l2.route.methods || {}).filter(m => l2.route.methods[m]);
+            routes.push({ path: l2.route.path, methods });
+          }
+        }
+      }
+    }
+    res.json({ ok: true, routes });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: String(e.message || e) });
   }
 });
 
