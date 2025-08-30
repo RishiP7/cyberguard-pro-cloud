@@ -2073,7 +2073,7 @@ async function attachFreshTenantPlan(req, res, next) {
   try {
     const tid = req.user?.tenant_id;
     if (!tid) return next();
-    const rows = await q(`select plan, plan_actual, trial_ends_at from tenants where tenant_id = $1 limit 1`, [tid]);
+    const rows = await q(`select plan, plan_actual, trial_ends_at from tenants where id = $1 limit 1`, [tid]);
     if (rows && rows[0]) {
       req.user.plan = rows[0].plan ?? req.user.plan;
       req.user.plan_actual = rows[0].plan_actual ?? req.user.plan_actual;
