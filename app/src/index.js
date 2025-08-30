@@ -3093,33 +3093,14 @@ async function hasBillingStatusColumn() {
 // ---------- /me route ----------
 app.get('/me', authMiddleware, async (req, res) => {
   try {
-    // Fast path: try once to ensure column exists, but don't fail if it doesn't
-    try { await ensureBillingStatusColumn(); } catch (_e) {}
-
-    const includeBilling = await hasBillingStatusColumn();
-
-    let t;
-    if (includeBilling) {
-      const r = await q(
-        `SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at,billing_status
-           FROM tenants WHERE tenant_id=$1`,
-        [req.user.tenant_id]
-      );
-      t = r.rows[0];
-    } else {
-      const r = await q(
-        `SELECT tenant_id,name,plan,contact_email,trial_started_at,trial_ends_at,trial_status,created_at,updated_at
-           FROM tenants WHERE tenant_id=$1`,
-        [req.user.tenant_id]
-      );
-      t = r.rows[0];
-    }
-
-    if (!t) return res.status(404).json({ error: 'not found' });
+    // Single query; avoid schema coupling
+    const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'not found' });
+    const t = r.rows[0];
 
     const role = req.user?.role || 'member';
     const is_super = !!req.user?.is_super;
-    const trial_active = t.trial_status === 'active' && Number(t.trial_ends_at || 0) > now();
+    const trial_active = (t.trial_status === 'active') && Number(t.trial_ends_at || 0) > now();
 
     const trial = {
       active: trial_active,
@@ -3128,7 +3109,7 @@ app.get('/me', authMiddleware, async (req, res) => {
     };
 
     const plan_actual = t.plan;
-    const effective_plan = t.plan; // placeholder until advanced logic
+    const effective_plan = t.plan;
 
     return res.json({
       ok: true,
@@ -3150,7 +3131,7 @@ app.get('/me', authMiddleware, async (req, res) => {
       trial
     });
   } catch (e) {
-    console.error('GET /me failed', e?.message || e);
+    console.error('GET /me failed', e?.stack || e?.message || e);
     return res.status(500).json({ error: 'me failed' });
   }
 });
