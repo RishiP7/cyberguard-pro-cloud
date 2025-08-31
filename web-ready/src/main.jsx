@@ -1836,7 +1836,182 @@ function Admin(){
   );
 }
 
+// --- Alerts (customer-ready) ---
+function AlertsPage(){
+  const [items, setItems] = React.useState([]);
+  const [limit, setLimit] = React.useState(50);
+  const [days, setDays]   = React.useState(7);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [q, setQ] = React.useState("");
+  const [onlyAnomaly, setOnlyAnomaly] = React.useState(false);
+  const [selected, setSelected] = React.useState(null);
 
+  async function loadAlerts(nextLimit = limit, nextDays = days){
+    setLoading(true); setErr("");
+    try{
+      const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+      const r = await fetch(`/alerts/export?days=${encodeURIComponent(nextDays)}&limit=${encodeURIComponent(nextLimit)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const j = await r.json();
+      if(!r.ok) throw new Error(j?.error || "fetch failed");
+      const list = Array.isArray(j.alerts) ? j.alerts : [];
+      setItems(list);
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(()=>{ loadAlerts(limit, days); },[]);
+  React.useEffect(()=>{ loadAlerts(limit, days); },[days, limit]);
+
+  function filtered(){
+    const needle = q.trim().toLowerCase();
+    return items.filter(a=>{
+      if(onlyAnomaly && !(a?.anomaly_txt || "").trim()) return false;
+      if(!needle) return true;
+      const hay = [
+        a?.from || a?.from_addr || "",
+        a?.subject || "",
+        a?.preview || "",
+        a?.evt_type || ""
+      ].join(" ").toLowerCase();
+      return hay.includes(needle);
+    });
+  }
+
+  const s = {
+    wrap:{padding:16},
+    controls:{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',margin:'6px 0 12px'},
+    field:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'},
+    ghost:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'},
+    btn:{padding:'8px 12px',borderRadius:8,border:'1px solid #2b6dff66',background:'#1f6feb',color:'#fff',cursor:'pointer'},
+    card:{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'},
+    row:{display:'grid',gridTemplateColumns:'220px 1fr 260px',gap:10,alignItems:'start',padding:'10px',borderBottom:'1px solid rgba(255,255,255,.08)',cursor:'pointer'},
+    tag:{display:'inline-block',padding:'2px 6px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,opacity:.85,fontSize:12}
+  };
+
+  const list = filtered();
+
+  return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Alerts</h1>
+
+      <div style={s.controls}>
+        <input
+          className="field"
+          style={s.field}
+          placeholder="Search subject, sender, preview…"
+          value={q}
+          onChange={e=>setQ(e.target.value)}
+        />
+        <select value={days} onChange={e=>{ setDays(Number(e.target.value)||7); }} style={s.field}>
+          <option value={1}>Last 24h</option>
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13}}>
+          <input type="checkbox" checked={onlyAnomaly} onChange={e=>setOnlyAnomaly(e.target.checked)} />
+          Only anomalies
+        </label>
+        <div style={{display:'flex',gap:8}}>
+          <button className="ghost" style={s.ghost} onClick={()=>loadAlerts(limit, days)} disabled={loading}>
+            {loading? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button className="btn" style={s.btn} onClick={()=>setLimit(l=>l+50)} disabled={loading}>
+            Load more (+50)
+          </button>
+        </div>
+      </div>
+
+      {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</div>}
+
+      <div style={s.card}>
+        {!loading && list.length===0 ? (
+          <div style={{opacity:.75,padding:12}}>No alerts{q? ' match your search' : ''}.</div>
+        ) : (
+          list.map(a=>{
+            const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
+            return (
+              <div key={a.id} style={s.row} onClick={()=>setSelected(a)} title="View details">
+                <div>
+                  <div style={{fontWeight:600}}>{a.from || a.from_addr || '—'}</div>
+                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
+                </div>
+                <div>
+                  <div style={{fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {a.subject || '—'}
+                  </div>
+                  <div style={{opacity:.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:4}}>
+                    {a.preview || '—'}
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
+                  {a.evt_type && <span style={s.tag}>{a.evt_type}</span>}
+                  {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
+                  {(a.score!=null) ? <span style={s.tag}>score {a.score}</span> : null}
+                </div>
+              </div>
+            );
+          })
+        )}
+        {loading && <div style={{opacity:.75,padding:12}}>Loading…</div>}
+      </div>
+
+      {/* Details Drawer / Modal */}
+      {selected && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000}}>
+          <div style={{width:'min(840px,94vw)',maxHeight:'86vh',overflow:'auto',background:'linear-gradient(180deg, rgba(28,30,38,.96), rgba(22,24,30,.94))',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,padding:16,boxShadow:'0 18px 48px rgba(0,0,0,.35)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div style={{fontWeight:700}}>Alert details</div>
+              <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 240px',gap:12,alignItems:'start'}}>
+              <div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</div>
+                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</div>
+
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</div>
+                <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{selected.preview || '—'}</pre>
+              </div>
+              <div>
+                <div style={{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
+                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</div>
+                  <div style={{fontSize:13,display:'grid',gap:4}}>
+                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
+                    <div><b>Type:</b> {selected.evt_type || '—'}</div>
+                    <div><b>Score:</b> {selected.score!=null ? selected.score : '—'}</div>
+                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
+                    {(selected.anomaly_txt||"").trim() ? (
+                      <div><b>Anomaly:</b> {selected.anomaly_txt}</div>
+                    ) : null}
+                    <div style={{marginTop:8}}>
+                      <button style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}
+                        onClick={async ()=>{
+                          try{
+                            await navigator.clipboard.writeText(JSON.stringify(selected,null,2));
+                            alert('Copied JSON to clipboard');
+                          }catch(_e){ alert('Copy failed'); }
+                        }}>
+                        Copy JSON
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function App(){
   return (
     <ErrorBoundary>
@@ -1849,7 +2024,7 @@ function App(){
           <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
           <Route path="/pricing" element={<RequireAuth><Pricing/></RequireAuth>} />
           <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>}/>
-<Route path="/alerts" element={<RequireAuth><Alerts/></RequireAuth>}/>
+<Route path="/alerts" element={<RequireAuth><AlertsPage/></RequireAuth>}/>
           <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
           <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
           <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
