@@ -3895,11 +3895,37 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
       }
     }
 
+    let firstUpdateOk = false;
+    let firstUpdateErr = null;
     try {
       await q(`UPDATE connectors SET ${setParts.join(', ')} WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
+      firstUpdateOk = true;
     } catch (updErr) {
-      try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, step: 'clearCols', err: String(updErr?.message||updErr) }); } catch(_e) {}
-      return res.status(500).json({ ok:false, error: 'reset failed' });
+      firstUpdateErr = String(updErr?.message || updErr);
+      // Try a broad, forceful fallback clearing common columns (details/data/config/meta/settings/auth_json)
+      try {
+        await q(`
+          UPDATE connectors
+             SET status=NULL,
+                 last_error=NULL,
+                 last_sync_at=NULL,
+                 details=NULL,
+                 data=CASE WHEN to_regclass('public.connectors') IS NOT NULL THEN NULL ELSE NULL END,
+                 config=NULL,
+                 meta=NULL,
+                 settings=NULL,
+                 auth_json=NULL
+           WHERE tenant_id=$1 AND provider=$2
+        `, [tid, provider]);
+        firstUpdateOk = true;
+        try { await recordOpsRun('connector_reset_fallback', { tenant_id: tid, provider, note: 'broad clear applied', err: firstUpdateErr }); } catch(_e) {}
+      } catch (fallbackErr) {
+        try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, step: 'clearCols+fallback', err: firstUpdateErr, fallback_err: String(fallbackErr?.message||fallbackErr) }); } catch(_e) {}
+        if (req.query && (req.query.debug === '1' || req.query.debug === 'true')) {
+          return res.status(500).json({ ok:false, error: 'reset failed', step:'fallback', detail:firstUpdateErr, fallback_detail: String(fallbackErr?.message||fallbackErr) });
+        }
+        return res.status(500).json({ ok:false, error: 'reset failed' });
+      }
     }
 
     // 2) If we have JSON/JSONB blobs (common names), surgically remove token keys
@@ -3996,6 +4022,15 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
       } catch(_e) { /* best-effort */ }
     }
 
+    // Optional hard clear of details when explicitly requested via ?force=1
+    const force = (req.query && (req.query.force === '1' || req.query.force === 'true'));
+    if (force) {
+      try {
+        await q(`UPDATE connectors SET details=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
+        try { await recordOpsRun('connector_reset_force_details', { tenant_id: tid, provider }); } catch(_e) {}
+      } catch(_e) { /* non-fatal */ }
+    }
+
     // 3) As a last resort, if there is a single row for this tenant/provider and it still has credentials,
     // offer an optional hard delete via query flag `?purge=1` (super only, explicit opt-in)
     const purge = (req.query && (req.query.purge === '1' || req.query.purge === 'true'));
@@ -4025,7 +4060,8 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
         columns: cols.map(c=>c.name),
         after_keys: after,
         details_has_tokens,
-        details_sample
+        details_sample,
+        first_update_error: firstUpdateErr || null
       });
     }
 
@@ -4304,5 +4340,44 @@ app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
   }catch(e){
     console.error('db diag failed', e);
     return res.status(500).json({ ok:false, error: String(e.message||e) });
+  }
+});
+
+// Convenience wrapper: force reset (super only). Mirrors /admin/ops/connector/reset but forces details NULL.
+app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async (req, res) => {
+  // proxy to the main handler by setting query flags, then re-running logic here
+  try {
+    // Synthesize query flags
+    req.query = Object.assign({}, req.query || {}, { force: '1', purge: (req.query?.purge ? req.query.purge : undefined) });
+    // Re-run the main logic by inlining a minimal call path:
+    const provider = req.body?.provider;
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    // Invoke the same SQL path as /reset by calling the handler body again would be complex.
+    // Instead, duplicate the minimal strong clear here.
+    const tid = req.user.tenant_id;
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
+
+    await q(`
+      UPDATE connectors
+         SET status=NULL,
+             last_error=NULL,
+             last_sync_at=NULL,
+             details=NULL
+       WHERE tenant_id=$1 AND provider=$2
+    `, [tid, provider]);
+
+    // Also remove known token keys from other JSON-ish columns if they exist
+    const extraCols = ['data','config','meta','settings','auth_json'];
+    for (const c of extraCols) {
+      try { await q(`UPDATE connectors SET ${c}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
+    }
+
+    try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider }); } catch(_e) {}
+    return res.json({ ok:true, forced:true });
+  } catch(e) {
+    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
+    return res.status(500).json({ ok:false, error:'force reset failed' });
   }
 });
