@@ -3886,7 +3886,14 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
 
     // Build dynamic UPDATE SET list
     const setParts = clearCols.map(c => `${c}=NULL`);
-    if (has('updated_at')) setParts.push(`updated_at=${Math.floor(Date.now()/1000)}`);
+    if (has('updated_at')) {
+      const tUpd = colType('updated_at');
+      if (tUpd.includes('timestamp')) {
+        setParts.push(`updated_at=NOW()`);
+      } else {
+        setParts.push(`updated_at=${Math.floor(Date.now()/1000)}`);
+      }
+    }
 
     try {
       await q(`UPDATE connectors SET ${setParts.join(', ')} WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
@@ -3919,7 +3926,24 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
       }
     }
 
-    // Deep-clean nested secrets inside details (tokens) and clear delta cursor path for M365
+    // If JSON casts failed (e.g., TEXT column), as a last resort null out obvious secrets by text match
+    try {
+      await q(`
+        UPDATE connectors
+           SET details = NULL
+         WHERE tenant_id=$1 AND provider=$2
+           AND details IS NOT NULL
+           AND (
+             details::text ILIKE '%"access_token"%' OR
+             details::text ILIKE '%"refresh_token"%' OR
+             details::text ILIKE '%"id_token"%' OR
+             details::text ILIKE '%"tokens"%'
+           )
+      `, [tid, provider]);
+    } catch(_e) { /* best-effort */ }
+
+    // Deep-clean nested secrets inside details (tokens) using JSONB when possible
+    let detailsJsonbOk = false;
     try {
       await q(`
         UPDATE connectors
@@ -3931,25 +3955,46 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
            )
          WHERE tenant_id=$1 AND provider=$2
       `, [tid, provider]);
-    } catch(_e) { /* ignore per-tenant */ }
+      detailsJsonbOk = true;
+    } catch(_e) { /* jsonb path may fail if details is TEXT or invalid JSON */ }
 
-    try {
-      await q(`
-        UPDATE connectors
-           SET details = (
-                CASE
-                  WHEN details::text IS NULL OR details::text = 'null' THEN NULL
-                  ELSE jsonb_set(
-                         details::jsonb,
-                         '{delta}',
-                         COALESCE((details::jsonb->'delta')::jsonb, '{}'::jsonb) - 'm365',
-                         true
-                       )
-                END
-           )
-         WHERE tenant_id=$1 AND provider=$2
-      `, [tid, provider]);
-    } catch(_e) { /* ignore per-tenant */ }
+    // Clear the M365 delta cursor path if JSONB worked
+    if (detailsJsonbOk) {
+      try {
+        await q(`
+          UPDATE connectors
+             SET details = (
+                  CASE
+                    WHEN details::text IS NULL OR details::text = 'null' THEN NULL
+                    ELSE jsonb_set(
+                           details::jsonb,
+                           '{delta}',
+                           COALESCE((details::jsonb->'delta')::jsonb, '{}'::jsonb) - 'm365',
+                           true
+                         )
+                  END
+             )
+           WHERE tenant_id=$1 AND provider=$2
+        `, [tid, provider]);
+      } catch(_e) { /* ignore */ }
+    } else {
+      // Fallback for TEXT/invalid JSON: if it still contains secrets or delta token, null it
+      try {
+        await q(`
+          UPDATE connectors
+             SET details = NULL
+           WHERE tenant_id=$1 AND provider=$2
+             AND details IS NOT NULL
+             AND (
+               details::text ILIKE '%"access_token"%' OR
+               details::text ILIKE '%"refresh_token"%' OR
+               details::text ILIKE '%"id_token"%' OR
+               details::text ILIKE '%"$deltatoken"%' OR
+               details::text ILIKE '%/messages/delta%'
+             )
+        `, [tid, provider]);
+      } catch(_e) { /* best-effort */ }
+    }
 
     // 3) As a last resort, if there is a single row for this tenant/provider and it still has credentials,
     // offer an optional hard delete via query flag `?purge=1` (super only, explicit opt-in)
@@ -3963,13 +4008,25 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
 
     const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
     if (dbg) {
-      // return shape of row after reset for quick inspection
-      let after = null;
+      let after = null, details_has_tokens = null, details_sample = null;
       try {
         const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [tid, provider]);
-        after = r.rows && r.rows[0] ? Object.keys(r.rows[0]) : null;
+        if (r.rows && r.rows[0]) {
+          after = Object.keys(r.rows[0]);
+          const dtext = r.rows[0].details != null ? String(r.rows[0].details) : '';
+          details_has_tokens = /access_token|refresh_token|id_token|\"tokens\"/i.test(dtext);
+          details_sample = dtext.slice(0, 200);
+        }
       } catch(_e) {}
-      return res.json({ ok:true, cleared: clearCols, json_candidates: JSON_CANDIDATES.filter(has), columns: cols.map(c=>c.name), after_keys: after });
+      return res.json({
+        ok: true,
+        cleared: clearCols,
+        json_candidates: JSON_CANDIDATES.filter(has),
+        columns: cols.map(c=>c.name),
+        after_keys: after,
+        details_has_tokens,
+        details_sample
+      });
     }
 
     return res.json({ ok:true });
