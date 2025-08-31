@@ -2507,6 +2507,7 @@ function RequireAuth({ children }){
   return children;
 }
 function App(){
+  // Hide legacy "Real-time Email Scans" panel if it still exists anywhere
   React.useEffect(() => {
     try {
       const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5')).filter(h =>
@@ -3488,5 +3489,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <App/>
     </BrowserRouter>
   </React.StrictMode>
-);
-</div>
+  );
+}
