@@ -1087,6 +1087,1098 @@ function useNav(){
 }
 
 // ---------- Pages ----------
+function Login(){
+  const [email,setEmail]=useState("hello@freshprintslondon.com");
+  const [password,setPassword]=useState("test123");
+  const [msg,setMsg]=useState("");
+  const nav=useNavigate();
+  async function submit(e){
+    e.preventDefault();
+    setMsg("");
+    try{
+      const j = await API.post("/auth/login", { email, password });
+      if(!j?.token){ setMsg(j?.error||"Login failed"); return; }
+      localStorage.setItem("token", j.token);
+      window.dispatchEvent(new Event('token-changed'));
+      nav("/");
+    }catch(e){ setMsg(e?.error || "Network error"); }
+  }
+  return (
+    <div style={{maxWidth:380, margin:"40px auto"}}>
+      <div style={card}>
+        <h2 style={{marginTop:0}}>Login</h2>
+        <form onSubmit={submit}>
+          <input style={inp} value={email} onChange={e=>setEmail(e.target.value)} placeholder="email"/>
+          <input style={inp} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="password"/>
+          <button style={btn} type="submit">Sign in</button>
+        </form>
+        {msg && <div style={{marginTop:8, color:"#ff8a8a"}}>{msg}</div>}
+        <div style={{marginTop:10, opacity:.9}}>
+          New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"inherit",marginBottom:10};
+
+function RealtimeEmailScans() {
+  const [emails, setEmails] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function pollNow() {
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token) return;
+    try {
+      setBusy(true);
+      const r = await fetch(`${API_ORIGIN}/email/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ max: 10 })
+      });
+      try { console.log('PollNow result', await r.json()); } catch (_e) {}
+    } catch (_e) {
+      // no-op
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Preload recent email alerts so the table isn't empty while waiting for SSE
+  React.useEffect(() => {
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token) return;
+    const base = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+            ? 'https://cyberguard-pro-cloud.onrender.com'
+            : 'http://localhost:8080');
+    fetch(`${base}/alerts`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(j => {
+        const rows = (j.alerts || [])
+          .filter(a => (a?.event?.type || '').toLowerCase() === 'email')
+          .slice(0, 25)
+          .map(a => ({
+            subject: a?.event?.email?.subject || a?.event?.subject || '(no subject)',
+            from: a?.event?.email?.from || a?.event?.from || '-',
+            date: (() => {
+              const w = a?.event?.email?.when
+                || a?.event?.email?.receivedDateTime
+                || a?.event?.email?.internalDate
+                || a?.created_at
+                || (Date.now()/1000);
+              return (typeof w === 'string' && w.includes('T')) ? w : new Date(Number(w) * 1000).toISOString();
+            })(),
+            score: Number(a?.score || 0)
+          }));
+        // Ensure newest first by actual email timestamp
+        rows.sort((b, a) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        if (rows.length) setEmails(rows);
+      })
+      .catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    const base = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+            ? 'https://cyberguard-pro-cloud.onrender.com'
+            : 'http://localhost:8080');
+    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token) return;
+
+    let es = null;
+    let closed = false;
+
+    function open(paths, idx = 0) {
+      if (closed) return;
+      const p = paths[idx];
+      if (!p) return; // no more fallbacks
+
+      const url = new URL(`${base}${p}`);
+      if (token) url.searchParams.set('token', token);
+
+      if (es) { try { es.close(); } catch (_e) {} es = null; }
+      es = new EventSource(url.toString());
+
+      es.onmessage = (e) => {
+        try {
+          const a = JSON.parse(e.data || '{}');
+
+          const subject =
+            a.subject ||
+            a?.event?.email?.subject ||
+            a?.event?.subject ||
+            '(no subject)';
+
+          const from =
+            a.from ||
+            a?.event?.email?.from ||
+            a?.event?.from ||
+            '-';
+
+          const when = (() => {
+            const w = a.when
+              || a.date
+              || a?.event?.email?.receivedDateTime
+              || a?.event?.email?.internalDate
+              || a?.created_at
+              || (Date.now()/1000);
+            return (typeof w === 'string' && w.includes('T')) ? w : new Date(Number(w) * 1000).toISOString();
+          })();
+
+          const score = Number(a.score ?? 0);
+
+          const row = { subject, from, date: when, score };
+          setEmails(prev => {
+            const next = [row, ...prev];
+            next.sort((b, a) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            return next.slice(0, 50);
+          });
+        } catch (_e) {
+          // ignore parse errors
+        }
+      };
+
+      es.onerror = () => {
+        try { es.close(); } catch (_e) {}
+        es = null;
+        // fall back to the next endpoint after a short backoff
+        setTimeout(() => open(paths, idx + 1), 1500);
+      };
+    }
+
+    // Prefer dedicated scans stream; fall back gracefully
+    open(['/scans/stream', '/email/stream', '/alerts/stream']);
+
+    return () => {
+      closed = true;
+      if (es) { try { es.close(); } catch (_e) {} es = null; }
+    };
+  }, []);
+
+  const rowStyle = (score) => {
+    if (score >= 70) return { background: 'rgba(255, 82, 82, 0.15)', borderLeft: '4px solid #ff5252' };
+    if (score >= 40) return { background: 'rgba(255, 193, 7, 0.15)', borderLeft: '4px solid #ffc107' };
+    return { background: 'rgba(123, 216, 143, 0.12)', borderLeft: '4px solid #7bd88f' };
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <div style={{fontWeight:700}}>Real‑time Email Scans</div>
+        <div>
+          <button onClick={pollNow} disabled={busy} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit',cursor:'pointer'}}>
+            {busy ? 'Polling…' : 'Poll now'}
+          </button>
+        </div>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>Subject</th>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>From</th>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>When</th>
+              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {emails.length === 0 && (
+              <tr>
+                <td colSpan="4" style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)",opacity:.8}}>
+                  Waiting for new email events…
+                </td>
+              </tr>
+            )}
+            {emails.map((r, i) => (
+              <tr key={i} style={rowStyle(Number(r.score||0))}>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{r.subject}</td>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{r.from}</td>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+                  {new Date(r.date).toLocaleString()}
+                </td>
+                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{Number(r.score||0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard(){
+  const [me,setMe]=useState(null);
+  const [stats,setStats]=useState(null);
+  const [alerts,setAlerts]=useState([]);
+  const [err,setErr]=useState(null);
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const m = await apiGet("/me"); setMe(m);
+        const u = await apiGet("/usage"); setStats(u);
+        const a = await apiGet("/alerts"); setAlerts(a.alerts||[]);
+      }catch(e){ setErr(e.error||"API error"); }
+    })();
+  },[]);
+  if(err) return <div style={{padding:16}}>{err}</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Dashboard</h1>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4, minmax(180px,1fr))",gap:12}}>
+        <Stat title="Tenant" value={me.name}/>
+        <Stat title="Plan" value={me.plan}/>
+        <Stat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? "-"}/>
+        <Stat title="Alerts (24h)" value={stats?.alerts_24h ?? "-"}/>
+      </div>
+
+      <div style={{marginTop:16}}>
+        <div style={{fontWeight:700, marginBottom:8}}>Recent alerts</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>
+              <th style={th}>When</th><th style={th}>Type</th><th style={th}>Score</th><th style={th}>Status</th>
+            </tr></thead>
+            <tbody>
+              {(alerts||[]).slice(0,10).map(a=>(
+                <tr key={a.id}>
+                  <td style={td}>{new Date(Number(a.created_at)*1000).toLocaleString()}</td>
+                  <td style={td}>{a?.event?.type || "-"}</td>
+                  <td style={td}>{a?.score}</td>
+                  <td style={td}>{a?.status}</td>
+                </tr>
+              ))}
+              {(!alerts || alerts.length===0) && <tr><td style={td} colSpan={4}>No alerts yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <RealtimeEmailScans />
+      </div>
+    </div>
+  );
+}
+function Stat({title,value}){ return <div style={card}><div style={{opacity:.75,fontSize:13}}>{title}</div><div style={{fontSize:22,fontWeight:700,marginTop:6}}>{value}</div></div>; }
+
+
+function Block({title,children,disabled}){
+  return (
+    <div style={{...card, opacity: disabled ? 0.8 : 1}}>
+      <div style={{fontWeight:700,marginBottom:6}}>{title}</div>
+      {children}
+    </div>
+  );
+}
+function Code({children}){ return <pre style={pre}>{children}</pre>; }
+
+function Policy(){
+  const [p,setP]=useState(null);
+  const [msg,setMsg]=useState("");
+  const [err,setErr]=useState("");
+  useEffect(()=>{ apiGet("/policy").then(setP).catch(e=>setErr(e.error||"API error")); },[]);
+  async function save(){
+    try{
+      const r = await apiPost("/policy", p);
+      setP(r); setMsg("Saved");
+      setTimeout(()=>setMsg(""),1500);
+    }catch(e){ setErr(e.error||"Save failed"); }
+  }
+  if(err) return <div>{err}</div>;
+  if(!p) return <div>Loading…</div>;
+  const row={display:"grid",gridTemplateColumns:"1fr 200px",alignItems:"center",gap:10,margin:"8px 0"};
+  const field={padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"inherit"};
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Policy</h1>
+      <div style={card}>
+        <div style={row}><div>Enabled</div><input type="checkbox" checked={!!p.enabled} onChange={e=>setP({...p,enabled:e.target.checked})}/></div>
+        <div style={row}><div>Threshold</div><input className="field" style={field} type="number" step="0.1" value={p.threshold} onChange={e=>setP({...p,threshold:parseFloat(e.target.value)})}/></div>
+        <div style={row}><div>Allow quarantine</div><input type="checkbox" checked={!!p.allow_quarantine} onChange={e=>setP({...p,allow_quarantine:e.target.checked})}/></div>
+        <div style={row}><div>Allow DNS deny</div><input type="checkbox" checked={!!p.allow_dns_deny} onChange={e=>setP({...p,allow_dns_deny:e.target.checked})}/></div>
+        <div style={row}><div>Allow disable account</div><input type="checkbox" checked={!!p.allow_disable_account} onChange={e=>setP({...p,allow_disable_account:e.target.checked})}/></div>
+        <div style={row}><div>Dry-run (audit only)</div><input type="checkbox" checked={!!p.dry_run} onChange={e=>setP({...p,dry_run:e.target.checked})}/></div>
+        <div style={{marginTop:12}}>
+          <button style={btn} onClick={save}>Save</button>
+          <span style={{marginLeft:10,opacity:.85}}>{msg}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Account(){
+  const [me,setMe]=useState(null);
+  const [msg,setMsg]=useState("");
+  const [promo, setPromo] = useState(localStorage.getItem("promo_code") || "");
+
+  useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
+  if(!me) return <div>Loading…</div>;
+
+  const paid = me.plan !== "trial";
+
+  async function createAccountKey(){
+    setMsg("");
+    try{
+      let r;
+      try{ r = await apiPost("/apikeys", {}); }
+      catch(_e){ r = await apiPost("/apikeys/create", {}); }
+      if(!r?.api_key) throw new Error(r?.error || "No key returned");
+      localStorage.setItem("api_key", r.api_key);
+      setMsg("API key created and stored in localStorage.api_key");
+    }catch(e){
+      const base = e?.error || e?.message || "key create failed";
+      const hint = (me?.plan === 'trial') ? " — API keys require a paid plan (Basic/Pro)." : "";
+      setMsg(base + hint);
+    }
+  }
+
+  async function activate(plan){
+    try{
+      const body = promo ? { plan, coupon: promo } : { plan };
+      const r = await apiPost("/billing/mock-activate", body);
+
+      // Immediately refresh /me so trial eligibility and plan_actual are correct
+      const fresh = await apiGet("/me");
+      setMe(fresh);
+      // Notify global listeners (navbar/layout) to refetch
+      window.dispatchEvent(new Event('me-updated'));
+
+      setMsg(`Plan set to ${r.plan}${promo ? ` (promo ${promo} applied if eligible)` : ""}`);
+    }catch(e){
+      setMsg(e.error||"activation failed");
+    }
+  }
+  function savePromo(){
+    if (promo) localStorage.setItem("promo_code", promo);
+    else localStorage.removeItem("promo_code");
+    setMsg(promo ? `Saved promo code ${promo}` : "Cleared promo code");
+  }
+
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Account</h1>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(280px,1fr))",gap:12}}>
+        <div style={card}>
+          <div style={{marginBottom:8}}><b>Current plan</b>: {me.plan}</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button style={btn} onClick={()=>activate("basic")}>Choose Basic</button>
+            <button style={btn} onClick={()=>activate("pro")}>Choose Pro</button>
+            <button style={btn} onClick={()=>activate("pro_plus")}>Choose Pro+</button>
+          </div>
+          <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center"}}>
+            <input
+              style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"inherit"}}
+              placeholder="Enter promo/discount code"
+              value={promo}
+              onChange={e=>setPromo(e.target.value)}
+            />
+            <button style={btn} onClick={savePromo}>Save code</button>
+          </div>
+          <div style={{opacity:.8,marginTop:6}}>
+            Discounts are applied during checkout/billing. Saved locally and sent with upgrades.
+          </div>
+        </div>
+        <div style={card}>
+          <div style={{marginBottom:8}}><b>API Key</b></div>
+          {!paid ? (
+            <div>Activate a paid plan to enable API keys.</div>
+          ) : (
+            <>
+              <div style={{marginBottom:8}}>Current (localStorage): <code>{localStorage.getItem("api_key") || "— none —"}</code></div>
+              <button style={btn} onClick={createAccountKey}>Create API Key</button>
+            </>
+          )}
+        </div>
+      </div>
+      {/* API Keys card */}
+      <KeysCard />
+      {msg && <div style={{marginTop:10}}>{msg}</div>}
+    </div>
+  );
+}
+
+function Pricing(){
+  const [me, setMe] = React.useState(null);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [coupon, setCoupon] = React.useState(localStorage.getItem("promo_code") || "");
+
+  React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function checkout(plan){
+    setErr(""); setMsg(""); setBusy(true);
+    try{
+      const token = localStorage.getItem("token") || "";
+      const body  = coupon ? { plan, coupon } : { plan };
+      const r = await fetch(`${API_ORIGIN}/billing/checkout`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if(!r.ok) throw new Error(j?.error || "Checkout failed");
+      if(j?.url){
+        // Save coupon locally for later and redirect
+        if (coupon) localStorage.setItem("promo_code", coupon);
+        window.location.href = j.url;
+        return;
+      }
+      setMsg("Checkout created.");
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  async function portal(){
+    setErr(""); setMsg(""); setBusy(true);
+    try{
+      const token = localStorage.getItem("token") || "";
+      const r = await fetch(`${API_ORIGIN}/billing/portal`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", Authorization: `Bearer ${token}` }
+      });
+      const j = await r.json();
+      if(!r.ok) throw new Error(j?.error || "Portal failed");
+      if(j?.url){ window.location.href = j.url; return; }
+      setMsg("Opened billing portal.");
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  const s = {
+    grid:{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))",gap:12},
+    card:{padding:16,border:"1px solid rgba(255,255,255,.12)",borderRadius:12,background:"rgba(255,255,255,.04)"},
+    h:{fontWeight:700,fontSize:18},
+    price:{fontSize:28,fontWeight:800,marginTop:6},
+    btn:{padding:"10px 12px",borderRadius:10,border:"1px solid #2b6dff66",background:"#1f6feb",color:"#fff",cursor:"pointer"},
+    ghost:{padding:"8px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.22)",background:"transparent",color:"#e6e9ef",cursor:"pointer"}
+  };
+
+  const paid = me && (me.plan === "basic" || me.plan === "pro" || me.plan === "pro_plus");
+
+  return (
+    <div>
+      <h1 style={{marginTop:0}}>Pricing</h1>
+
+      <div style={{marginBottom:12, display:"grid", gridTemplateColumns:"1fr 220px", gap:10, alignItems:"center"}}>
+        <div style={{opacity:.9}}>
+          Choose a plan. You can manage or cancel anytime in the billing portal.
+        </div>
+        <div style={{display:"flex", gap:8, alignItems:"center"}}>
+          <input
+            value={coupon}
+            onChange={e=>setCoupon(e.target.value)}
+            placeholder="Coupon code (optional)"
+            style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.06)",color:"inherit"}}
+          />
+          <button
+            style={s.ghost}
+            onClick={()=>{
+              if (coupon) localStorage.setItem("promo_code", coupon);
+              else localStorage.removeItem("promo_code");
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+
+      <div style={s.grid}>
+        <div style={s.card}>
+          <div style={s.h}>Basic</div>
+          <div style={s.price}>£19.99/mo</div>
+          <ul style={{opacity:.9,lineHeight:1.5}}>
+            <li>Email threat scanning</li>
+            <li>Core dashboards &amp; alerts</li>
+            <li>Community support</li>
+          </ul>
+          <button disabled={busy} style={s.btn} onClick={()=>checkout("basic")}>Start Basic</button>
+        </div>
+
+        <div style={s.card}>
+          <div style={s.h}>Pro</div>
+          <div style={s.price}>£39.99/mo</div>
+          <ul style={{opacity:.9,lineHeight:1.5}}>
+            <li>Everything in Basic</li>
+            <li>Endpoint (EDR) &amp; DNS protection</li>
+            <li>Email &amp; chat support</li>
+          </ul>
+          <button disabled={busy} style={s.btn} onClick={()=>checkout("pro")}>Start Pro</button>
+        </div>
+
+        <div style={s.card}>
+          <div style={s.h}>Pro+</div>
+          <div style={s.price}>£99.99/mo</div>
+          <ul style={{opacity:.9,lineHeight:1.5}}>
+            <li>Everything in Pro</li>
+            <li>UEBA &amp; Cloud security</li>
+            <li>AI assistant &amp; priority support</li>
+          </ul>
+          <button disabled={busy} style={s.btn} onClick={()=>checkout("pro_plus")}>Start Pro+</button>
+        </div>
+      </div>
+
+      <div style={{marginTop:14, display:"flex", gap:10, alignItems:"center"}}>
+        <button disabled={busy || !paid} style={s.ghost} onClick={portal}>
+          Manage billing
+        </button>
+        {paid ? <span style={{opacity:.85}}>Current plan: <b>{me?.plan}</b></span> : <span style={{opacity:.75}}>You’ll see the billing portal after subscribing.</span>}
+      </div>
+
+      {(msg || err) && (
+        <div style={{marginTop:10}}>
+          {msg && <div style={{padding:"8px 10px",border:"1px solid #7bd88f66",background:"#7bd88f22",borderRadius:10}}>{msg}</div>}
+          {err && <div style={{padding:"8px 10px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10}}>{err}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Admin(){
+  const [me, setMe] = useState(null);
+  const [tenants, setTenants] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [keys, setKeys] = useState([]);
+  const [chat, setChat] = useState([]);
+
+  useEffect(()=>{ apiGet('/me').then(m=>setMe(m)).catch(()=>setMe(null)); },[]);
+
+  async function loadTenants(){
+    setErr(""); setLoading(true);
+    try{
+      const j = await apiGet('/admin/tenants');
+      if(!j?.ok) throw new Error('failed');
+      setTenants(j.tenants||[]);
+    }catch(e){ setErr('Failed to load tenants'); }
+    finally{ setLoading(false); }
+  }
+
+  async function viewTenant(tid){
+    setSelected(tid);
+    try{
+      const k = await apiGet(`/admin/tenant/${encodeURIComponent(tid)}/keys`);
+      setKeys(k?.keys||[]);
+      const c = await apiGet(`/admin/chat/${encodeURIComponent(tid)}`);
+      setChat(c?.messages||[]);
+    }catch(_e){/* ignore */}
+  }
+
+  async function suspend(tid, suspend){
+    await apiPost('/admin/tenants/suspend', { tenant_id: tid, suspend: !!suspend });
+    await loadTenants();
+  }
+
+  async function rotateKey(tid){
+    const j = await apiPost('/admin/tenants/rotate-key', { tenant_id: tid });
+    alert(j?.api_key ? `New API key: ${j.api_key}` : 'Key rotated');
+    await viewTenant(tid);
+  }
+
+  async function impersonate(tid){
+    const adminTok = localStorage.getItem('token');
+    const j = await apiPost('/admin/impersonate', { tenant_id: tid });
+    if(j?.token){
+      if(adminTok) localStorage.setItem('admin_token_backup', adminTok);
+      localStorage.setItem('token', j.token);
+      alert('Impersonation token stored. Reloading as tenant…');
+      location.href = '/';
+    }
+  }
+
+  async function reply(tid){
+    const body = prompt('Reply as Admin:');
+    if(!body) return;
+    await apiPost('/admin/chat/reply', { tenant_id: tid, body });
+    await viewTenant(tid);
+  }
+
+  useEffect(()=>{ loadTenants(); },[]);
+
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
+
+  const s = {
+    wrap:{padding:16,color:'#e6e9ef'},
+    header:{display:'grid',gap:4,marginBottom:12},
+    grid:{display:'grid',gridTemplateColumns:'minmax(260px, 420px) 1fr',gap:12,alignItems:'start'},
+    card:{background:'rgba(24,26,34,.75)',border:'1px solid rgba(255,255,255,.08)',borderRadius:12,padding:12,backdropFilter:'blur(6px)'},
+    row:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,.06)'},
+    btn:{padding:'8px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',cursor:'pointer'},
+    warn:{padding:'8px 10px',borderRadius:8,border:'1px solid #ff6b6b55',background:'#ff6b6b',color:'#fff',cursor:'pointer'},
+    ghost:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'},
+    err:{padding:'10px 12px',border:'1px solid #ff6b6b',background:'#ff6b6b1a',borderRadius:8,marginBottom:10}
+  };
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.header}>
+        <div style={{fontWeight:700}}>Admin</div>
+        <div style={{opacity:.8,fontSize:13}}>Super-admin tools</div>
+      </div>
+
+      <div style={{display:'flex',gap:8,alignItems:'center',margin:'6px 0 12px'}}>
+        <div style={{fontSize:12,opacity:.8}}>Preview plan as:</div>
+        <select
+          defaultValue={typeof localStorage!=='undefined' ? (localStorage.getItem('admin_plan_preview')||'') : ''}
+          onChange={e=>{ const v=e.target.value; if(typeof localStorage!=='undefined'){ if(v) localStorage.setItem('admin_plan_preview', v); else localStorage.removeItem('admin_plan_preview'); } alert('Plan preview set. Reloading…'); location.reload(); }}
+          style={{padding:'6px 8px',borderRadius:8,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.14)',color:'#e6e9ef'}}
+        >
+          <option value="">(tenant actual)</option>
+          <option value="trial">trial</option>
+          <option value="basic">basic</option>
+          <option value="pro">pro</option>
+          <option value="pro_plus">pro+</option>
+        </select>
+        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12}}>
+          <input type="checkbox" defaultChecked={typeof localStorage!=='undefined' && localStorage.getItem('admin_override')==='1'} onChange={e=>{ if(typeof localStorage!=='undefined'){ if(e.target.checked) localStorage.setItem('admin_override','1'); else localStorage.removeItem('admin_override'); } alert('Override updated. Reloading…'); location.reload(); }} />
+          Bypass paywall (override)
+        </label>
+      </div>
+
+      {err && <div style={s.err}>{err}</div>}
+
+      <div style={s.grid}>
+        <div>
+          <div style={s.card}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontWeight:600}}>Tenants</div>
+              <button onClick={loadTenants} style={s.ghost}>{loading? 'Loading…':'Refresh'}</button>
+            </div>
+            <div style={{marginTop:8}}>
+              {(!tenants||!tenants.length) && <div style={{opacity:.7}}>No tenants found.</div>}
+              {tenants && tenants.map(t=> (
+                <div key={t.id} style={s.row}>
+                  <div>
+                    <div style={{fontWeight:600}}>{t.name||t.id}</div>
+                    <div style={{fontSize:12,opacity:.7}}>plan: {t.plan||'trial'}</div>
+                  </div>
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>viewTenant(t.id)} style={s.btn}>Open</button>
+                    {t.plan==='suspended'
+                      ? <button onClick={()=>suspend(t.id,false)} style={s.btn}>Unsuspend</button>
+                      : <button onClick={()=>suspend(t.id,true)} style={s.warn}>Suspend</button>}
+                    <button onClick={()=>impersonate(t.id)} style={s.ghost}>Impersonate</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          {selected ? (
+            <div style={{display:'grid', gap:12}}>
+              {/* AdminTenantKeys card */}
+              <AdminTenantKeys selected={selected} />
+
+              <div style={s.card}>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <div style={{fontWeight:600}}>Support Chat</div>
+                  <button onClick={()=>reply(selected)} style={s.btn}>Reply</button>
+                </div>
+                <div style={{marginTop:8, maxHeight:300, overflow:'auto'}}>
+                  {(!chat||!chat.length) && <div style={{opacity:.7}}>No messages yet.</div>}
+                  {chat.map(m=> (
+                    <div key={m.id} style={{margin:'8px 0'}}>
+                      <div style={{fontSize:12,opacity:.7}}>{m.author} • {new Date((m.created_at||0)*1000).toLocaleString()}</div>
+                      <div>{m.body}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={s.card}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div style={{fontWeight:600}}>AI Admin Assistant</div>
+                </div>
+                <div style={{marginTop:8}}>
+                  <form onSubmit={async (e)=>{ e.preventDefault(); const q = e.target.q.value.trim(); if(!q) return; try{ const r = await apiPost('/admin/ai/ask', { question: q, tenant_id: selected }); alert(r?.answer || 'No answer'); e.target.reset(); }catch(_e){ alert('Assistant failed'); } }}>
+                    <input name="q" placeholder="Ask about configuration, errors, or how to…" style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,.14)',background:'rgba(255,255,255,.06)',color:'#e6e9ef'}} />
+                    <div style={{marginTop:8}}><button style={s.btn}>Ask</button></div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{opacity:.7}}>Select a tenant to view details.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Alerts (customer-ready) ---
+function AlertsPage(){
+  const [items, setItems] = React.useState([]);
+  const [limit, setLimit] = React.useState(50);
+  const [days, setDays]   = React.useState(7);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [q, setQ] = React.useState("");
+  const [onlyAnomaly, setOnlyAnomaly] = React.useState(false);
+  const [selected, setSelected] = React.useState(null);
+
+  async function loadAlerts(nextLimit = limit, nextDays = days){
+    setLoading(true); setErr("");
+    try{
+      const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+      const r = await fetch(`/alerts/export?days=${encodeURIComponent(nextDays)}&limit=${encodeURIComponent(nextLimit)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const j = await r.json();
+      if(!r.ok) throw new Error(j?.error || "fetch failed");
+      const list = Array.isArray(j.alerts) ? j.alerts : [];
+      setItems(list);
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(()=>{ loadAlerts(limit, days); },[]);
+  React.useEffect(()=>{ loadAlerts(limit, days); },[days, limit]);
+
+  function filtered(){
+    const needle = q.trim().toLowerCase();
+    return items.filter(a=>{
+      if(onlyAnomaly && !(a?.anomaly_txt || "").trim()) return false;
+      if(!needle) return true;
+      const hay = [
+        a?.from || a?.from_addr || "",
+        a?.subject || "",
+        a?.preview || "",
+        a?.evt_type || ""
+      ].join(" ").toLowerCase();
+      return hay.includes(needle);
+    });
+  }
+
+  function riskFromScore(sc){
+    const n = Number(sc);
+    if (!isFinite(n)) return { label:'Unknown', level:'unknown', color:'#9ca3af', bg:'rgba(156,163,175,.15)' };
+    if (n >= 80) return { label:'Critical', level:'critical', color:'#fecaca', bg:'rgba(239,68,68,.15)' };
+    if (n >= 60) return { label:'High', level:'high', color:'#fcd34d', bg:'rgba(245,158,11,.15)' };
+    if (n >= 30) return { label:'Medium', level:'medium', color:'#93c5fd', bg:'rgba(59,130,246,.15)' };
+    return { label:'Low', level:'low', color:'#86efac', bg:'rgba(34,197,94,.15)' };
+  }
+
+  const s = {
+    wrap:{padding:16},
+    controls:{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',margin:'6px 0 12px'},
+    field:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'},
+    ghost:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'},
+    btn:{padding:'8px 12px',borderRadius:8,border:'1px solid #2b6dff66',background:'#1f6feb',color:'#fff',cursor:'pointer'},
+    card:{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'},
+    row:{display:'grid',gridTemplateColumns:'220px 1fr 260px',gap:10,alignItems:'start',padding:'10px',borderBottom:'1px solid rgba(255,255,255,.08)',cursor:'pointer'},
+    tag:{display:'inline-block',padding:'2px 6px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,opacity:.85,fontSize:12}
+  };
+
+  const list = filtered();
+
+  return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Alerts</h1>
+
+      <div style={s.controls}>
+        <input
+          className="field"
+          style={s.field}
+          placeholder="Search subject, sender, preview…"
+          value={q}
+          onChange={e=>setQ(e.target.value)}
+        />
+        <select value={days} onChange={e=>{ setDays(Number(e.target.value)||7); }} style={s.field}>
+          <option value={1}>Last 24h</option>
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13}}>
+          <input type="checkbox" checked={onlyAnomaly} onChange={e=>setOnlyAnomaly(e.target.checked)} />
+          Only anomalies
+        </label>
+        <div style={{display:'flex',gap:8}}>
+          <button className="ghost" style={s.ghost} onClick={()=>loadAlerts(limit, days)} disabled={loading}>
+            {loading? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button className="btn" style={s.btn} onClick={()=>setLimit(l=>l+50)} disabled={loading}>
+            Load more (+50)
+          </button>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:8,alignItems:'center',margin:'6px 0 12px',flexWrap:'wrap'}}>
+        <span style={{fontSize:12,opacity:.8}}>Threat levels:</span>
+        {[
+          {label:'Low',     color:'#86efac', bg:'rgba(34,197,94,.15)'},
+          {label:'Medium',  color:'#93c5fd', bg:'rgba(59,130,246,.15)'},
+          {label:'High',    color:'#fcd34d', bg:'rgba(245,158,11,.15)'},
+          {label:'Critical',color:'#fecaca', bg:'rgba(239,68,68,.15)'},
+        ].map((r,i)=>(
+          <span key={i} style={{padding:'2px 8px',border:'1px solid '+r.color, background:r.bg, color:r.color, borderRadius:999, fontSize:12}}>
+            {r.label}
+          </span>
+        ))}
+      </div>
+
+      {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</div>}
+
+      <div style={s.card}>
+        {!loading && list.length===0 ? (
+          <div style={{opacity:.75,padding:12}}>No alerts{q? ' match your search' : ''}.</div>
+        ) : (
+          list.map(a=>{
+            const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
+            return (
+              <div key={a.id} style={s.row} onClick={()=>setSelected(a)} title="View details">
+                <div>
+                  <div style={{fontWeight:600}}>{a.from || a.from_addr || '—'}</div>
+                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
+                </div>
+                <div>
+                  <div style={{fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {a.subject || '—'}
+                  </div>
+                  <div style={{opacity:.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:4}}>
+                    {a.preview || '—'}
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
+                  {a.evt_type && <span style={s.tag}>{a.evt_type}</span>}
+                  {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
+                  {(a.score!=null)
+                    ? (()=>{ const risk = riskFromScore(a.score);
+                        return (
+                          <span style={{...s.tag, borderColor:risk.color, background:risk.bg, color:risk.color}}>
+                            {risk.label} • {a.score}
+                          </span>
+                        );
+                      })()
+                    : null}
+                </div>
+              </div>
+            );
+          })
+        )}
+        {loading && <div style={{opacity:.75,padding:12}}>Loading…</div>}
+      </div>
+
+      {/* Details Drawer / Modal */}
+      {selected && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000}}>
+          <div style={{width:'min(840px,94vw)',maxHeight:'86vh',overflow:'auto',background:'linear-gradient(180deg, rgba(28,30,38,.96), rgba(22,24,30,.94))',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,padding:16,boxShadow:'0 18px 48px rgba(0,0,0,.35)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div style={{fontWeight:700}}>Alert details</div>
+              <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 240px',gap:12,alignItems:'start'}}>
+              <div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</div>
+                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</div>
+
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</div>
+                <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{selected.preview || '—'}</pre>
+              </div>
+              <div>
+                <div style={{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
+                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</div>
+                  <div style={{fontSize:13,display:'grid',gap:4}}>
+                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
+                    <div><b>Type:</b> {selected.evt_type || '—'}</div>
+                    {selected.score!=null
+                      ? (()=>{ const risk = riskFromScore(selected.score);
+                          return (
+                            <div>
+                              <b>Threat:</b> {risk.label} <span style={{opacity:.8}}>(score {selected.score})</span>
+                            </div>
+                          );
+                        })()
+                      : <div><b>Threat:</b> —</div>}
+                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
+                    {(selected.anomaly_txt||"").trim() ? (
+                      <div><b>Anomaly:</b> {selected.anomaly_txt}</div>
+                    ) : null}
+                    <div style={{marginTop:8}}>
+                      <button style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}
+                        onClick={async ()=>{
+                          try{
+                            await navigator.clipboard.writeText(JSON.stringify(selected,null,2));
+                            alert('Copied JSON to clipboard');
+                          }catch(_e){ alert('Copy failed'); }
+                        }}>
+                        Copy JSON
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Onboarding Checklist for Dashboard ---
+function OnboardingChecklist(){
+  const [me, setMe] = React.useState(null);
+  const [conn, setConn] = React.useState([]);
+  const [hasAlert, setHasAlert] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(()=>{
+    (async()=>{
+      try{
+        const m = await apiGet('/me');
+        setMe(m||{});
+        try{
+          const s = await apiGet('/integrations/status');
+          setConn(s?.items||[]);
+        }catch(_e){}
+        try{
+          const a = await apiGet('/alerts/export?days=30&limit=1');
+          setHasAlert(Array.isArray(a?.alerts) && a.alerts.length>0);
+        }catch(_e){ setHasAlert(false); }
+      }finally{ setLoading(false); }
+    })();
+  },[]);
+
+  const get = (t)=> (conn||[]).find(x=>x.type===t);
+  const emailConnected = !!get('email') && get('email').status==='connected';
+  const edrConnected   = !!get('edr')   && get('edr').status==='connected';
+  const dnsConnected   = !!get('dns')   && get('dns').status==='connected';
+
+  const steps = [
+    { key:'email',  label:'Connect your email provider', done: emailConnected,    href:'/integrations' },
+    { key:'poll',   label:'Ingest your first batch of alerts', done: hasAlert,     href:'/alerts' },
+    { key:'review', label:'Review alerts and mark any anomalies', done: hasAlert,  href:'/alerts' },
+    { key:'edr',    label:'Protect endpoints (EDR)', done: edrConnected,           href:'/integrations' },
+    { key:'dns',    label:'Enable DNS protection', done: dnsConnected,             href:'/integrations' },
+  ];
+  const doneCount = steps.filter(s=>s.done).length;
+
+  const s = {
+    wrap:{padding:12, marginBottom:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)'},
+    head:{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8},
+    row:{display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.06)'},
+    btn:{padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer'},
+    badge:{fontSize:12, opacity:.85, border:'1px solid rgba(255,255,255,.18)', borderRadius:999, padding:'2px 8px'}
+  };
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.head}>
+        <div style={{fontWeight:700}}>Getting started</div>
+        <div style={s.badge}>{doneCount}/{steps.length} done</div>
+      </div>
+      {loading ? (
+        <div style={{opacity:.75}}>Loading checklist…</div>
+      ) : (
+        <div>
+          {steps.map(step=> (
+            <div key={step.key} style={s.row}>
+              <div style={{width:22, textAlign:'center'}}>{step.done ? '✅' : '⬜️'}</div>
+              <div style={{flex:1}}>{step.label}</div>
+              <a href={step.href} style={s.btn}>Open</a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Onboarding tips block for dashboard
+function OnboardingTips() {
+  const s = {
+    wrap: { marginTop: 12, padding: 12, border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, background: 'rgba(255,255,255,.03)' },
+    head: { fontWeight: 600, marginBottom: 6 },
+    tip: { fontSize: 13, marginBottom: 4, opacity: 0.85 }
+  };
+  return (
+    <div style={s.wrap}>
+      <div style={s.head}>🔎 What am I looking at?</div>
+      <div style={s.tip}>• The dashboard shows your security integrations and live alerts.</div>
+      <div style={s.tip}>• Green "Connected" means data is flowing in from that source.</div>
+      <div style={s.tip}>• The Alerts page lists suspicious activity — click any alert for details.</div>
+      <div style={s.tip}>• Use the checklist above to finish setup and strengthen protection.</div>
+      <div style={s.tip}>• Tip: hover any status label to see what it means.</div>
+    </div>
+  );
+}
+// Wrap Dashboard to inject onboarding widget without touching original Dashboard implementation
+function DashboardWithOnboarding(props){
+  return (
+    <div style={{padding:16}}>
+      <OnboardingChecklist/>
+      <OnboardingTips/>
+      {/* Render existing Dashboard below */}
+      <Dashboard {...props} />
+    </div>
+  );
+}
+
+function AuthLogin(){
+  const [token, setToken] = React.useState(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('token') || '') : ''
+  );
+
+  function onSubmit(e){
+    e.preventDefault();
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('token', token.trim());
+      window.location.href = '/';
+    } catch(_) {}
+  }
+
+  return (
+    <div style={{maxWidth:420, margin:'80px auto', padding:20}}>
+      <h1>Sign in</h1>
+      <p style={{opacity:.8}}>Paste the API token you received after signup.</p>
+      <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
+        <input
+          placeholder="Bearer token"
+          value={token}
+          onChange={e=>setToken(e.target.value)}
+          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
+        />
+        <button type="submit" style={{padding:'10px 12px', borderRadius:8}}>Save & Continue</button>
+      </form>
+    </div>
+  );
+}
+function RequireAuth({ children }){
+  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+  if (!token) return <Navigate to="/login" replace />;
+  return children;
+}
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
@@ -1095,7 +2187,7 @@ function App(){
     <ErrorBoundary>
       <Layout>
         <Routes>
-          <Route path="/login" element={<Login/>}/>
+          <Route path="/login" element={<AuthLogin/>}/>
           <Route path="/register" element={<Register/>}/>
 
           <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
