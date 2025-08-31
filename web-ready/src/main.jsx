@@ -2507,6 +2507,22 @@ function RequireAuth({ children }){
   return children;
 }
 function App(){
+  // Hide legacy "Real-time Email Scans" panel if it still exists anywhere
+  React.useEffect(() => {
+    try {
+      const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5')).filter(h =>
+        /Real.?time Email Scans/i.test(h.textContent || '')
+      );
+      headings.forEach(h => {
+        const panel = h.closest('section,div');
+        if (panel) {
+          panel.style.display = 'none';
+        } else {
+          h.style.display = 'none';
+        }
+      });
+    } catch (_e) { /* noop */ }
+  }, []);
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
 
