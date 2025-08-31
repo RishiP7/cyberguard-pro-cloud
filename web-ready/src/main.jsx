@@ -2183,9 +2183,173 @@ function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
     </div>
   );
 }
+// Futuristic real-time email scan visualizer
+function LiveEmailScanner(){
+  const canvasRef = React.useRef(null);
+  const rafRef = React.useRef(0);
+  const particlesRef = React.useRef([]);
+  const lastCountRef = React.useRef(0);
+  const [stats, setStats] = React.useState({
+    total: 0,
+    new5: 0,
+    anomalies: 0,
+    updatedAt: null
+  });
+
+  function apiBase(){
+    return (import.meta?.env?.VITE_API_BASE)
+      || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+           ? "https://cyberguard-pro-cloud.onrender.com"
+           : "http://localhost:8080");
+  }
+
+  // Poll alerts every 10s
+  React.useEffect(()=>{
+    let stop = false;
+    async function poll(){
+      try{
+        const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+        const url = `${apiBase()}/alerts/export?days=1&limit=200`;
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` }});
+        const j = await r.json();
+        if(!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+        const list = Array.isArray(j.alerts) ? j.alerts : [];
+
+        const now = Date.now();
+        const new5 = list.filter(a=> (Number(a.created_at)||0)*1000 >= (now - 5*60*1000)).length;
+        const anomalies = list.filter(a=> (a?.anomaly===true) || (String(a?.anomaly_txt||"").trim().length>0)).length;
+        const total = list.length;
+
+        setStats({ total, new5, anomalies, updatedAt: new Date().toLocaleTimeString() });
+
+        // visual burst when new items arrive
+        if (new5 > lastCountRef.current){
+          addBurst(new5 - lastCountRef.current);
+        }
+        lastCountRef.current = new5;
+      }catch(_e){ /* silent */ }
+      finally{
+        if(!stop) setTimeout(poll, 10000);
+      }
+    }
+    poll();
+    return ()=>{ stop = true; };
+  },[]);
+
+  // Canvas sizing & animation
+  React.useEffect(()=>{
+    const canvas = canvasRef.current; if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    function resize(){
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width  = Math.max(320, rect.width * dpr);
+      canvas.height = Math.max(160, rect.height * dpr);
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.scale(dpr, dpr);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function spawn(n){
+      for(let i=0;i<n;i++){
+        particlesRef.current.push({
+          x: Math.random()*canvas.clientWidth,
+          y: Math.random()*canvas.clientHeight,
+          v: 0.6 + Math.random()*1.8,
+          s: 1 + Math.random()*2,
+          hue: 200 + Math.random()*140,
+          life: 60 + Math.random()*180
+        });
+      }
+    }
+    spawn(60);
+
+    function tick(){
+      const W = canvas.clientWidth, H = canvas.clientHeight;
+      ctx.clearRect(0,0,W,H);
+
+      // subtle gradient glow
+      const grd = ctx.createLinearGradient(0,0,W,H);
+      grd.addColorStop(0, 'rgba(30,64,175,0.10)');
+      grd.addColorStop(1, 'rgba(16,185,129,0.08)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0,0,W,H);
+
+      // flowing particles
+      const arr = particlesRef.current;
+      for(let i=0;i<arr.length;i++){
+        const p = arr[i];
+        p.x += p.v; p.y += Math.sin((p.x+p.y)*0.01)*0.2;
+        p.life -= 1;
+        if(p.x>W+10) p.x = -10;
+        if(p.life<=0){ arr.splice(i,1); i--; continue; }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.s, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${p.hue},80%,60%,0.8)`;
+        ctx.fill();
+      }
+      if(arr.length<80) spawn(5);
+
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return ()=>{ cancelAnimationFrame(rafRef.current); window.removeEventListener('resize', resize); };
+  },[]);
+
+  function addBurst(n){
+    const canvas = canvasRef.current; if(!canvas) return;
+    for(let i=0;i<Math.min(40, n*4);i++){
+      particlesRef.current.push({
+        x: -10,
+        y: Math.random()*canvas.clientHeight,
+        v: 2 + Math.random()*2.5,
+        s: 1.5 + Math.random()*2.5,
+        hue: 320 + Math.random()*40,
+        life: 100 + Math.random()*120
+      });
+    }
+  }
+
+  const s = {
+    shell:{
+      border:'1px solid rgba(255,255,255,.12)',
+      borderRadius:12,
+      background:'radial-gradient(1000px 400px at 10% -20%, rgba(37,99,235,.18), transparent), radial-gradient(800px 400px at 100% 120%, rgba(16,185,129,.12), transparent), rgba(255,255,255,.03)',
+      padding:12
+    },
+    head:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:8},
+    live:{display:'inline-flex',alignItems:'center',gap:6,fontSize:12,letterSpacing:.3},
+    dot:{width:8,height:8,borderRadius:99,background:'#14f195',boxShadow:'0 0 12px #14f195aa, 0 0 20px #14f19566'},
+    stat:{fontSize:13,opacity:.9},
+    canvasWrap:{height:180,border:'1px solid rgba(255,255,255,.08)',borderRadius:10,overflow:'hidden'}
+  };
+
+  return (
+    <div style={s.shell}>
+      <div style={s.head}>
+        <div style={s.live}><span style={s.dot}/><b>LIVE</b>&nbsp;Email scanning</div>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+          <div style={s.stat}>Alerts (24h): <b>{stats.total}</b></div>
+          <div style={s.stat}>New (5m): <b>{stats.new5}</b></div>
+          <div style={s.stat}>Anomalies: <b>{stats.anomalies}</b></div>
+          <div style={{fontSize:12,opacity:.65}}>Updated: {stats.updatedAt||'–'}</div>
+        </div>
+      </div>
+      <div style={s.canvasWrap}>
+        <canvas ref={canvasRef} style={{width:'100%',height:'100%',display:'block'}}/>
+      </div>
+    </div>
+  );
+}
 function DashboardWithOnboarding(props){
   return (
     <div style={{padding:16}}>
+      {/* Live real-time visual */}
+      <CollapsibleSection id="live-scan" title="Live email scan" defaultCollapsed={false}>
+        <LiveEmailScanner/>
+      </CollapsibleSection>
       <CollapsibleSection id="onboarding" title="Get started" defaultCollapsed={true}>
         <OnboardingChecklist/>
       </CollapsibleSection>
@@ -2772,10 +2936,12 @@ function Alerts(){
   function copyText(txt){ try{ navigator.clipboard.writeText(String(txt||"")); }catch{} }
 
   function threatLabel(score){
-    if(score>=70) return "High";
-    if(score>=40) return "Medium";
-    if(score!=null) return "Low";
-    return "—";
+    const n = Number(score);
+    if (!isFinite(n)) return "—";
+    if (n <= -0.8) return "High";
+    if (n <= -0.4) return "Medium";
+    if (n <= -0.1) return "Low";
+    return "Info";
   }
 
   function buildAlertsUrl(days, limit, query, anomaliesOnly){
@@ -2812,7 +2978,18 @@ function Alerts(){
     return ()=>clearTimeout(t);
   },[q,days,onlyAnomalies]);
 
-  const s={wrap:{padding:16},row:{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,.08)"},head:{fontSize:12,opacity:.7,padding:"6px 0"},badge:(st)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:st==="new"?"rgba(59,130,246,.15)":"transparent"}),src:(k)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:k==="Email"?"rgba(59,130,246,.18)":k==="DNS"?"rgba(99,102,241,.18)":k==="EDR"?"rgba(16,185,129,.18)":k==="Cloud"?"rgba(234,179,8,.18)":"transparent"}),threat:(sc)=>({fontSize:12,padding:"2px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.18)",background:sc>=70?"rgba(220,38,38,.2)":sc>=40?"rgba(234,179,8,.2)":"rgba(34,197,94,.2)"}),input:{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit"}};
+  const s={
+    wrap:{padding:16},
+    row:{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,.08)"},
+    head:{fontSize:12,opacity:.7,padding:"6px 0"},
+    badge:(st)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:st==="new"?"rgba(59,130,246,.15)":"transparent"}),
+    src:(k)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:k==="Email"?"rgba(59,130,246,.18)":k==="DNS"?"rgba(99,102,241,.18)":k==="EDR"?"rgba(16,185,129,.18)":k==="Cloud"?"rgba(234,179,8,.18)":"transparent"}),
+    threat:(sc)=>({
+      fontSize:12,padding:"2px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.18)",
+      background:sc<=-0.8?"rgba(220,38,38,.2)":sc<=-0.4?"rgba(234,179,8,.2)":sc<=-0.1?"rgba(34,197,94,.2)":"rgba(156,163,175,.2)"
+    }),
+    input:{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit"}
+  };
 
   function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch{ return "—"; } }
   function sourceOf(a){ const v=String(a?.source||a?.evt_type||a?.type||a?.event?.type||"").toLowerCase(); if(v.includes("email")||a?.from) return "Email"; if(v.includes("dns")) return "DNS"; if(v.includes("edr")||v.includes("endpoint")) return "EDR"; if(v.includes("cloud")||v.includes("aws")||v.includes("azure")||v.includes("gcp")) return "Cloud"; return "—"; }
@@ -2848,7 +3025,7 @@ function Alerts(){
         <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.subject||"—"}</div>
         <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.preview||"—"}</div>
         <div><span style={s.badge(a.status||"new")}>{a.status||"new"}</span></div>
-        <div>{a.score!=null?<span style={s.threat(a.score)}>{threatLabel(a.score)}</span>:"—"}</div>
+        <div>{a.score!=null?<span style={s.threat(a.score)}>{threatLabel(a.score)} • {a.score}</span>:"—"}</div>
       </div>)}
     </div>}
     {drawerOpen && <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:1000}} onClick={closeDrawer}/><aside style={{position:"fixed",top:0,right:0,height:"100%",width:"min(560px,92vw)",background:"rgba(28,30,38,.96)",borderLeft:"1px solid rgba(255,255,255,.12)",zIndex:1001,display:"flex",flexDirection:"column"}}><div style={{display:"flex",justifyContent:"space-between",padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.08)"}}><div><div style={{fontWeight:700,fontSize:16}}>{selected?.subject||"(no subject)"}</div><div style={{fontSize:12,opacity:.8}}>From: {selected?.from||selected?.from_addr||"—"}</div></div><button onClick={closeDrawer} style={{padding:"6px 10px",borderRadius:8}}>Close</button></div><div style={{padding:16,overflow:"auto"}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div><b>Source</b><div>{sourceOf(selected)}</div></div><div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></div></div></div><pre style={{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"}}>{JSON.stringify(selected,null,2)}</pre></div></aside></>}
