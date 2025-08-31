@@ -3762,88 +3762,178 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
     const tid = req.user.tenant_id;
     const stats = { from_addr: 0, subject: 0, preview: 0, type: 0, anomaly: 0 };
 
-    // from_addr (supports legacy event.from and Microsoft Graph nested shapes)
     try {
       const r1 = await q(`
-        UPDATE alerts
+        WITH src AS (
+          SELECT id,
+                 COALESCE(
+                   event::jsonb,
+                   data::jsonb,
+                   payload::jsonb,
+                   raw::jsonb,
+                   details::jsonb
+                 ) AS j
+            FROM alerts
+           WHERE tenant_id = $1
+             AND (from_addr IS NULL OR from_addr = '')
+             AND (
+               event IS NOT NULL
+               OR data IS NOT NULL
+               OR payload IS NOT NULL
+               OR raw IS NOT NULL
+               OR details IS NOT NULL
+             )
+        )
+        UPDATE alerts a
            SET from_addr = COALESCE(
-                 NULLIF(from_addr, ''),
-                 (event::jsonb)->>'from',
-                 (event::jsonb->'from'->'emailAddress'->>'address'),
-                 (event::jsonb->'sender'->'emailAddress'->>'address'),
-                 (event::jsonb->'from'->>'address')
+                 NULLIF(a.from_addr, ''),
+                 src.j->>'from',
+                 src.j->'from'->'emailAddress'->>'address',
+                 src.j->'sender'->'emailAddress'->>'address',
+                 src.j->'from'->>'address'
                )
-         WHERE tenant_id = $1
-           AND (from_addr IS NULL OR from_addr = '')
-           AND event IS NOT NULL
-        RETURNING 1;
+          FROM src
+         WHERE a.id = src.id
+        RETURNING a.id;
       `, [tid]);
       stats.from_addr = r1.rowCount || (r1.rows ? r1.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // subject (fallback to Microsoft Graph subject)
     try {
       const r2 = await q(`
-        UPDATE alerts
+        WITH src AS (
+          SELECT id,
+                 COALESCE(
+                   event::jsonb,
+                   data::jsonb,
+                   payload::jsonb,
+                   raw::jsonb,
+                   details::jsonb
+                 ) AS j
+            FROM alerts
+           WHERE tenant_id = $1
+             AND (subject IS NULL OR subject = '')
+             AND (
+               event IS NOT NULL
+               OR data IS NOT NULL
+               OR payload IS NOT NULL
+               OR raw IS NOT NULL
+               OR details IS NOT NULL
+             )
+        )
+        UPDATE alerts a
            SET subject = COALESCE(
-                 NULLIF(subject, ''),
-                 (event::jsonb)->>'subject'
+                 NULLIF(a.subject, ''),
+                 src.j->>'subject'
                )
-         WHERE tenant_id = $1
-           AND (subject IS NULL OR subject = '')
-           AND event IS NOT NULL
-        RETURNING 1;
+          FROM src
+         WHERE a.id = src.id
+        RETURNING a.id;
       `, [tid]);
       stats.subject = r2.rowCount || (r2.rows ? r2.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // preview (prefer explicit preview; fallback to Microsoft Graph bodyPreview/body.content)
     try {
       const r3 = await q(`
-        UPDATE alerts
+        WITH src AS (
+          SELECT id,
+                 COALESCE(
+                   event::jsonb,
+                   data::jsonb,
+                   payload::jsonb,
+                   raw::jsonb,
+                   details::jsonb
+                 ) AS j
+            FROM alerts
+           WHERE tenant_id = $1
+             AND (preview IS NULL OR preview = '')
+             AND (
+               event IS NOT NULL
+               OR data IS NOT NULL
+               OR payload IS NOT NULL
+               OR raw IS NOT NULL
+               OR details IS NOT NULL
+             )
+        )
+        UPDATE alerts a
            SET preview = COALESCE(
-                 NULLIF(preview, ''),
-                 (event::jsonb)->>'preview',
-                 (event::jsonb)->>'bodyPreview',
-                 LEFT((event::jsonb->'body'->>'content'), 280)
+                 NULLIF(a.preview, ''),
+                 src.j->>'preview',
+                 src.j->>'bodyPreview',
+                 LEFT((src.j->'body'->>'content'), 280)
                )
-         WHERE tenant_id = $1
-           AND (preview IS NULL OR preview = '')
-           AND event IS NOT NULL
-        RETURNING 1;
+          FROM src
+         WHERE a.id = src.id
+        RETURNING a.id;
       `, [tid]);
       stats.preview = r3.rowCount || (r3.rows ? r3.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // type (evt_type elsewhere); default to 'email' if nothing present
     try {
       const r4 = await q(`
-        UPDATE alerts
+        WITH src AS (
+          SELECT id,
+                 COALESCE(
+                   event::jsonb,
+                   data::jsonb,
+                   payload::jsonb,
+                   raw::jsonb,
+                   details::jsonb
+                 ) AS j
+            FROM alerts
+           WHERE tenant_id = $1
+             AND (type IS NULL OR type = '')
+             AND (
+               event IS NOT NULL
+               OR data IS NOT NULL
+               OR payload IS NOT NULL
+               OR raw IS NOT NULL
+               OR details IS NOT NULL
+             )
+        )
+        UPDATE alerts a
            SET type = COALESCE(
-                 NULLIF(type, ''),
-                 (event::jsonb)->>'type',
+                 NULLIF(a.type, ''),
+                 src.j->>'type',
                  'email'
                )
-         WHERE tenant_id = $1
-           AND (type IS NULL OR type = '')
-           AND event IS NOT NULL
-        RETURNING 1;
+          FROM src
+         WHERE a.id = src.id
+        RETURNING a.id;
       `, [tid]);
       stats.type = r4.rowCount || (r4.rows ? r4.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // anomaly (accept text/boolean, prefer explicit event.anomaly)
     try {
       const r5 = await q(`
-        UPDATE alerts
+        WITH src AS (
+          SELECT id,
+                 COALESCE(
+                   event::jsonb,
+                   data::jsonb,
+                   payload::jsonb,
+                   raw::jsonb,
+                   details::jsonb
+                 ) AS j
+            FROM alerts
+           WHERE tenant_id = $1
+             AND (anomaly IS NULL OR anomaly = '')
+             AND (
+               event IS NOT NULL
+               OR data IS NOT NULL
+               OR payload IS NOT NULL
+               OR raw IS NOT NULL
+               OR details IS NOT NULL
+             )
+        )
+        UPDATE alerts a
            SET anomaly = COALESCE(
-                 NULLIF(anomaly, ''),
-                 (event::jsonb)->>'anomaly'
+                 NULLIF(a.anomaly, ''),
+                 src.j->>'anomaly'
                )
-         WHERE tenant_id = $1
-           AND (anomaly IS NULL OR anomaly = '')
-           AND event IS NOT NULL
-        RETURNING 1;
+          FROM src
+         WHERE a.id = src.id
+        RETURNING a.id;
       `, [tid]);
       stats.anomaly = r5.rowCount || (r5.rows ? r5.rows.length : 0) || 0;
     } catch (_e) {}
@@ -4110,6 +4200,29 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
     // try #0: coalesce flat + legacy JSONB if both exist
     try {
       const r0 = await q(`
+        WITH base AS (
+          SELECT id,
+                 tenant_id,
+                 score,
+                 status,
+                 created_at,
+                 COALESCE(
+                   event::jsonb,
+                   data::jsonb,
+                   payload::jsonb,
+                   raw::jsonb,
+                   details::jsonb
+                 ) AS j,
+                 from_addr,
+                 type,
+                 subject,
+                 preview,
+                 anomaly
+            FROM alerts
+           WHERE tenant_id=$1 AND created_at > $2
+           ORDER BY created_at DESC
+           LIMIT $3
+        )
         SELECT id,
                tenant_id,
                score,
@@ -4117,31 +4230,28 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
                created_at,
                COALESCE(
                  from_addr,
-                 (event::jsonb)->>'from',
-                 (event::jsonb->'from'->'emailAddress'->>'address'),
-                 (event::jsonb->'sender'->'emailAddress'->>'address'),
-                 (event::jsonb->'from'->>'address')
+                 j->>'from',
+                 j->'from'->'emailAddress'->>'address',
+                 j->'sender'->'emailAddress'->>'address',
+                 j->'from'->>'address'
                ) AS from_addr,
                COALESCE(
                  type,
-                 (event::jsonb)->>'type',
+                 j->>'type',
                  'email'
                ) AS evt_type,
                COALESCE(
                  subject,
-                 (event::jsonb)->>'subject'
+                 j->>'subject'
                ) AS subject,
                COALESCE(
                  preview,
-                 (event::jsonb)->>'preview',
-                 (event::jsonb)->>'bodyPreview',
-                 LEFT((event::jsonb->'body'->>'content'), 280)
+                 j->>'preview',
+                 j->>'bodyPreview',
+                 LEFT((j->'body'->>'content'), 280)
                ) AS preview,
-               COALESCE(CAST(anomaly AS TEXT), (event::jsonb)->>'anomaly') AS anomaly_txt
-          FROM alerts
-         WHERE tenant_id=$1 AND created_at > $2
-         ORDER BY created_at DESC
-         LIMIT $3
+               COALESCE(CAST(anomaly AS TEXT), j->>'anomaly') AS anomaly_txt
+          FROM base
       `, [tid, since, limit]);
       rows = r0.rows;
     } catch(_e0) { /* fall through to other probes */ }
