@@ -4016,7 +4016,52 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
     return res.status(500).json({ ok: false, error: 'denormalize failed' });
   }
 });
+// ---------- Admin: prune blank alerts (subject/preview empty) ----------
+// POST /admin/ops/alerts/prune_blank?dry=1&days=7
+// - dry: if '1' or 'true', do not delete; just report count
+// - days: optional lookback window; only prune rows created before now-days (int, days)
+app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const dryFlag = String(req.query?.dry ?? req.body?.dry ?? '').toLowerCase();
+    const dry = dryFlag === '1' || dryFlag === 'true';
 
+    // Optional age filter (only prune older rows)
+    const daysStr = String(req.query?.days ?? req.body?.days ?? '').trim();
+    const days = /^\d+$/.test(daysStr) ? parseInt(daysStr, 10) : 0;
+    const cutoff = days > 0 ? (Math.floor(Date.now() / 1000) - (days * 86400)) : null;
+
+    const whereParts = [
+      `tenant_id = $1`,
+      `(COALESCE(subject,'') = '' AND COALESCE(preview,'') = '')`
+    ];
+    const params = [tid];
+    if (cutoff) {
+      whereParts.push(`created_at < $2`);
+      params.push(cutoff);
+    }
+    const WHERE = whereParts.join(' AND ');
+
+    // Count matches
+    const cnt = await q(`SELECT COUNT(*)::int AS cnt FROM alerts WHERE ${WHERE}`, params);
+    const n = (cnt.rows?.[0]?.cnt ?? 0);
+
+    if (dry) {
+      try { await recordOpsRun('alerts_prune_blank_dry', { tenant_id: tid, count: n, days: cutoff ? days : null }); } catch (_e) {}
+      return res.json({ ok: true, dry: true, would_delete: n, days: cutoff ? days : null });
+    }
+
+    // Delete
+    const del = await q(`DELETE FROM alerts WHERE ${WHERE}`, params);
+    const deleted = typeof del.rowCount === 'number' ? del.rowCount : (del.rows ? del.rows.length : 0);
+
+    try { await recordOpsRun('alerts_prune_blank', { tenant_id: tid, deleted, days: cutoff ? days : null }); } catch (_e) {}
+    return res.json({ ok: true, deleted, days: cutoff ? days : null });
+  } catch (e) {
+    console.error('alerts/prune_blank failed', e);
+    return res.status(500).json({ ok: false, error: 'prune failed' });
+  }
+});
 // ---------- Admin: reset connector (wipe tokens/state) ----------
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
 // optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
