@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
@@ -1883,6 +1883,15 @@ function AlertsPage(){
     });
   }
 
+  function riskFromScore(sc){
+    const n = Number(sc);
+    if (!isFinite(n)) return { label:'Unknown', level:'unknown', color:'#9ca3af', bg:'rgba(156,163,175,.15)' };
+    if (n >= 80) return { label:'Critical', level:'critical', color:'#fecaca', bg:'rgba(239,68,68,.15)' };
+    if (n >= 60) return { label:'High', level:'high', color:'#fcd34d', bg:'rgba(245,158,11,.15)' };
+    if (n >= 30) return { label:'Medium', level:'medium', color:'#93c5fd', bg:'rgba(59,130,246,.15)' };
+    return { label:'Low', level:'low', color:'#86efac', bg:'rgba(34,197,94,.15)' };
+  }
+
   const s = {
     wrap:{padding:16},
     controls:{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',margin:'6px 0 12px'},
@@ -1928,6 +1937,20 @@ function AlertsPage(){
         </div>
       </div>
 
+      <div style={{display:'flex',gap:8,alignItems:'center',margin:'6px 0 12px',flexWrap:'wrap'}}>
+        <span style={{fontSize:12,opacity:.8}}>Threat levels:</span>
+        {[
+          {label:'Low',     color:'#86efac', bg:'rgba(34,197,94,.15)'},
+          {label:'Medium',  color:'#93c5fd', bg:'rgba(59,130,246,.15)'},
+          {label:'High',    color:'#fcd34d', bg:'rgba(245,158,11,.15)'},
+          {label:'Critical',color:'#fecaca', bg:'rgba(239,68,68,.15)'},
+        ].map((r,i)=>(
+          <span key={i} style={{padding:'2px 8px',border:'1px solid '+r.color, background:r.bg, color:r.color, borderRadius:999, fontSize:12}}>
+            {r.label}
+          </span>
+        ))}
+      </div>
+
       {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</div>}
 
       <div style={s.card}>
@@ -1953,7 +1976,15 @@ function AlertsPage(){
                 <div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
                   {a.evt_type && <span style={s.tag}>{a.evt_type}</span>}
                   {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
-                  {(a.score!=null) ? <span style={s.tag}>score {a.score}</span> : null}
+                  {(a.score!=null)
+                    ? (()=>{ const risk = riskFromScore(a.score);
+                        return (
+                          <span style={{...s.tag, borderColor:risk.color, background:risk.bg, color:risk.color}}>
+                            {risk.label} • {a.score}
+                          </span>
+                        );
+                      })()
+                    : null}
                 </div>
               </div>
             );
@@ -1985,7 +2016,15 @@ function AlertsPage(){
                   <div style={{fontSize:13,display:'grid',gap:4}}>
                     <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
                     <div><b>Type:</b> {selected.evt_type || '—'}</div>
-                    <div><b>Score:</b> {selected.score!=null ? selected.score : '—'}</div>
+                    {selected.score!=null
+                      ? (()=>{ const risk = riskFromScore(selected.score);
+                          return (
+                            <div>
+                              <b>Threat:</b> {risk.label} <span style={{opacity:.8}}>(score {selected.score})</span>
+                            </div>
+                          );
+                        })()
+                      : <div><b>Threat:</b> —</div>}
                     <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
                     {(selected.anomaly_txt||"").trim() ? (
                       <div><b>Anomaly:</b> {selected.anomaly_txt}</div>
@@ -2108,6 +2147,41 @@ function DashboardWithOnboarding(props){
       <OnboardingTips/>
       {/* Render existing Dashboard below */}
       <Dashboard {...props} />
+    </div>
+  );
+}
+function RequireAuth({ children }){
+  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+  if (!token) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function Login(){
+  const [token, setToken] = React.useState(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('token') || '') : ''
+  );
+
+  function onSubmit(e){
+    e.preventDefault();
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('token', token.trim());
+      window.location.href = '/';
+    } catch(_) {}
+  }
+
+  return (
+    <div style={{maxWidth:420, margin:'80px auto', padding:20}}>
+      <h1>Sign in</h1>
+      <p style={{opacity:.8}}>Paste the API token you received after signup.</p>
+      <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
+        <input
+          placeholder="Bearer token"
+          value={token}
+          onChange={e=>setToken(e.target.value)}
+          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
+        />
+        <button type="submit" style={{padding:'10px 12px', borderRadius:8}}>Save & Continue</button>
+      </form>
     </div>
   );
 }
@@ -2736,12 +2810,12 @@ function Alerts(){
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.preview || '—'}</div>
               <div><span style={s.badge(a.status || 'new')}>{a.status || 'new'}</span></div>
               <div>
-                {a.score!=null ? (
-                  <span style={s.threat(a.score)}>
-                    {a.score>=70 ? `High (${a.score})` : a.score>=40 ? `Medium (${a.score})` : `Low (${a.score})`}
-                  </span>
-                ) : '—'}
-              </div>
+  {a.score!=null ? (
+    <span style={s.threat(a.score)}>
+      {a.score>=70 ? `High` : a.score>=40 ? `Medium` : `Low`}
+    </span>
+  ) : '—'}
+</div>
             </div>
           ))}
         </div>
