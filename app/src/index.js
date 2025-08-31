@@ -3896,7 +3896,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
     }
 
     // 2) If we have JSON/JSONB blobs (common names), surgically remove token keys
-    const JSON_CANDIDATES = ['data','config','meta','settings','auth_json'];
+    const JSON_CANDIDATES = ['data','config','meta','settings','auth_json','details'];
     const TOKEN_KEYS = ['access_token','refresh_token','id_token','token','authorization','auth','secret','client_secret','password','expires_at'];
     for (const jc of JSON_CANDIDATES) {
       if (!has(jc)) continue;
@@ -3918,6 +3918,38 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
         }
       }
     }
+
+    // Deep-clean nested secrets inside details (tokens) and clear delta cursor path for M365
+    try {
+      await q(`
+        UPDATE connectors
+           SET details = (
+                CASE
+                  WHEN details::text IS NULL OR details::text = 'null' THEN NULL
+                  ELSE (details::jsonb #- '{tokens}')
+                END
+           )
+         WHERE tenant_id=$1 AND provider=$2
+      `, [tid, provider]);
+    } catch(_e) { /* ignore per-tenant */ }
+
+    try {
+      await q(`
+        UPDATE connectors
+           SET details = (
+                CASE
+                  WHEN details::text IS NULL OR details::text = 'null' THEN NULL
+                  ELSE jsonb_set(
+                         details::jsonb,
+                         '{delta}',
+                         COALESCE((details::jsonb->'delta')::jsonb, '{}'::jsonb) - 'm365',
+                         true
+                       )
+                END
+           )
+         WHERE tenant_id=$1 AND provider=$2
+      `, [tid, provider]);
+    } catch(_e) { /* ignore per-tenant */ }
 
     // 3) As a last resort, if there is a single row for this tenant/provider and it still has credentials,
     // offer an optional hard delete via query flag `?purge=1` (super only, explicit opt-in)
