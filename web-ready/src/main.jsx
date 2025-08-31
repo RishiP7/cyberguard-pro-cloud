@@ -2183,8 +2183,131 @@ function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
     </div>
   );
 }
+function LiveEmailScan(){
+  const [items, setItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [selected, setSelected] = React.useState(null);
+
+  async function load(){
+    setLoading(true); setErr("");
+    try{
+      const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+      const r = await fetch(`/alerts/export?days=1&limit=200`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const j = await r.json();
+      if(!r.ok) throw new Error(j?.error || "fetch failed");
+      const list = Array.isArray(j.alerts) ? j.alerts : [];
+      list.sort((a,b)=> Number(b.created_at||0) - Number(a.created_at||0));
+      setItems(list);
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(()=>{ load(); },[]);
+
+  function riskFromScore(sc){
+    const n = Number(sc);
+    if (!isFinite(n)) return { label:'Unknown', color:'#9ca3af', bg:'rgba(156,163,175,.15)' };
+    if (n >= 80) return { label:'Critical', color:'#fecaca', bg:'rgba(239,68,68,.15)' };
+    if (n >= 60) return { label:'High',     color:'#fcd34d', bg:'rgba(245,158,11,.15)' };
+    if (n >= 30) return { label:'Medium',   color:'#93c5fd', bg:'rgba(59,130,246,.15)' };
+    return { label:'Low',      color:'#86efac', bg:'rgba(34,197,94,.15)' };
+  }
+  function src(a){
+    const v=String(a?.evt_type||a?.type||a?.source||"").toLowerCase();
+    if(v.includes("dns")) return "DNS";
+    if(v.includes("edr")||v.includes("endpoint")) return "EDR";
+    if(v.includes("cloud")||v.includes("aws")||v.includes("azure")||v.includes("gcp")) return "Cloud";
+    return (a?.from || a?.from_addr) ? "Email" : "—";
+  }
+  const s = {
+    wrap:{marginTop:12, padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)'},
+    head:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8},
+    grid:{display:'grid',gridTemplateColumns:'160px 120px 1fr 140px',gap:10,alignItems:'center'},
+    pill:(c,b)=>({fontSize:12,padding:'2px 8px',borderRadius:999,border:`1px solid ${c}`,background:b,color:c,display:'inline-block'})
+  };
+
+  return (
+    <div style={s.wrap} aria-label="Live Email Scan">
+      <div style={s.head}>
+        <div style={{fontWeight:700}}>Live Email Scan</div>
+        <div style={{opacity:.8,fontSize:12}}>
+          {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
+        </div>
+      </div>
+
+      {err && <div style={{padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8,marginBottom:8}}>Error: {err}</div>}
+
+      <div style={{borderTop:'1px solid rgba(255,255,255,.08)'}}>
+        <div style={{...s.grid, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,.08)', fontSize:12, opacity:.75}}>
+          <div>When</div><div>Source</div><div>Subject / From</div><div>Threat</div>
+        </div>
+
+        {(items.slice(0, 12)).map(a=>{
+          const when = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
+          const risk = (a.score!=null) ? riskFromScore(a.score) : null;
+          return (
+            <div key={a.id} style={s.grid} onClick={()=>setSelected(a)} title="Open details">
+              <div style={{opacity:.85}}>{when}</div>
+              <div>{src(a)}</div>
+              <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                <b>{a.subject || '(no subject)'}</b>
+                <span style={{opacity:.7}}> — {a.from || a.from_addr || '—'}</span>
+              </div>
+              <div>
+                {risk ? <span style={s.pill(risk.color, risk.bg)}>{risk.label} • {a.score}</span> : '—'}
+              </div>
+            </div>
+          );
+        })}
+        {(!loading && items.length===0) && <div style={{padding:'8px 0',opacity:.75}}>No messages scanned yet.</div>}
+      </div>
+
+      <div style={{marginTop:10}}>
+        <a href="/alerts" style={{fontSize:12}}>Open full Alerts →</a>
+      </div>
+
+      {selected && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000}}>
+          <div style={{width:'min(840px,94vw)',maxHeight:'86vh',overflow:'auto',background:'linear-gradient(180deg, rgba(28,30,38,.96), rgba(22,24,30,.94))',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,padding:16,boxShadow:'0 18px 48px rgba(0,0,0,.35)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div style={{fontWeight:700}}>Scanned email details</div>
+              <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 240px',gap:12,alignItems:'start'}}>
+              <div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</div>
+                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</div>
+                <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{selected.preview || '—'}</pre>
+              </div>
+              <div>
+                <div style={{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
+                  <div style={{fontSize:13,opacity:.8,marginBottom:6}}>Meta</div>
+                  <div style={{fontSize:13,display:'grid',gap:4}}>
+                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
+                    <div><b>Source:</b> {src(selected)}</div>
+                    <div><b>Received:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
+                    {selected.score!=null ? (()=>{const r=riskFromScore(selected.score); return <div><b>Threat:</b> {r.label} <span style={{opacity:.8}}>(score {selected.score})</span></div>;})() : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 // DashboardWithOnboarding: wrapper for Dashboard with onboarding/tips sections
 function DashboardWithOnboarding(props){
+      {/* Live Email Scan — static, always visible */}
+      <LiveEmailScan/>
   return (
     <div style={{padding:16}}>
       {/* Render existing Dashboard first */}
