@@ -3776,9 +3776,9 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
     try {
       const r1 = await q(`
         UPDATE alerts
-           SET from_addr = COALESCE(from_addr, (event::jsonb)->>'from')
+           SET from_addr = COALESCE(NULLIF(from_addr, ''), (event::jsonb)->>'from')
          WHERE tenant_id = $1
-           AND from_addr IS NULL
+           AND (from_addr IS NULL OR from_addr = '')
            AND event IS NOT NULL
         RETURNING 1;
       `, [tid]);
@@ -3828,9 +3828,9 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
     try {
       const r5 = await q(`
         UPDATE alerts
-           SET anomaly = COALESCE(anomaly, (event::jsonb)->>'anomaly')
+           SET anomaly = COALESCE(NULLIF(anomaly, ''), (event::jsonb)->>'anomaly')
          WHERE tenant_id = $1
-           AND anomaly IS NULL
+           AND (anomaly IS NULL OR anomaly = '')
            AND event IS NOT NULL
         RETURNING 1;
       `, [tid]);
