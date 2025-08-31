@@ -3846,40 +3846,84 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
 });
 
 // ---------- Admin: reset connector (wipe tokens/state) ----------
+// Hardened: dynamically detect present columns and only update those,
+// log detailed errors to ops runs, and optionally return debug info to super.
 app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
   try {
     const { provider } = req.body || {};
     if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
-
     const tid = req.user.tenant_id;
 
-    // Best-effort: clear token/state columns if they exist; ignore errors per column
+    // Always try to ensure health columns exist
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
 
-    // Null out common token/state fields (some may not exist; ignore per-field failures)
-    const fields = [
+    // Discover which columns actually exist on connectors
+    let cols = [];
+    try {
+      const r = await q(`
+        SELECT column_name
+          FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='connectors'
+      `);
+      cols = (r.rows || []).map(r => String(r.column_name));
+    } catch(_e) {
+      // non-fatal; we'll fall back to best-effort updates below
+      cols = [];
+    }
+    const has = (c) => cols.includes(c);
+
+    // Candidate fields we want to null if present
+    const CANDIDATE_FIELDS = [
       'access_token',
       'refresh_token',
       'id_token',
+      'token',
+      'auth',
       'expires_at',
       'status',
       'last_error',
       'last_sync_at'
     ];
+    const toNull = CANDIDATE_FIELDS.filter(has);
 
-    for (const col of fields) {
-      try {
-        await q(`UPDATE connectors SET ${col}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
-      } catch(_e) { /* column may not exist; continue */ }
+    // If nothing detected (unlikely), at least clear the health columns we know we added
+    if (toNull.length === 0) {
+      toNull.push('status', 'last_error', 'last_sync_at');
     }
 
-    // Record and return
-    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider }); } catch(_e) {}
-    return res.json({ ok:true });
+    // Build dynamic UPDATE ... SET col=NULL, col2=NULL ...
+    const setSql = toNull.map(c => `${c}=NULL`).join(', ');
+    // If updated_at exists, tick it as well
+    const setWithUpdated = has('updated_at') ? `${setSql}, updated_at=${Math.floor(Date.now()/1000)}` : setSql;
+
+    // Execute the reset
+    try {
+      await q(
+        `UPDATE connectors SET ${setWithUpdated} WHERE tenant_id=$1 AND provider=$2`,
+        [tid, provider]
+      );
+    } catch (updErr) {
+      // Log error with details and return failure
+      try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, err: String(updErr?.message || updErr) }); } catch(_e) {}
+      return res.status(500).json({ ok:false, error: 'reset failed', detail: String(updErr?.message || updErr) });
+    }
+
+    // Clear any sticky error row for convenience if column exists
+    if (has('last_error')) {
+      try { await q(`UPDATE connectors SET last_error=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
+    }
+
+    // Record success
+    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: toNull }); } catch(_e) {}
+
+    // Optional debug echo for super users
+    const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
+    return res.json({ ok:true, cleared: toNull, debug: dbg ? { columns: cols } : undefined });
   } catch (e) {
     console.error('connector/reset failed', e);
+    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch(_e) {}
     return res.status(500).json({ ok:false, error: 'reset failed' });
   }
 });
