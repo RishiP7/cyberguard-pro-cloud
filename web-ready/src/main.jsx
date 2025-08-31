@@ -2168,7 +2168,7 @@ function DashboardWithOnboarding(props){
       </form>
     </div>
   );
-}
+
 function App(){
   return (
     <ErrorBoundary>
