@@ -2145,30 +2145,6 @@ function DashboardWithOnboarding(props){
   );
 }
 
-  function onSubmit(e){
-    e.preventDefault();
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem('token', token.trim());
-      window.location.href = '/';
-    } catch(_) {}
-  }
-
-  return (
-    <div style={{maxWidth:420, margin:'80px auto', padding:20}}>
-      <h1>Sign in</h1>
-      <p style={{opacity:.8}}>Paste the API token you received after signup.</p>
-      <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
-        <input
-          placeholder="Bearer token"
-          value={token}
-          onChange={e=>setToken(e.target.value)}
-          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
-        />
-        <button type="submit" style={{padding:'10px 12px', borderRadius:8}}>Save & Continue</button>
-      </form>
-    </div>
-  );
-
 function App(){
   return (
     <ErrorBoundary>
