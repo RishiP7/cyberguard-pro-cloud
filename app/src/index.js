@@ -3788,11 +3788,11 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
                score,
                status,
                created_at,
-               COALESCE(from_addr, event->>'from')    AS from_addr,
-               COALESCE(type,      event->>'type')    AS evt_type,
-               COALESCE(subject,   event->>'subject') AS subject,
-               COALESCE(preview,   event->>'preview') AS preview,
-               COALESCE(CAST(anomaly AS TEXT), event->>'anomaly') AS anomaly_txt
+               COALESCE(from_addr, (event::jsonb)->>'from')    AS from_addr,
+               COALESCE(type,      (event::jsonb)->>'type')    AS evt_type,
+               COALESCE(subject,   (event::jsonb)->>'subject') AS subject,
+               COALESCE(preview,   (event::jsonb)->>'preview') AS preview,
+               COALESCE(CAST(anomaly AS TEXT), (event::jsonb)->>'anomaly') AS anomaly_txt
           FROM alerts
          WHERE tenant_id=$1 AND created_at > $2
          ORDER BY created_at DESC
@@ -3869,11 +3869,11 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
                        score,
                        status,
                        created_at,
-                       event->>'from'    AS from_addr,
-                       event->>'type'    AS evt_type,
-                       event->>'subject' AS subject,
-                       event->>'preview' AS preview,
-                       event->>'anomaly' AS anomaly_txt
+                       (event::jsonb)->>'from'    AS from_addr,
+                       (event::jsonb)->>'type'    AS evt_type,
+                       (event::jsonb)->>'subject' AS subject,
+                       (event::jsonb)->>'preview' AS preview,
+                       (event::jsonb)->>'anomaly' AS anomaly_txt
                   FROM alerts
                  WHERE tenant_id=$1 AND created_at > $2
                  ORDER BY created_at DESC
