@@ -4299,6 +4299,38 @@ app.get('/admin/ops/connector/show', authMiddleware, requireSuper, async (req, r
   }
 });
 
+// =====================
+// BACKGROUND POLLER
+// =====================
+
+const schedule = require('node-schedule');
+
+// helper: run poll for all tenants/providers every N minutes
+async function runBackgroundPoll() {
+  try {
+    console.log('[bg-poll] starting background poll cycle');
+    // fetch all connectors
+    const connectors = await db.any('SELECT tenant_id, provider, status FROM connectors WHERE status=$1', ['connected']);
+    for (const c of connectors) {
+      try {
+        console.log(`[bg-poll] polling ${c.tenant_id}:${c.provider}`);
+        // reuse the same poll logic as /admin/ops/poll/now
+        await runPollForTenant(c.tenant_id, c.provider, { limit: 25 });
+      } catch (err) {
+        console.error(`[bg-poll] error polling ${c.tenant_id}:${c.provider}`, err.message);
+      }
+    }
+    console.log('[bg-poll] cycle done');
+  } catch (err) {
+    console.error('[bg-poll] failed to run background poll', err.message);
+  }
+}
+
+// schedule: every 5 minutes with jitter
+schedule.scheduleJob('*/5 * * * *', () => {
+  setTimeout(runBackgroundPoll, Math.floor(Math.random() * 60000)); // up to 60s jitter
+});
+
 // ---------- Alerts export (JSON/CSV) ----------
 // GET /alerts/export?format=json|csv&days=7&limit=1000
 // - format: json (default) or csv
