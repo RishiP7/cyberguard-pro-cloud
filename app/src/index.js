@@ -3876,7 +3876,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
     }
 
     // Build dynamic UPDATE SET list
-    const setParts = clearCols.map(c => `${c}=NULL`);
+    const setParts = clearCols.map(c => (c === 'status' ? `status='new'` : `${c}=NULL`));
 
     let firstUpdateOk = false;
     let firstUpdateErr = null;
@@ -3889,7 +3889,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
       try {
         await q(`
           UPDATE connectors
-             SET status=NULL,
+             SET status='new',
                  last_error=NULL,
                  last_sync_at=NULL,
                  details=NULL,
@@ -4347,7 +4347,7 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
 
     await q(`
       UPDATE connectors
-         SET status=NULL,
+         SET status='new',
              last_error=NULL,
              last_sync_at=NULL,
              details=NULL
