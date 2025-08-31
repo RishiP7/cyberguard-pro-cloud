@@ -4345,14 +4345,40 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
 
-    await q(`
-      UPDATE connectors
-         SET status='new',
-             last_error=NULL,
-             last_sync_at=NULL,
-             details=NULL
-       WHERE tenant_id=$1 AND provider=$2
-    `, [tid, provider]);
+    // First pass: clear details + health
+    let upd1 = null;
+    try {
+      upd1 = await q(`
+        UPDATE connectors
+           SET status='new',
+               last_error=NULL,
+               last_sync_at=NULL,
+               details=NULL
+         WHERE tenant_id=$1 AND provider=$2
+      `, [tid, provider]);
+    } catch (_e) {
+      upd1 = null;
+    }
+
+    // Guard rails: if status somehow remains not 'new', force it again explicitly
+    try {
+      await q(`
+        UPDATE connectors
+           SET status='new'
+         WHERE tenant_id=$1 AND provider=$2
+           AND (status IS DISTINCT FROM 'new')
+      `, [tid, provider]);
+    } catch (_e) {}
+
+    // Also ensure last_error is NULL even if other triggers re-populated it
+    try {
+      await q(`
+        UPDATE connectors
+           SET last_error=NULL
+         WHERE tenant_id=$1 AND provider=$2
+           AND last_error IS NOT NULL
+      `, [tid, provider]);
+    } catch (_e) {}
 
     // Also remove known token keys from other JSON-ish columns if they exist
     const extraCols = ['data','config','meta','settings','auth_json'];
@@ -4360,8 +4386,24 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
       try { await q(`UPDATE connectors SET ${c}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
     }
 
-    try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider }); } catch(_e) {}
-    return res.json({ ok:true, forced:true });
+    // Diagnostic readback to confirm final status and details are as expected
+    let statusAfter = null, detailsAfterNull = null;
+    try {
+      const chk = await q(`SELECT status, details FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [tid, provider]);
+      if (chk.rows && chk.rows[0]) {
+        statusAfter = chk.rows[0].status || null;
+        detailsAfterNull = (chk.rows[0].details === null);
+      }
+    } catch (_e) {}
+
+    try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider, rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null, status_after: statusAfter, details_is_null: detailsAfterNull }); } catch(_e) {}
+    return res.json({
+      ok: true,
+      forced: true,
+      rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null,
+      status_after: statusAfter,
+      details_is_null: detailsAfterNull
+    });
   } catch(e) {
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
     if (dbg) {
