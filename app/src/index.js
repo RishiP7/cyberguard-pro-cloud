@@ -4062,6 +4062,7 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
     return res.status(500).json({ ok: false, error: 'prune failed' });
   }
 });
+
 // ---------- Admin: reset connector (wipe tokens/state) ----------
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
 // optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
