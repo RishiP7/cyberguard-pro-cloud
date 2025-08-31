@@ -2307,20 +2307,50 @@ async function maybeAct(tenant_id,alert,policy){
             [id,alert.id,tenant_id,act,ev.type,result,now()]);
   }
 }
-async function writeAlert(tenant_id,ev){
+async function writeAlert(tenant_id, ev){
   const {rows:pRows}=await q(`SELECT * FROM policy WHERE tenant_id=$1`,[tenant_id]);
   const p=pRows[0]||{enabled:true,threshold:-0.6,allow_quarantine:true,allow_dns_deny:true,allow_disable_account:true,dry_run:false,feeds:{email:true,edr:true,dns:true,ueba:true,cloud:true}};
   if(!p.enabled) return null;
+
   const score=scoreOf(ev);
   const id=uuidv4();
-  await q(`INSERT INTO alerts(id,tenant_id,event_json,score,status,created_at)
-           VALUES($1,$2,$3,$4,'new',$5)`,[id,tenant_id,ev,score,now()]);
+
+  // --- Denormalize for flat columns: from_addr, subject, preview, type, anomaly ---
+  function _safeJson(x){ try{ return (typeof x === 'string' ? JSON.parse(x) : (x || {})); } catch(_e){ return {}; } }
+  const _ev = _safeJson(ev);
+  const _from_addr =
+    (_ev?.from?.emailAddress?.address) ||
+    (_ev?.sender?.emailAddress?.address) ||
+    (_ev?.from?.address) ||
+    (typeof _ev?.from === 'string' ? _ev.from : null) ||
+    null;
+  const _subject = (typeof _ev?.subject === 'string' ? _ev.subject : '');
+  const _preview = (
+    (typeof _ev?.bodyPreview === 'string' && _ev.bodyPreview) ? _ev.bodyPreview :
+    (typeof _ev?.preview === 'string' && _ev.preview) ? _ev.preview :
+    (typeof _ev?.body?.content === 'string' ? _ev.body.content.slice(0, 280) : '')
+  );
+  const _type = (typeof _ev?.type === 'string' && _ev.type) ? _ev.type : 'email';
+  const _anomaly = (function(a){
+    if (a === true) return true;
+    if (a === false) return false;
+    const s = String(a ?? '').toLowerCase();
+    return s === 'true' || s === '1' || s === 'yes';
+  })(_ev?.anomaly);
+
+  await q(`INSERT INTO alerts(
+             id, tenant_id, event_json, score, status, created_at,
+             from_addr, type, subject, preview, anomaly
+           )
+           VALUES($1,$2,$3,$4,'new',$5,$6,$7,$8,$9,$10)`,
+          [id, tenant_id, ev, score, now(),
+           _from_addr, _type, _subject, _preview, _anomaly]);
+
   const alert={id,tenant_id,event_json:ev,score,status:'new',created_at:now()};
   await maybeAct(tenant_id,alert,p);
   try { bus.emit('alert', { tenant_id, alert }); } catch(_e) {}
   return alert;
 }
-
 // ---------- ingest (plan-gated) ----------
 app.post("/email/scan",async (req,res)=>{
   try{
