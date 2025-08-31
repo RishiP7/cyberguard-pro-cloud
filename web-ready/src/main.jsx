@@ -2150,16 +2150,6 @@ function DashboardWithOnboarding(props){
     </div>
   );
 }
-function RequireAuth({ children }){
-  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-  if (!token) return <Navigate to="/login" replace />;
-  return children;
-}
-
-function Login(){
-  const [token, setToken] = React.useState(
-    typeof localStorage !== 'undefined' ? (localStorage.getItem('token') || '') : ''
-  );
 
   function onSubmit(e){
     e.preventDefault();
