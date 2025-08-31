@@ -1,26 +1,446 @@
 id,tenant_id,score,status,created_at,from,type,subject,preview,anomaly
-48f56cc3-7fde-4913-a138-5f907b28e9ce,"Kyan",,"new",1756593540,,,,,
-cb2a04be-df36-49a6-8f89-347627c5600f,"Kyan",,"new",1756593540,,,,,
-97ea7c03-e270-4005-8ce5-73bb373b9fc7,"Kyan",,"new",1756593540,,,,,
-52d5bb66-a1ac-4c56-8f4a-b705f535a859,"Kyan",,"new",1756593540,,,,,
-28cd658d-29da-4c73-98b8-83929a89b1ab,"Kyan",,"new",1756593540,,,,,
-671a289c-6e72-412e-8a5a-05641fed47c7,"Kyan",,"new",1756593540,,,,,
-835f56ef-eb2c-4a7d-b974-80363997f18b,"Kyan",,"new",1756593540,,,,,
-409d2de2-77d6-4789-af4b-f1245557a031,"Kyan",,"new",1756593540,,,,,
-d6f0cd34-972b-4995-a7ee-7504e7e4cd40,"Kyan",,"new",1756593539,,,,,
-34c3aa06-c60c-4cf0-84ce-12d29a3d69fb,"Kyan",,"new",1756593539,,,,,
-554cc212-5119-4828-be58-2f603355cf79,"Kyan",,"new",1756593539,,,,,
-457cda43-c8a8-4ce6-a41b-5be58700a109,"Kyan",,"new",1756593539,,,,,
-8666c17c-0ec7-4e16-ab9b-63b3e3732bc0,"Kyan",,"new",1756593539,,,,,
-118a342b-172e-4936-b700-0747c92de36b,"Kyan",,"new",1756593539,,,,,
-3dc8ae6c-6362-419b-ad82-dafb40af5f52,"Kyan",,"new",1756593539,,,,,
-d16220e7-8403-4a65-90c2-6619369ee09d,"Kyan",,"new",1756593539,,,,,
-aff2c7e8-8fe8-4f8c-8ee8-3a53d6010135,"Kyan",,"new",1756593539,,,,,
-93d202a5-26cf-484a-b1a6-bdd8cf512d91,"Kyan",,"new",1756593539,,,,,
-6281a5b8-aad9-4296-8155-de3459e1a9bc,"Kyan",,"new",1756593539,,,,,
-2adc32ee-c982-40b9-b2ac-1b3679a0e84a,"Kyan",,"new",1756593539,,,,,
-05c57d77-0d8e-4b18-bffd-1dbac8a6d6b9,"Kyan",,"new",1756593539,,,,,
-7c935304-1955-4a70-91c6-21aeaccd77d6,"Kyan",,"new",1756593539,,,,,
-2106aa3e-8493-48e3-8891-887b2ac08f21,"Kyan",,"new",1756593539,,,,,
-ba3a98b9-8c20-4272-940d-b0fe17c59939,"Kyan",,"new",1756593539,,,,,
-d3a63e39-bdcb-4757-b153-bebdbdc22ace,"Kyan",,"new",1756593539,,,,,
+54b97c30-57e4-4825-ba5f-a06689c52adc,"Kyan",-0.2,"new",1756646899,service@paypal.co.uk,email,"You've authorised a payment to UBER PAYMENTS UK LIM...","manoj popat, thanks for using PayPal.
+Hello, manoj popat
+
+You've authorised £9.95 GBP to UBER PAYMENTS UK LIM...
+
+Merchant        UBER PAYMENTS UK LIM...
+Transaction date        22 Aug 2025
+Order ID        5EH0kTk2pId072mj5EkUuya0
+________________",false
+aad6c8cb-b29c-4243-a0cc-864e6d21afff,"Kyan",-0.2,"new",1756646899,service@paypal.co.uk,email,"You've authorised a payment to UBER PAYMENTS UK LIM...","manoj popat, thanks for using PayPal.
+Hello, manoj popat
+
+You've authorised £34.86 GBP to UBER PAYMENTS UK LIM...
+
+Merchant        UBER PAYMENTS UK LIM...
+Transaction date        22 Aug 2025
+Order ID        1o0Loygd2GwPsdvscS0wpFa0
+_______________",false
+4b9e272a-68e2-46ca-af7c-3fd52fb6b3a7,"Kyan",-0.2,"new",1756646899,orders@pizzahut.io,email,"Your Pizza Hut Order is Confirmed","Estimated delivery time
+
+Today
+18:21 - 18:31
+You can track the status
+of your order below
+Track My Order
+Your Hut
+
+
+Pizza Hut Mill Hill
+
+111 The Broadway, Mill Hill, London, NW7 3TG
+
+Opening Hours: 11AM - 12AM
+
+ Call Your Hut
+Order #64086",false
+876a27df-80c1-41ce-9cd3-00b1b2826cfb,"Kyan",-1,"new",1756646899,"account-security-noreply@accountprotection.microsoft.com",email,"New app(s) connected to your Microsoft account","Microsoft account
+New app(s) have access to your data
+CyberGuard Pro Dev connected to the Microsoft account ri**7@hotmail.co.uk.
+If you didn't grant this access, please remove the app(s) from your account.
+Manage your apps
+You can also opt out or cha",true
+34dd2a9a-1abe-41db-bf6d-48925e1e682b,"Kyan",-0.2,"new",1756646899,service@paypal.co.uk,email,"You've authorised a payment to UBER PAYMENTS UK LIM...","manoj popat, thanks for using PayPal.
+Hello, manoj popat
+
+You've authorised £9.87 GBP to UBER PAYMENTS UK LIM...
+
+Merchant        UBER PAYMENTS UK LIM...
+Transaction date        21 Aug 2025
+Order ID        60NuZEeVf8M9tBAOVKrMxsa0
+________________",false
+581f3659-f14a-4074-a1bc-b0a498087fce,"Kyan",-1,"new",1756646899,"account-security-noreply@accountprotection.microsoft.com",email,"New app(s) connected to your Microsoft account","Microsoft account
+New app(s) have access to your data
+CyberGuard Pro Dev connected to the Microsoft account ri**7@hotmail.co.uk.
+If you didn't grant this access, please remove the app(s) from your account.
+Manage your apps
+You can also opt out or cha",true
+c3ba5c18-4154-4bd9-9a30-3989f0e8aef6,"Kyan",-1,"new",1756646899,"msa@communication.microsoft.com",email,Updates to our terms of use,"Hello, You're receiving this email because we are updating the Microsoft Services Agreement, which applies to one or more Microsoft products or services you use. We're making these updates to clarify our terms and ensure that they remain transparent for y",true
+6aa4eda1-3cc6-4e78-b996-35f3445f8ba1,"Kyan",-1,"new",1756646899,m365dev@microsoft.com,email,"Welcome to the Microsoft 365 Developer Program - please take the next step!","Microsoft 365 Developer Program | Access your profile
+
+Microsoft 365 Developer Program
+
+Welcome to the Microsoft 365 Developer Program
+Congratulations! You have successfully joined the Microsoft 365 Developer Program. If you're a qualified member, yo",true
+8a19e1a3-5b09-4186-b3b1-c8d7a356b395,"Kyan",-1,"new",1756646899,m365dev@microsoft.com,email,"Important information: You have deleted your Microsoft 365 Developer Program membership","Microsoft 365 Developer Program | Access your profile
+
+Microsoft 365 Developer Program
+We received your request to delete your Microsoft 365 Developer Program profile and membership. This message confirms that we have deleted your information.
+Members",true
+8ae8846e-8fe0-4d0c-bffe-d49c25749e75,"Kyan",-1,"new",1756646899,"info@emails.very.co.uk",email,"Rishi, you’ve been selected for a special offer…","Trouble viewing? Click here
+
+
+
+It's time to shop & save on the brands you love!
+
+It's time to shop & save on the brands you love!
+
+Trouble viewing? Click here
+
+
+Women           Men             Child & Baby            Sports          Home & Gard",true
+35fa2f32-0b22-4b74-9062-eeb5b6bbd65c,"Kyan",-1,"new",1756646899,service@paypal.co.uk,email,"You have a refund from UBER PAYMENTS UK LIMITED","UBER PAYMENTS UK LIMITED sent you a partial refund of £5.25 GBP.
+Hi manoj popat,
+
+UBER PAYMENTS UK LIMITED issued a £5.25 GBP refund
+
+The amount has been refunded to your bank account ending in 0150. It may take a few days for it to appear in your ac",true
+8426d9e3-3528-4d28-a984-1a925694427d,"Kyan",-0.2,"new",1756646898,promo@p.cdkeys.com,email,"CDKeys is rebranding to Loaded","CDKeys is rebranding
+After more than 10 years of selling digital game codes using a name that made sense when games were discs in a box, we’ve decided it’s finally time to make a change - we are rebranding.
+
+In September, CDKeys will be rebranding to L",false
+024dd28f-89fb-4f02-b9d2-6ed18e37a7b0,"Kyan",-0.2,"new",1756646898,hello@streetshirts.com,email,Request #262875: How would you rate the support you received?,"##- Please type your reply above this line -##
+
+Hello Rishipopat 7,
+
+We'd love to hear what you think of our customer service. Please take a moment to answer one simple question by clicking either link below:
+
+How would you rate the support you rece",false
+177aeb53-783e-4f17-9e5b-1c5addd0dc0f,"Kyan",-0.2,"new",1756646898,xbox@e.xbox.com,email,"Verify Your Age for RishiP7 Account","GAMES   GAME PASS
+
+ACCESSORIES     DEALS
+
+At Xbox, we are committed to providing players with a safe and secure experience on our platform. In collaboration with the community, publishing partners, and industry regulators, we frequently iterate on our",false
+6a008818-5a62-4df6-b713-3201b6feccb6,"Kyan",-1,"new",1756646898,"info@emails.very.co.uk",email,"Save on your next order","Trouble viewing? Click here
+
+
+
+Shop all the brands you love Rishi!
+
+Shop all the brands you love Rishi!
+
+Trouble viewing? Click here
+
+
+Women           Men             Child & Baby            Sports          Home & Garden           Electricals  ",true
+65f44170-d759-42f6-8e1d-3548e728287b,"Kyan",-0.2,"new",1756646898,"complaints@printedtoday.co.uk",email,"Re: ""Custom T-shirts""","Good morning,
+
+Thank you for considering us for your t-shirt order!
+We can offer you high-quality t-shirts at an estimated cost of £8–£10 each, with a quick turnaround time of just 3–5 working days. Delivery is a flat rate of £7.99, no matter the order",false
+f0e536c2-cba8-4fe3-9afd-76ad738fc524,"Kyan",-0.2,"new",1756646898,hello@streetshirts.com,email,[street/sellshirts] Re: 100 t-shirts,"##- Please type your reply above this line -##
+
+Your request (262875) has been solved. To reopen this request, reply to this email.
+
+
+sophia (street/sellshirts)
+
+27 Aug 2025, 10:38 CEST
+
+Hi,
+
+Thank you for responding.
+
+A rough estimate for 10",false
+b4d3be0b-4101-4b7a-af44-b2ecef1fe578,"Kyan",-0.2,"new",1756646898,"aliexpress@notice.aliexpress.com",email,"Tell us about your AliExpress experience!","#
+
+Tell us about your AliExpress experience!
+
+Dear Customer,
+
+Thank you for shopping on AliExpress.com!
+
+In order to improve AliExpress services, we'd like to invite you to participate in a 5-10 minute survey. All questions are related to ",false
+cdb10edc-4f9b-4a77-8403-079e08f96694,"Kyan",-0.2,"new",1756646898,"News@InsideApple.Apple.com",email,"Watch a special announcement from Apple.","Tune in for a special Apple event.  ͏
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",false
+6d62c450-bad8-4991-b287-67706991574b,"Kyan",-0.2,"new",1756646898,hello@streetshirts.com,email,[Request received] We've received your request.,"##- Please type your reply above this line -##
+
+Hi,
+
+Thank you for contacting street/sellshirts. Your request (262875) has been received and will be reviewed by our support staff according to the schedule below. To add additional comments, reply to th",false
+b553a128-acc6-4d17-9b87-fff161bda43a,"Kyan",-0.2,"new",1756646898,"info@vapeclub.co.uk",email,VapeClub.co.uk Order Dispatched (VC-260825-17804809),"Your Order Has Been Dispatched!
+
+We have dispatched your order and it is now on its way to you! Below are the details of the shipping method used along with an estimated time it will take for the order to reach you.
+
+Service Name: Royal Mail Next Day ",false
+bbd7a57b-9729-498f-b594-c20ec93a9c4d,"Kyan",-0.2,"new",1756646898,"no-reply@qustodio.com",email,⏳ You have 7 days of Premium left!,Be back-to-school ready ✅
+ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏  ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏  ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ,false
+71f42fbb-e558-40c9-b0fc-126832a18e28,"Kyan",-0.2,"new",1756646898,service@paypal.co.uk,email,"Receipt for your payment to Vape Club Limited","manoj popat, you've successfully sent a payment.
+Hi manoj popat,
+
+You paid £30.00 GBP to Vape Club Limited
+
+Merchant        Vape Club Limited
+info@vapeclub.co.uk
++44 01923479992
+Transaction date        26 Aug 2025
+Deliver to
+
+rishi popat
+goldb",false
+9c270226-76b7-4eeb-b1c4-7f2f2233204b,"Kyan",-0.2,"new",1756646898,"info@vapeclub.co.uk",email,"VapeClub.co.uk Order Confirmation (VC-260825-17804809)","Order Confirmation
+
+Your order has been received and is currently being processed by us.
+
+Order Number:   17804809
+Order Date:     26/8/2025
+Shipping:       Royal Mail Next Day Delivery (Tracked)
+Order Email:    rishipopat_7@hotmail.co.uk
+See Our ",false
+e24698ca-8ecc-4b20-80b5-f97d93d933f4,"Kyan",-0.2,"new",1756646898,"order@touchtakeaway.net",email,"Your order confirmation #85696","Order Completed
+
+Thank you for ordering from Park Holidays UK Limited - Carlton Meres - Park Holidays UK Ltd, your order has been placed. Please use your Order Reference Number to track the progress of your booking.
+
+Customer:
+Rishi Popat
+Summary:",false
+25c37ba9-00dd-4d78-80ec-6bf1aa780766,"Kyan",-1,"new",1756646824,"msa@communication.microsoft.com",email,Updates to our terms of use,"Hello, You're receiving this email because we are updating the Microsoft Services Agreement, which applies to one or more Microsoft products or services you use. We're making these updates to clarify our terms and ensure that they remain transparent for y",true
+1042ac00-3e77-45f5-83e5-e837a4189866,"Kyan",-1,"new",1756646824,m365dev@microsoft.com,email,"Welcome to the Microsoft 365 Developer Program - please take the next step!","Microsoft 365 Developer Program | Access your profile
+
+Microsoft 365 Developer Program
+
+Welcome to the Microsoft 365 Developer Program
+Congratulations! You have successfully joined the Microsoft 365 Developer Program. If you're a qualified member, yo",true
+44a103e9-5f46-4f3b-8b5d-35154e105151,"Kyan",-1,"new",1756646824,m365dev@microsoft.com,email,"Important information: You have deleted your Microsoft 365 Developer Program membership","Microsoft 365 Developer Program | Access your profile
+
+Microsoft 365 Developer Program
+We received your request to delete your Microsoft 365 Developer Program profile and membership. This message confirms that we have deleted your information.
+Members",true
+0479efe6-f101-4209-bdac-cbe957c6ef5c,"Kyan",-1,"new",1756646824,"info@emails.very.co.uk",email,"Rishi, you’ve been selected for a special offer…","Trouble viewing? Click here
+
+
+
+It's time to shop & save on the brands you love!
+
+It's time to shop & save on the brands you love!
+
+Trouble viewing? Click here
+
+
+Women           Men             Child & Baby            Sports          Home & Gard",true
+ca11d064-9913-401b-813c-ebdb2301b392,"Kyan",-1,"new",1756646824,service@paypal.co.uk,email,"You have a refund from UBER PAYMENTS UK LIMITED","UBER PAYMENTS UK LIMITED sent you a partial refund of £5.25 GBP.
+Hi manoj popat,
+
+UBER PAYMENTS UK LIMITED issued a £5.25 GBP refund
+
+The amount has been refunded to your bank account ending in 0150. It may take a few days for it to appear in your ac",true
+1d575ce9-fc13-47e3-a6bb-ddcd667c38c7,"Kyan",-0.2,"new",1756646823,xbox@e.xbox.com,email,"Verify Your Age for RishiP7 Account","GAMES   GAME PASS
+
+ACCESSORIES     DEALS
+
+At Xbox, we are committed to providing players with a safe and secure experience on our platform. In collaboration with the community, publishing partners, and industry regulators, we frequently iterate on our",false
+518bede0-1071-4d43-8279-93d0d1da0c92,"Kyan",-1,"new",1756646823,"info@emails.very.co.uk",email,"Save on your next order","Trouble viewing? Click here
+
+
+
+Shop all the brands you love Rishi!
+
+Shop all the brands you love Rishi!
+
+Trouble viewing? Click here
+
+
+Women           Men             Child & Baby            Sports          Home & Garden           Electricals  ",true
+755ea5db-245a-4f67-9c3a-6ec9019ed878,"Kyan",-0.2,"new",1756646823,"complaints@printedtoday.co.uk",email,"Re: ""Custom T-shirts""","Good morning,
+
+Thank you for considering us for your t-shirt order!
+We can offer you high-quality t-shirts at an estimated cost of £8–£10 each, with a quick turnaround time of just 3–5 working days. Delivery is a flat rate of £7.99, no matter the order",false
+1a392e23-23ad-40e4-b18c-c0d88f70fb57,"Kyan",-0.2,"new",1756646823,hello@streetshirts.com,email,[street/sellshirts] Re: 100 t-shirts,"##- Please type your reply above this line -##
+
+Your request (262875) has been solved. To reopen this request, reply to this email.
+
+
+sophia (street/sellshirts)
+
+27 Aug 2025, 10:38 CEST
+
+Hi,
+
+Thank you for responding.
+
+A rough estimate for 10",false
+bd92b80f-1049-4e56-a247-56f6074bcdca,"Kyan",-0.2,"new",1756646823,"aliexpress@notice.aliexpress.com",email,"Tell us about your AliExpress experience!","#
+
+Tell us about your AliExpress experience!
+
+Dear Customer,
+
+Thank you for shopping on AliExpress.com!
+
+In order to improve AliExpress services, we'd like to invite you to participate in a 5-10 minute survey. All questions are related to ",false
+2352c272-bfb4-4f09-bc3f-0891c49689a0,"Kyan",-0.2,"new",1756646823,"News@InsideApple.Apple.com",email,"Watch a special announcement from Apple.","Tune in for a special Apple event.  ͏
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",false
+268feb91-d4dd-483b-8a79-23b0ff3e04d7,"Kyan",-0.2,"new",1756646823,hello@streetshirts.com,email,[Request received] We've received your request.,"##- Please type your reply above this line -##
+
+Hi,
+
+Thank you for contacting street/sellshirts. Your request (262875) has been received and will be reviewed by our support staff according to the schedule below. To add additional comments, reply to th",false
+eb833315-98f8-4250-9f78-c6196362c3ed,"Kyan",-0.2,"new",1756646823,"info@vapeclub.co.uk",email,VapeClub.co.uk Order Dispatched (VC-260825-17804809),"Your Order Has Been Dispatched!
+
+We have dispatched your order and it is now on its way to you! Below are the details of the shipping method used along with an estimated time it will take for the order to reach you.
+
+Service Name: Royal Mail Next Day ",false
+1f1938df-7f04-46e9-ae8b-785a8bb88438,"Kyan",-0.2,"new",1756646823,"no-reply@qustodio.com",email,⏳ You have 7 days of Premium left!,Be back-to-school ready ✅
+ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏  ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏  ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ‌ ­͏ ,false
+e5b43994-3cac-4cbe-aac3-483f9476a51e,"Kyan",-0.2,"new",1756646823,service@paypal.co.uk,email,"Receipt for your payment to Vape Club Limited","manoj popat, you've successfully sent a payment.
+Hi manoj popat,
+
+You paid £30.00 GBP to Vape Club Limited
+
+Merchant        Vape Club Limited
+info@vapeclub.co.uk
++44 01923479992
+Transaction date        26 Aug 2025
+Deliver to
+
+rishi popat
+goldb",false
+d15ca0df-d734-4dcb-990b-31030381b301,"Kyan",-0.2,"new",1756646823,"info@vapeclub.co.uk",email,"VapeClub.co.uk Order Confirmation (VC-260825-17804809)","Order Confirmation
+
+Your order has been received and is currently being processed by us.
+
+Order Number:   17804809
+Order Date:     26/8/2025
+Shipping:       Royal Mail Next Day Delivery (Tracked)
+Order Email:    rishipopat_7@hotmail.co.uk
+See Our ",false
+547ff7e4-98b7-4a96-b600-5c8d16dfd72b,"Kyan",-0.2,"new",1756646823,"order@touchtakeaway.net",email,"Your order confirmation #85696","Order Completed
+
+Thank you for ordering from Park Holidays UK Limited - Carlton Meres - Park Holidays UK Ltd, your order has been placed. Please use your Order Reference Number to track the progress of your booking.
+
+Customer:
+Rishi Popat
+Summary:",false
+b125de4c-e148-4ead-92a5-ce7b037348e6,"Kyan",-0.2,"new",1756646823,service@paypal.co.uk,email,"You've authorised a payment to UBER PAYMENTS UK LIM...","manoj popat, thanks for using PayPal.
+Hello, manoj popat
+
+You've authorised £9.95 GBP to UBER PAYMENTS UK LIM...
+
+Merchant        UBER PAYMENTS UK LIM...
+Transaction date        22 Aug 2025
+Order ID        5EH0kTk2pId072mj5EkUuya0
+________________",false
+afdc329d-a304-4cc2-824a-2e908f1333a5,"Kyan",-0.2,"new",1756646823,service@paypal.co.uk,email,"You've authorised a payment to UBER PAYMENTS UK LIM...","manoj popat, thanks for using PayPal.
+Hello, manoj popat
+
+You've authorised £34.86 GBP to UBER PAYMENTS UK LIM...
+
+Merchant        UBER PAYMENTS UK LIM...
+Transaction date        22 Aug 2025
+Order ID        1o0Loygd2GwPsdvscS0wpFa0
+_______________",false
+d8b8e6c2-c1d2-4034-a0ba-92f0e19bbfc1,"Kyan",-0.2,"new",1756646823,orders@pizzahut.io,email,"Your Pizza Hut Order is Confirmed","Estimated delivery time
+
+Today
+18:21 - 18:31
+You can track the status
+of your order below
+Track My Order
+Your Hut
+
+
+Pizza Hut Mill Hill
+
+111 The Broadway, Mill Hill, London, NW7 3TG
+
+Opening Hours: 11AM - 12AM
+
+ Call Your Hut
+Order #64086",false
+b7f0b11e-0165-45d3-8969-d03a0a5574fe,"Kyan",-1,"new",1756646823,"account-security-noreply@accountprotection.microsoft.com",email,"New app(s) connected to your Microsoft account","Microsoft account
+New app(s) have access to your data
+CyberGuard Pro Dev connected to the Microsoft account ri**7@hotmail.co.uk.
+If you didn't grant this access, please remove the app(s) from your account.
+Manage your apps
+You can also opt out or cha",true
+e9c36ee5-0dd7-4909-8b9f-2accf728c8e7,"Kyan",-0.2,"new",1756646823,service@paypal.co.uk,email,"You've authorised a payment to UBER PAYMENTS UK LIM...","manoj popat, thanks for using PayPal.
+Hello, manoj popat
+
+You've authorised £9.87 GBP to UBER PAYMENTS UK LIM...
+
+Merchant        UBER PAYMENTS UK LIM...
+Transaction date        21 Aug 2025
+Order ID        60NuZEeVf8M9tBAOVKrMxsa0
+________________",false
+c8fb1e24-718d-4b18-8499-095177d82012,"Kyan",-1,"new",1756646823,"account-security-noreply@accountprotection.microsoft.com",email,"New app(s) connected to your Microsoft account","Microsoft account
+New app(s) have access to your data
+CyberGuard Pro Dev connected to the Microsoft account ri**7@hotmail.co.uk.
+If you didn't grant this access, please remove the app(s) from your account.
+Manage your apps
+You can also opt out or cha",true
+74b52136-62e2-4666-ab95-a61688744adb,"Kyan",-0.2,"new",1756646822,promo@p.cdkeys.com,email,"CDKeys is rebranding to Loaded","CDKeys is rebranding
+After more than 10 years of selling digital game codes using a name that made sense when games were discs in a box, we’ve decided it’s finally time to make a change - we are rebranding.
+
+In September, CDKeys will be rebranding to L",false
+20370028-34b3-4eaa-898d-69e149095cbd,"Kyan",-0.2,"new",1756646822,hello@streetshirts.com,email,Request #262875: How would you rate the support you received?,"##- Please type your reply above this line -##
+
+Hello Rishipopat 7,
+
+We'd love to hear what you think of our customer service. Please take a moment to answer one simple question by clicking either link below:
+
+How would you rate the support you rece",false
+721da081-96e1-4eb4-af3a-8bf145b6cb87,"Kyan",-0.2,"new",1756640937,,,,,
+59d3c5fe-544d-423c-8dc9-532ee755f9c3,"Kyan",-0.2,"new",1756640937,,,,,
+e46eae80-e6d4-4a9b-8d1b-c3965b040c3f,"Kyan",-0.2,"new",1756640937,,,,,
+3df75f33-74e6-423d-91fc-ae4bb4eabd42,"Kyan",-1,"new",1756640937,,,,,
+f540e96a-18cf-408f-af65-aa837e78ca91,"Kyan",-0.2,"new",1756640937,,,,,
+0ffb65b1-c38f-47dd-8c9c-6d127dfd1b45,"Kyan",-1,"new",1756640937,,,,,
+7758e72c-17b8-4754-a4fe-fa308c05f5af,"Kyan",-1,"new",1756640937,,,,,
+f7f0b30e-c3b3-40b7-b174-33fcd67d7224,"Kyan",-1,"new",1756640937,,,,,
+b8963ab3-210d-4399-a72d-a40fa3c36226,"Kyan",-1,"new",1756640937,,,,,
+e9509209-4207-4a35-a963-8eaae38ffb63,"Kyan",-1,"new",1756640937,,,,,
+068de56c-7157-4fb3-ba38-2aaf08d7be66,"Kyan",-1,"new",1756640937,,,,,
+1515d68d-f3e1-4006-9779-a42f8efea2c8,"Kyan",-0.2,"new",1756640936,,,,,
+6baa816e-1756-4d3e-9e6d-7a27b9ff8f8f,"Kyan",-0.2,"new",1756640936,,,,,
+1673d4c7-7b1a-4ac5-8cb3-7c121024b3cd,"Kyan",-0.2,"new",1756640936,,,,,
+a9129bc2-d685-43a5-a14e-8a84a4200cb4,"Kyan",-1,"new",1756640936,,,,,
+0a6e4a96-6758-4bc3-898b-39907ff903b3,"Kyan",-0.2,"new",1756640936,,,,,
+03d2c41f-3ebb-4672-9833-b1aeaaf49e4f,"Kyan",-0.2,"new",1756640936,,,,,
+e4fe21dd-3c5c-4b67-a4c5-1597dc1f287a,"Kyan",-0.2,"new",1756640936,,,,,
+08dcc88f-c26f-4f3e-9650-06c351535c9d,"Kyan",-0.2,"new",1756640936,,,,,
+4d497de3-e259-42ed-ad13-4d62a76643dd,"Kyan",-0.2,"new",1756640936,,,,,
+fd0fc454-2786-4a90-8d1d-ad7c912912aa,"Kyan",-0.2,"new",1756640936,,,,,
+cb606b76-b7cc-45b0-932f-4ab0c7795c48,"Kyan",-0.2,"new",1756640936,,,,,
+c2174912-c216-46c3-a005-65630ab380c1,"Kyan",-0.2,"new",1756640936,,,,,
+6970fcf5-dbfd-4a59-b556-aecd8738033e,"Kyan",-0.2,"new",1756640936,,,,,
+fa81c8ad-b2d7-43a4-ae69-07acfe41ae62,"Kyan",-0.2,"new",1756640936,,,,,
+d3c7db38-9011-40c0-8951-ec095ce2907c,"Kyan",-0.2,"new",1756638481,,,,,
+f6c180af-4881-414d-9e56-dc99e60e2bad,"Kyan",-1,"new",1756638481,,,,,
+3f7834e7-efe0-4d10-af9e-1965751ad6e2,"Kyan",-1,"new",1756638481,,,,,
+d7dc2b8f-ab72-4f9d-8b47-dfba88f0f438,"Kyan",-1,"new",1756638481,,,,,
+099e8f0f-16e9-4db9-8e68-304fa12be12c,"Kyan",-1,"new",1756638481,,,,,
+574ef6a1-b6c1-4abc-86fb-a2920669612b,"Kyan",-1,"new",1756638481,,,,,
+fa38f49c-6092-4f42-b65f-9c56298ac590,"Kyan",-1,"new",1756638481,,,,,
+32c35806-a8fe-42b5-8e7d-287735ba9b82,"Kyan",-0.2,"new",1756638480,,,,,
+1b448d94-2bc2-4925-89d5-6b2851b4bb2b,"Kyan",-0.2,"new",1756638480,,,,,
+4af9d906-1e59-413a-ad6b-71963f8a69ad,"Kyan",-1,"new",1756638480,,,,,
+6db277ca-c1cd-4bc3-b459-8093d5dc4f62,"Kyan",-0.2,"new",1756638480,,,,,
+cd65975c-ac0d-478e-9032-4a66b0ef7129,"Kyan",-0.2,"new",1756638480,,,,,
+8a6b567e-3164-4449-aa35-088fbb79f76e,"Kyan",-0.2,"new",1756638480,,,,,
+994c54a8-6be3-4ddc-879f-3ea4aa65bac2,"Kyan",-0.2,"new",1756638480,,,,,
+5ffbae0f-068f-44a6-8190-92c863adae20,"Kyan",-0.2,"new",1756638480,,,,,
+b5350357-7b0b-4a39-a813-59528cfb36bd,"Kyan",-0.2,"new",1756638480,,,,,
+bf5e0d77-a27b-44b1-b1c2-ad2f7586b04a,"Kyan",-0.2,"new",1756638480,,,,,
+b9a5f6a3-efdc-4eaa-8668-7f0cce3fe084,"Kyan",-0.2,"new",1756638480,,,,,
+fd07737c-59a4-416e-b28c-d6cdec8798e4,"Kyan",-0.2,"new",1756638480,,,,,
+1661fdb1-b883-4cd7-8cd3-3830c313d682,"Kyan",-0.2,"new",1756638480,,,,,
+576225a1-5334-47b6-a507-078fcc22e42d,"Kyan",-0.2,"new",1756638480,,,,,
+dcd4f051-2958-4b0e-8556-e317fdc185e3,"Kyan",-0.2,"new",1756638480,,,,,
+9ab0c967-106d-4d4d-8058-b779e81e4441,"Kyan",-0.2,"new",1756638480,,,,,
+b3d5875f-d9aa-4d02-adda-f712db5bc143,"Kyan",-1,"new",1756638480,,,,,
+1eb571c1-68e5-4812-88ef-43d34d34f818,"Kyan",-0.2,"new",1756638479,,,,,
+48f56cc3-7fde-4913-a138-5f907b28e9ce,"Kyan",-1,"new",1756593540,,,,,
+cb2a04be-df36-49a6-8f89-347627c5600f,"Kyan",-0.2,"new",1756593540,,,,,
+97ea7c03-e270-4005-8ce5-73bb373b9fc7,"Kyan",-1,"new",1756593540,,,,,
+52d5bb66-a1ac-4c56-8f4a-b705f535a859,"Kyan",-1,"new",1756593540,,,,,
+28cd658d-29da-4c73-98b8-83929a89b1ab,"Kyan",-1,"new",1756593540,,,,,
+671a289c-6e72-412e-8a5a-05641fed47c7,"Kyan",-1,"new",1756593540,,,,,
+835f56ef-eb2c-4a7d-b974-80363997f18b,"Kyan",-1,"new",1756593540,,,,,
+409d2de2-77d6-4789-af4b-f1245557a031,"Kyan",-1,"new",1756593540,,,,,
+d6f0cd34-972b-4995-a7ee-7504e7e4cd40,"Kyan",-0.2,"new",1756593539,,,,,
+34c3aa06-c60c-4cf0-84ce-12d29a3d69fb,"Kyan",-0.2,"new",1756593539,,,,,
+554cc212-5119-4828-be58-2f603355cf79,"Kyan",-0.2,"new",1756593539,,,,,
+457cda43-c8a8-4ce6-a41b-5be58700a109,"Kyan",-1,"new",1756593539,,,,,
+8666c17c-0ec7-4e16-ab9b-63b3e3732bc0,"Kyan",-0.2,"new",1756593539,,,,,
+118a342b-172e-4936-b700-0747c92de36b,"Kyan",-0.2,"new",1756593539,,,,,
+3dc8ae6c-6362-419b-ad82-dafb40af5f52,"Kyan",-0.2,"new",1756593539,,,,,
+d16220e7-8403-4a65-90c2-6619369ee09d,"Kyan",-0.2,"new",1756593539,,,,,
+aff2c7e8-8fe8-4f8c-8ee8-3a53d6010135,"Kyan",-0.2,"new",1756593539,,,,,
+93d202a5-26cf-484a-b1a6-bdd8cf512d91,"Kyan",-0.2,"new",1756593539,,,,,
+6281a5b8-aad9-4296-8155-de3459e1a9bc,"Kyan",-0.2,"new",1756593539,,,,,
+2adc32ee-c982-40b9-b2ac-1b3679a0e84a,"Kyan",-0.2,"new",1756593539,,,,,
+05c57d77-0d8e-4b18-bffd-1dbac8a6d6b9,"Kyan",-0.2,"new",1756593539,,,,,
+7c935304-1955-4a70-91c6-21aeaccd77d6,"Kyan",-0.2,"new",1756593539,,,,,
+2106aa3e-8493-48e3-8891-887b2ac08f21,"Kyan",-0.2,"new",1756593539,,,,,
+ba3a98b9-8c20-4272-940d-b0fe17c59939,"Kyan",-0.2,"new",1756593539,,,,,
+d3a63e39-bdcb-4757-b153-bebdbdc22ace,"Kyan",-0.2,"new",1756593539,,,,,

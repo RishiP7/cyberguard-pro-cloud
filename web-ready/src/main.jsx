@@ -1849,6 +1849,7 @@ function App(){
           <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
           <Route path="/pricing" element={<RequireAuth><Pricing/></RequireAuth>} />
           <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>}/>
+<Route path="/alerts" element={<RequireAuth><Alerts/></RequireAuth>}/>
           <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>}/>
           <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
           <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
@@ -2333,7 +2334,85 @@ function Integrations({ api }) {
     </div>
   );
 }
+// --- Alerts Page ---
+function Alerts(){
+  const [items, setItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [q, setQ] = React.useState("");
 
+  React.useEffect(()=>{
+    let live = true;
+    (async()=>{
+      setLoading(true); setErr("");
+      try{
+        const j = await apiGet('/alerts/recent');
+        if(live) setItems(Array.isArray(j?.alerts) ? j.alerts : []);
+      }catch(e){ if(live) setErr('Failed to load alerts'); }
+      finally{ if(live) setLoading(false); }
+    })();
+    return ()=>{ live = false; };
+  },[]);
+
+  const filtered = React.useMemo(()=>{
+    const term = (q||"").trim().toLowerCase();
+    if(!term) return items;
+    return items.filter(a => {
+      const from = String(a.from || a.from_addr || "").toLowerCase();
+      const subj = String(a.subject || "").toLowerCase();
+      const prev = String(a.preview || "").toLowerCase();
+      return from.includes(term) || subj.includes(term) || prev.includes(term);
+    });
+  },[q, items]);
+
+  const s = {
+    wrap:{ padding:16 },
+    row:{ display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,.08)' },
+    head:{ fontSize:12, opacity:.7, padding:'6px 0' },
+    badge:(st)=>({ fontSize:12, padding:'2px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.18)', background: st==='new' ? 'rgba(59,130,246,.15)' : 'transparent' })
+  };
+
+  function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch(_e){ return '—'; } }
+
+  return (
+    <div style={s.wrap}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <h1 style={{margin:0}}>Alerts</h1>
+        <input
+          placeholder="Filter by from / subject / preview"
+          value={q}
+          onChange={e=>setQ(e.target.value)}
+          style={{padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.14)', background:'rgba(255,255,255,.06)', color:'inherit', width:320}}
+        />
+      </div>
+
+      {loading && <div style={{opacity:.8}}>Loading…</div>}
+      {err && <div style={{border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8, padding:10, margin:'8px 0'}}>Error: {err}</div>}
+      {!loading && !filtered.length && <div style={{opacity:.7}}>No alerts found.</div>}
+
+      {!!filtered.length && (
+        <div>
+          <div style={{display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.12)'}}>
+            <div style={s.head}>When</div>
+            <div style={s.head}>From</div>
+            <div style={s.head}>Subject</div>
+            <div style={s.head}>Preview</div>
+            <div style={s.head}>Status</div>
+          </div>
+          {filtered.map(a => (
+            <div key={a.id} style={s.row}>
+              <div style={{opacity:.85}}>{fmt(a.created_at || a.event?.when)}</div>
+              <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</div>
+              <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.subject || '—'}</div>
+              <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.preview || '—'}</div>
+              <div><span style={s.badge(a.status || 'new')}>{a.status || 'new'}</span></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function TestEvents({ api }){
   const [out, setOut] = React.useState("");
   const [err, setErr] = React.useState("");
