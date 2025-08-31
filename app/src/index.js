@@ -3016,16 +3016,6 @@ setInterval(async ()=>{
   }
 }, 5*60*1000); // every 5 minutes
 
-// Super Admin: denormalize alerts for current tenant from legacy event JSON
-app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (req, res) => {
-  try {
-    await ensureAlertDetailColumns();
-    await denormalizeAlertsForTenant(req.user.tenant_id);
-    return res.json({ ok: true });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: 'denormalize failed', detail: String(e?.message||e) });
-  }
-});
       } catch (inner) {
         // Mark connector as error on failure (do not throw)
         await q(
@@ -3849,6 +3839,7 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
 // optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
 app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
+  const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
   try {
     const { provider } = req.body || {};
     if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
@@ -3886,14 +3877,6 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
 
     // Build dynamic UPDATE SET list
     const setParts = clearCols.map(c => `${c}=NULL`);
-    if (has('updated_at')) {
-      const tUpd = colType('updated_at');
-      if (tUpd.includes('timestamp')) {
-        setParts.push(`updated_at=NOW()`);
-      } else {
-        setParts.push(`updated_at=${Math.floor(Date.now()/1000)}`);
-      }
-    }
 
     let firstUpdateOk = false;
     let firstUpdateErr = null;
@@ -4041,7 +4024,6 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
 
     try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch(_e) {}
 
-    const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
     if (dbg) {
       let after = null, details_has_tokens = null, details_sample = null;
       try {
@@ -4069,6 +4051,9 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
   } catch (e) {
     console.error('connector/reset failed', e);
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch(_e) {}
+    if (dbg) {
+      return res.status(500).json({ ok:false, error: 'reset failed', detail: String(e?.message || e) });
+    }
     return res.status(500).json({ ok:false, error: 'reset failed' });
   }
 });
@@ -4345,6 +4330,7 @@ app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
 
 // Convenience wrapper: force reset (super only). Mirrors /admin/ops/connector/reset but forces details NULL.
 app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async (req, res) => {
+  const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
   // proxy to the main handler by setting query flags, then re-running logic here
   try {
     // Synthesize query flags
@@ -4378,6 +4364,9 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
     return res.json({ ok:true, forced:true });
   } catch(e) {
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
-    return res.status(500).json({ ok:false, error:'force reset failed' });
+    if (dbg) {
+  return res.status(500).json({ ok:false, error:'force reset failed', detail: String(e?.message || e) });
+}
+return res.status(500).json({ ok:false, error:'force reset failed' });
   }
 });
