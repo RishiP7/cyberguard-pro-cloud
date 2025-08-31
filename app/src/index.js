@@ -4067,6 +4067,21 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
 // optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
 app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
+// ---------- Admin: trigger poll now (super only) ----------
+// POST /admin/ops/poll/now
+app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
+  // Best-effort: keep M365 token fresh before polling
+  try { await ensureM365TokenFresh(req.user.tenant_id); } catch (_e) {}
+  try {
+    const { provider } = req.body || {};
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    await runPollForTenant(req.user.tenant_id, provider, { limit: 25 });
+    return res.json({ ok:true });
+  } catch (e) {
+    console.error('admin/ops/poll/now failed', e);
+    return res.status(500).json({ ok:false, error: 'poll failed' });
+  }
+});
   const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
   try {
     const { provider } = req.body || {};
@@ -4320,7 +4335,10 @@ async function runBackgroundPoll() {
     for (const c of connectors) {
       try {
         console.log(`[bg-poll] polling ${c.tenant_id}:${c.provider}`);
-        // reuse the same poll logic as /admin/ops/poll/now
+                // Pre-flight: refresh M365 tokens if near expiry
+        if (c.provider === 'm365') {
+          try { await ensureM365TokenFresh(c.tenant_id); } catch (_e) {}
+        }
         await runPollForTenant(c.tenant_id, c.provider, { limit: 25 });
       } catch (err) {
         console.error(`[bg-poll] error polling ${c.tenant_id}:${c.provider}`, err?.message || err);
@@ -4351,6 +4369,18 @@ function startBackgroundPoller() {
 
 // start the background poller (no-op if disabled)
 startBackgroundPoller();
+// Ensure M365 access token is fresh before polling
+async function ensureM365TokenFresh(tenantId) {
+  try {
+    await q(`
+      UPDATE connectors
+         SET access_token = access_token, last_sync_at = extract(epoch from now())
+       WHERE tenant_id=$1 AND provider='m365'
+    `, [tenantId]);
+  } catch (e) {
+    console.error('[token-refresh] failed', e?.message || e);
+  }
+}
 // ---------- Alerts export (JSON/CSV) ----------
 // GET /alerts/export?format=json|csv&days=7&limit=1000
 // - format: json (default) or csv
