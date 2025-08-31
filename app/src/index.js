@@ -2238,6 +2238,33 @@ app.get('/email/recent-scans', authMiddleware, async (req,res)=>{
   }
 });
 
+// --- Normalize a Microsoft Graph message into the fields writeAlert expects
+function normalizeGraphMessage(m) {
+  if (!m || typeof m !== 'object') return { type: 'email' };
+  const fromAddr =
+    m?.from?.emailAddress?.address ||
+    m?.sender?.emailAddress?.address ||
+    m?.from?.address ||
+    (typeof m?.from === 'string' ? m.from : null) ||
+    null;
+
+  return {
+    type: 'email',
+    when: m?.receivedDateTime || m?.createdDateTime || null,
+    id: m?.id || null,
+    internetMessageId: m?.internetMessageId || null,
+    conversationId: m?.conversationId || null,
+    subject: m?.subject || '',
+    bodyPreview: m?.bodyPreview || (m?.body?.content ? String(m.body.content).slice(0,280) : ''),
+    from: fromAddr ? { emailAddress: { address: fromAddr } } : null,
+    sender: m?.sender || null,
+    toRecipients: m?.toRecipients || null,
+    ccRecipients: m?.ccRecipients || null,
+    bccRecipients: m?.bccRecipients || null,
+    // keep original around in case you need it later
+    _raw: { provider: 'm365', message: m }
+  };
+}
 // ---------- ingest helpers ----------
 // ===== Email: on-demand poll & scan (provider-aware: M365 delta or Gmail) =====
 app.post('/email/poll', authMiddleware, enforceActive, async (req,res)=>{
@@ -2260,6 +2287,11 @@ app.post('/email/poll', authMiddleware, enforceActive, async (req,res)=>{
       items = await gmailList(req.user.tenant_id, 'newer_than:1d', Math.max(1, Math.min(50, max)));
     }else{
       return res.status(400).json({ ok:false, error:`unsupported provider: ${conn.provider}` });
+    }
+
+    // Normalize Graph messages so writeAlert can denormalize into from/subject/preview
+    if (conn.provider === 'm365' && Array.isArray(items)) {
+      items = items.map(normalizeGraphMessage);
     }
 
     const created = await scanAndRecordEmails(req.user.tenant_id, items);
@@ -2318,19 +2350,26 @@ async function writeAlert(tenant_id, ev){
   // --- Denormalize for flat columns: from_addr, subject, preview, type, anomaly ---
   function _safeJson(x){ try{ return (typeof x === 'string' ? JSON.parse(x) : (x || {})); } catch(_e){ return {}; } }
   const _ev = _safeJson(ev);
+  // Prefer normalized shape; fall back to raw Graph message if present
+  const src = (_ev?._raw?.message && typeof _ev._raw.message === 'object') ? _ev._raw.message : _ev;
+
   const _from_addr =
-    (_ev?.from?.emailAddress?.address) ||
-    (_ev?.sender?.emailAddress?.address) ||
-    (_ev?.from?.address) ||
-    (typeof _ev?.from === 'string' ? _ev.from : null) ||
+    (src?.from?.emailAddress?.address) ||
+    (src?.sender?.emailAddress?.address) ||
+    (src?.from?.address) ||
+    (typeof src?.from === 'string' ? src.from : null) ||
     null;
-  const _subject = (typeof _ev?.subject === 'string' ? _ev.subject : '');
+
+  const _subject = (typeof src?.subject === 'string' ? src.subject : '');
+
   const _preview = (
-    (typeof _ev?.bodyPreview === 'string' && _ev.bodyPreview) ? _ev.bodyPreview :
-    (typeof _ev?.preview === 'string' && _ev.preview) ? _ev.preview :
-    (typeof _ev?.body?.content === 'string' ? _ev.body.content.slice(0, 280) : '')
+    (typeof src?.bodyPreview === 'string' && src.bodyPreview) ? src.bodyPreview :
+    (typeof src?.preview === 'string' && src.preview) ? src.preview :
+    (typeof src?.body?.content === 'string' ? src.body.content.slice(0, 280) : '')
   );
+
   const _type = (typeof _ev?.type === 'string' && _ev.type) ? _ev.type : 'email';
+
   const _anomaly = (function(a){
     if (a === true) return true;
     if (a === false) return false;
