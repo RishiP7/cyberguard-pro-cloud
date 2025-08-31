@@ -3765,6 +3765,86 @@ app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) =
   }
 });
 
+// ---------- Admin: denormalize legacy alert JSON into flat columns ----------
+// Super-only: backfill flat columns from legacy event JSON if they are null
+app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const stats = { from_addr: 0, subject: 0, preview: 0, type: 0, anomaly: 0 };
+
+    // from_addr
+    try {
+      const r1 = await q(`
+        UPDATE alerts
+           SET from_addr = COALESCE(from_addr, (event::jsonb)->>'from')
+         WHERE tenant_id = $1
+           AND from_addr IS NULL
+           AND event IS NOT NULL
+        RETURNING 1;
+      `, [tid]);
+      stats.from_addr = r1.rowCount || (r1.rows ? r1.rows.length : 0) || 0;
+    } catch (_e) {}
+
+    // subject
+    try {
+      const r2 = await q(`
+        UPDATE alerts
+           SET subject = COALESCE(subject, (event::jsonb)->>'subject')
+         WHERE tenant_id = $1
+           AND (subject IS NULL OR subject = '')
+           AND event IS NOT NULL
+        RETURNING 1;
+      `, [tid]);
+      stats.subject = r2.rowCount || (r2.rows ? r2.rows.length : 0) || 0;
+    } catch (_e) {}
+
+    // preview
+    try {
+      const r3 = await q(`
+        UPDATE alerts
+           SET preview = COALESCE(preview, (event::jsonb)->>'preview')
+         WHERE tenant_id = $1
+           AND (preview IS NULL OR preview = '')
+           AND event IS NOT NULL
+        RETURNING 1;
+      `, [tid]);
+      stats.preview = r3.rowCount || (r3.rows ? r3.rows.length : 0) || 0;
+    } catch (_e) {}
+
+    // type (quoted in SELECTs elsewhere as evt_type)
+    try {
+      const r4 = await q(`
+        UPDATE alerts
+           SET type = COALESCE(type, (event::jsonb)->>'type')
+         WHERE tenant_id = $1
+           AND (type IS NULL OR type = '')
+           AND event IS NOT NULL
+        RETURNING 1;
+      `, [tid]);
+      stats.type = r4.rowCount || (r4.rows ? r4.rows.length : 0) || 0;
+    } catch (_e) {}
+
+    // anomaly (store as text 'true'/'false' if column is text, otherwise best-effort cast)
+    try {
+      const r5 = await q(`
+        UPDATE alerts
+           SET anomaly = COALESCE(anomaly, (event::jsonb)->>'anomaly')
+         WHERE tenant_id = $1
+           AND anomaly IS NULL
+           AND event IS NOT NULL
+        RETURNING 1;
+      `, [tid]);
+      stats.anomaly = r5.rowCount || (r5.rows ? r5.rows.length : 0) || 0;
+    } catch (_e) {}
+
+    try { await recordOpsRun('alerts_denormalize', { tenant_id: tid, ...stats }); } catch (_e) {}
+    return res.json({ ok: true, updated: stats });
+  } catch (e) {
+    console.error('alerts/denormalize failed', e);
+    return res.status(500).json({ ok: false, error: 'denormalize failed' });
+  }
+});
+
 // ---------- Alerts export (JSON/CSV) ----------
 // GET /alerts/export?format=json|csv&days=7&limit=1000
 // - format: json (default) or csv
