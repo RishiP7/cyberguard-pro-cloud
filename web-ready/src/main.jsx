@@ -63,13 +63,13 @@ function KeysCard() {
 
   return (
     <div style={{ ...card, marginTop: 16 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>API Keys</section>|</div>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>API Keys</div>
       <button style={btn} onClick={createKey} disabled={loading}>{loading ? 'Please wait…' : 'Create API Key'}</button>
       <div style={{ marginTop: 10 }}>
-        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</section>|</div>}
-        {msg && <div style={successBox}>{String(msg)}</section>|</div>}
+        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</div>}
+        {msg && <div style={successBox}>{String(msg)}</div>}
         <div>
-          {(keys || []).length === 0 && <div style={{ opacity: .7 }}>No keys yet.</section>|</div>}
+          {(keys || []).length === 0 && <div style={{ opacity: .7 }}>No keys yet.</div>}
           {keys.map((k) => (
             <div
               key={k.id}
@@ -82,7 +82,7 @@ function KeysCard() {
                 background: (justCreated===k.id ? 'rgba(123,216,143,.12)' : 'transparent')
               }}
             >
-              <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{k.id}</section>|</div>
+              <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{k.id}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 12, opacity: .7 }}>{k.revoked ? "revoked" : "active"}</span>
                 <button
@@ -104,20 +104,20 @@ function KeysCard() {
                     Revoke
                   </button>
                 )}
-              </section>|</div>
-            </section>|</div>
+              </div>
+            </div>
           ))}
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
       <div style={{ opacity: .8, fontSize: 13, marginTop: 8 }}>
         API keys are used for authenticating integrations and automations.
-      </section>|</div>
+      </div>
       {toast && (
         <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
           {toast}
-        </section>|</div>
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 
@@ -163,16 +163,16 @@ function AdminTenantKeys({ selected }) {
   return (
     <div style={{ ...card }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontWeight: 600 }}>API Keys</section>|</div>
+        <div style={{ fontWeight: 600 }}>API Keys</div>
         <button onClick={rotateKey} style={btn} disabled={loading}>{loading ? 'Please wait…' : 'Rotate Key'}</button>
-      </section>|</div>
+      </div>
       <div style={{ marginTop: 8 }}>
-        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</section>|</div>}
-        {msg && <div style={successBox}>{String(msg)}</section>|</div>}
-        {(!keys || !keys.length) && <div style={{ opacity: .7 }}>No keys yet.</section>|</div>}
+        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</div>}
+        {msg && <div style={successBox}>{String(msg)}</div>}
+        {(!keys || !keys.length) && <div style={{ opacity: .7 }}>No keys yet.</div>}
         {keys.map(k => (
           <div key={k.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: "center", padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-            <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{k.id}</section>|</div>
+            <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{k.id}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, opacity: .7 }}>{k.revoked ? 'revoked' : 'active'}</span>
               <button
@@ -192,14 +192,14 @@ function AdminTenantKeys({ selected }) {
                   Revoke
                 </button>
               )}
-            </section>|</div>
-          </section>|</div>
+            </div>
+          </div>
         ))}
-      </section>|</div>
+      </div>
       <div style={{ opacity: .8, fontSize: 13, marginTop: 8 }}>
         Manage API keys for this tenant.
-      </section>|</div>
-    </section>|</div>
+      </div>
+    </div>
   );
 }
 
@@ -330,16 +330,16 @@ function TrialNotice({ me }){
     <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #c69026',background:'#c6902615',borderRadius:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <div>
         <b>Pro+ trial</b> — <b>{t.days_left}</b> day{t.days_left===1?'':'s'} left. Enjoy all features during your trial.
-      </section>|</div>
+      </div>
       <Link to="/account" style={{padding:'6px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',textDecoration:'none'}}>Switch plan</Link>
-    </section>|</div>
+    </div>
   );
 }
 
 function ErrorBoundary({children}){
   const [err,setErr] = useState(null);
   return err
-    ? <div style={{padding:16}}><h2>Something went wrong</h2><pre style={pre}>{String(err)}</pre></section>|</div>
+    ? <div style={{padding:16}}><h2>Something went wrong</h2><pre style={pre}>{String(err)}</pre></div>
     : <ErrorCatcher onError={setErr}>{children}</ErrorCatcher>;
 }
 class ErrorCatcher extends React.Component{
@@ -420,11 +420,11 @@ function PaymentIssueBanner({ me }) {
       <div style={{margin:'8px 0 12px',padding:'10px 12px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <div>
           <b>Billing issue</b> — {msg}
-        </section>|</div>
+        </div>
         <button onClick={openPortal} style={{padding:'6px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',cursor:'pointer'}}>
           Fix payment
         </button>
-      </section>|</div>
+      </div>
     );
   } catch (_e) {
     return null;
@@ -486,8 +486,8 @@ function AdminOpsRetention(){
     finally{ setLoading(false); }
   }
 
-  if(!me) return <div style={{padding:16}}>Loading…</section>|</div>;
-  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</section>|</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
 
   const cardS = { padding:16, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)' };
   const ghost = { padding:'8px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer' };
@@ -497,9 +497,9 @@ function AdminOpsRetention(){
       <h1 style={{marginTop:0}}>Ops ▸ Retention</h1>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12}}>
         <div style={cardS}>
-          <div style={{fontWeight:700}}>Usage Buckets</section>|</div>
+          <div style={{fontWeight:700}}>Usage Buckets</div>
           <div style={{marginTop:8}}>
-            {loading && <div style={{opacity:.8}}>Loading…</section>|</div>}
+            {loading && <div style={{opacity:.8}}>Loading…</div>}
             {buckets && (
               <ul style={{listStyle:'none',padding:0,margin:0}}>
                 <li>{'<90d'}: {buckets['<90d'] ?? 0}</li>
@@ -507,19 +507,19 @@ function AdminOpsRetention(){
                 <li>{'>180d'}: {buckets['>180d'] ?? 0}</li>
               </ul>
             )}
-            {!buckets && !loading && <div style={{opacity:.8}}>No data yet.</section>|</div>}
-          </section>|</div>
+            {!buckets && !loading && <div style={{opacity:.8}}>No data yet.</div>}
+          </div>
           <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
             <button style={ghost} onClick={load} disabled={loading}>Refresh</button>
             <button style={ghost} onClick={preview} disabled={loading}>Preview purge</button>
             <button style={ghost} onClick={runPurge} disabled={loading}>Run purge</button>
             <button style={ghost} onClick={seed} disabled={loading}>Seed 2k @200d</button>
-          </section>|</div>
-          {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</section>|</div>}
-          {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</section>|</div>}
-        </section>|</div>
-      </section>|</div>
-    </section>|</div>
+          </div>
+          {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</div>}
+          {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
+        </div>
+      </div>
+    </div>
   );
 }
 // ---- Admin Ops: Audit (runs viewer) ----
@@ -550,8 +550,8 @@ function AdminOpsAudit(){
 
   React.useEffect(()=>{ load(); },[]);
 
-  if(!me) return <div style={{padding:16}}>Loading…</section>|</div>;
-  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</section>|</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
 
   const cardS = { padding:16, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)' };
   const ghost = { padding:'8px 12px', borderRadius:10, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer' };
@@ -585,12 +585,12 @@ function AdminOpsAudit(){
             <span style={{opacity:.8, fontSize:12}}>Show webhook signature errors</span>
           </label>
           <button style={ghost} onClick={load} disabled={loading}>{loading? 'Loading…' : 'Refresh'}</button>
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
 
       <div style={cardS}>
-        <div style={{fontWeight:700, marginBottom:8}}>Audit log</section>|</div>
-        {err && <div style={{marginBottom:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</section>|</div>}
+        <div style={{fontWeight:700, marginBottom:8}}>Audit log</div>
+        {err && <div style={{marginBottom:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%', borderCollapse:'collapse'}}>
             <thead>
@@ -623,9 +623,9 @@ function AdminOpsAudit(){
               })}
             </tbody>
           </table>
-        </section>|</div>
-      </section>|</div>
-    </section>|</div>
+        </div>
+      </div>
+    </div>
   );
 }
 // ---- Admin Trial Control ----
@@ -667,8 +667,8 @@ function AdminTrialControl(){
     finally{ setLoading(false); }
   }
 
-  if(!me) return <div style={{padding:16}}>Loading…</section>|</div>;
-  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</section>|</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
 
   const planActual = String(me?.plan_actual || me?.plan || '').toLowerCase();
   const tri = me.trial || {active:false, days_left:0, ends_at:null};
@@ -680,11 +680,11 @@ function AdminTrialControl(){
       <h1 style={{marginTop:0}}>Ops ▸ Trial Control</h1>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:12}}>
         <div style={cardS}>
-          <div style={{fontWeight:700}}>Tenant status</section>|</div>
+          <div style={{fontWeight:700}}>Tenant status</div>
           <div style={{marginTop:8}}>
-            <div><b>plan</b>: <code>{String(me.plan||'')}</code></section>|</div>
-            <div><b>plan_actual</b>: <code>{String(me.plan_actual||me.plan||'')}</code></section>|</div>
-            <div><b>effective_plan</b>: <code>{String(me.effective_plan||planActual)}</code></section>|</div>
+            <div><b>plan</b>: <code>{String(me.plan||'')}</code></div>
+            <div><b>plan_actual</b>: <code>{String(me.plan_actual||me.plan||'')}</code></div>
+            <div><b>effective_plan</b>: <code>{String(me.effective_plan||planActual)}</code></div>
             <div style={{marginTop:6}}>
               <b>trial</b>: {tri.active ? 'active' : 'inactive'}
               {tri.active && (
@@ -693,18 +693,18 @@ function AdminTrialControl(){
                   {tri.ends_at ? <> {' • ends_at: '}<code>{typeof tri.ends_at==='string'?tri.ends_at:new Date(Number(tri.ends_at||0)*1000).toISOString()}</code></> : null}
                 </>
               )}
-            </section>|</div>
-          </section>|</div>
+            </div>
+          </div>
           <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
             <button style={ghost} onClick={refresh} disabled={loading}>Refresh</button>
             <button style={ghost} onClick={()=>start(7)} disabled={loading || !(planActual==='basic'||planActual==='pro')}>Start 7‑day trial</button>
             <button style={ghost} onClick={endNow} disabled={loading || !tri.active}>End trial</button>
-          </section>|</div>
-          {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</section>|</div>}
-          {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</section>|</div>}
-        </section>|</div>
-      </section>|</div>
-    </section>|</div>
+          </div>
+          {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</div>}
+          {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -712,8 +712,8 @@ function AdminTrialControl(){
 function AdminConsolePage({ page }){
   const [me, setMe] = React.useState(null);
   React.useEffect(()=>{ apiGet('/me').then(setMe).catch(()=>setMe(null)); },[]);
-  if(!me) return <div style={{padding:16}}>Loading…</section>|</div>;
-  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</section>|</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
 
   const wrap = { display:'grid', gridTemplateColumns:'220px 1fr', gap:12 };
   const side = { padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)', position:'sticky', top:86, height:'fit-content' };
@@ -727,14 +727,14 @@ function AdminConsolePage({ page }){
           <Link to="/admin/console/trial" style={link}>Trial Control</Link>
           <Link to="/admin/console/retention" style={link}>Data Retention</Link>
           <Link to="/admin/console/audit" style={link}>Audit Log</Link>
-        </section>|</div>
+        </div>
         <div>
           {page === 'trial' && <AdminTrialControl/>}
           {page === 'retention' && <AdminOpsRetention/>}
           {page === 'audit' && <AdminOpsAudit/>}
-        </section>|</div>
-      </section>|</div>
-    </section>|</div>
+        </div>
+      </div>
+    </div>
   );
 }
 // ---------- Layout ----------
@@ -788,7 +788,7 @@ function SuperAdminBanner({ me }) {
         />
         Bypass paywall
       </label>
-    </section>|</div>
+    </div>
   );
 }
 function AIDock({ me }) {
@@ -840,18 +840,18 @@ function AIDock({ me }) {
             display:'grid', gridTemplateRows:'auto 1fr auto'
           }}>
             <div style={{padding:'10px 12px', borderBottom:'1px solid rgba(255,255,255,.12)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-              <div><b>AI Security Assistant</b>{me?.is_super ? <span style={{marginLeft:8,opacity:.8,fontSize:12}}>(admin)</span> : null}</section>|</div>
+              <div><b>AI Security Assistant</b>{me?.is_super ? <span style={{marginLeft:8,opacity:.8,fontSize:12}}>(admin)</span> : null}</div>
               <button onClick={()=>setOpen(false)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)', background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
-            </section>|</div>
+            </div>
             <div style={{padding:12, overflow:'auto'}}>
-              {messages.length === 0 && <div style={{opacity:.8}}>Ask about setup, errors, or “how do I…”</section>|</div>}
+              {messages.length === 0 && <div style={{opacity:.8}}>Ask about setup, errors, or “how do I…”</div>}
               {messages.map((m,i)=>(
                 <div key={i} style={{margin:'8px 0'}}>
-                  <div style={{fontSize:12,opacity:.7}}>{m.role}</section>|</div>
-                  <div>{m.content}</section>|</div>
-                </section>|</div>
+                  <div style={{fontSize:12,opacity:.7}}>{m.role}</div>
+                  <div>{m.content}</div>
+                </div>
               ))}
-            </section>|</div>
+            </div>
             <div style={{padding:12, borderTop:'1px solid rgba(255,255,255,.12)'}}>
               <form onSubmit={(e)=>{ e.preventDefault(); ask(); }}>
                 <input
@@ -873,11 +873,11 @@ function AIDock({ me }) {
                       style={{flex:1,padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}
                     />
                   )}
-                </section>|</div>
+                </div>
               </form>
-            </section>|</div>
-          </section>|</div>
-        </section>|</div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
@@ -891,7 +891,7 @@ function Layout({children}){
       <div style={bar}>
         <div style={left}>
           <img src="/logo-cgp.png" alt="Logo" style={{height: 60, marginRight: 10}}/>
-        </section>|</div>
+        </div>
         <div style={navRow}>
           <N to="/">Dashboard</N>
           <N to="/alerts">Alerts</N>
@@ -902,7 +902,7 @@ function Layout({children}){
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/console/trial">Admin Console</N>)}
           <N to="/test">Test</N>
-        </section>|</div>
+        </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
           <TrialCountdownBadge me={me} />
@@ -920,25 +920,25 @@ function Layout({children}){
           ) : (
             <Link to="/login" style={btnGhost}>Login</Link>
           )}
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
       <div style={{padding:16, maxWidth: 1100, margin: "0 auto"}}>
         <SuperAdminBanner me={me} />
         <TrialBanner me={me} />
         <PaymentIssueBanner me={me} />
         {!me?.is_super && typeof localStorage!=='undefined' && localStorage.getItem('admin_token_backup') && (
           <div style={{margin:'8px 0 12px',padding:'8px 10px',border:'1px solid #ffb84d',background:'#ffb84d1a',borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div><b>Impersonating tenant</b> — you’re viewing the app as a customer.</section>|</div>
+            <div><b>Impersonating tenant</b> — you’re viewing the app as a customer.</div>
             <button
               onClick={()=>{ const b=localStorage.getItem('admin_token_backup'); if(b){ localStorage.setItem('token', b); localStorage.removeItem('admin_token_backup'); location.reload(); } }}
               style={{padding:'6px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',cursor:'pointer'}}
             >Exit impersonation</button>
-          </section>|</div>
+          </div>
         )}
         {children}
         <AIDock me={me} />
-      </section>|</div>
-    </section>|</div>
+      </div>
+    </div>
   );
 }
 function N({to,children}){ return <Link to={to} style={navItem}>{children}</Link>; }
@@ -983,14 +983,14 @@ function LockedTile({ title, reason }) {
   return (
     <div style={{border:"1px solid rgba(255,255,255,.12)",borderRadius:12,padding:16,background:"rgba(255,255,255,.04)",opacity:.7}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{fontWeight:700}}>{title}</section>|</div>
+        <div style={{fontWeight:700}}>{title}</div>
         <span style={{padding:"2px 8px",border:"1px solid rgba(255,255,255,.2)",borderRadius:999,fontSize:12,opacity:.85}}>Locked</span>
-      </section>|</div>
-      <div style={{opacity:.8,marginTop:6}}>{reason}</section>|</div>
+      </div>
+      <div style={{opacity:.8,marginTop:6}}>{reason}</div>
       <div style={{marginTop:10}}>
         <a href="/account" style={{textDecoration:"none",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",color:"inherit"}}>Upgrade</a>
-      </section>|</div>
-    </section>|</div>
+      </div>
+    </div>
   );
 }
 
@@ -1006,7 +1006,7 @@ function TrialBanner({ me }) {
       <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10}}>
         Trial active — <b>{t.days_left}</b> day{t.days_left===1?'':'s'} left.{" "}
         <Link to="/pricing" style={{color:"#1f6feb",textDecoration:"none"}}>Upgrade now</Link>
-      </section>|</div>
+      </div>
     );
   }
 
@@ -1016,7 +1016,7 @@ function TrialBanner({ me }) {
       <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #ff6b6b",background:"#ff6b6b22",borderRadius:10}}>
         Your trial has ended. You are on <b>{effective.toUpperCase()}</b>.{" "}
         <Link to="/pricing" style={{color:"#1f6feb",textDecoration:"none"}}>Upgrade to Pro+</Link>
-      </section>|</div>
+      </div>
     );
   }
 
@@ -1113,12 +1113,12 @@ function Login(){
           <input style={inp} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="password"/>
           <button style={btn} type="submit">Sign in</button>
         </form>
-        {msg && <div style={{marginTop:8, color:"#ff8a8a"}}>{msg}</section>|</div>}
+        {msg && <div style={{marginTop:8, color:"#ff8a8a"}}>{msg}</div>}
         <div style={{marginTop:10, opacity:.9}}>
           New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
-        </section>|</div>
-      </section>|</div>
-    </section>|</div>
+        </div>
+      </div>
+    </div>
   );
 }
 const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"inherit",marginBottom:10};
@@ -1271,13 +1271,13 @@ function RealtimeEmailScans() {
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-        <div style={{fontWeight:700}}>Real‑time Email Scans</section>|</div>
+        <div style={{fontWeight:700}}>Real‑time Email Scans</div>
         <div>
           <button onClick={pollNow} disabled={busy} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit',cursor:'pointer'}}>
             {busy ? 'Polling…' : 'Poll now'}
           </button>
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
           <thead>
@@ -1308,8 +1308,8 @@ function RealtimeEmailScans() {
             ))}
           </tbody>
         </table>
-      </section>|</div>
-    </section>|</div>
+      </div>
+    </div>
   );
 }
 
@@ -1328,8 +1328,8 @@ function Dashboard(){
       }catch(e){ setErr(e.error||"API error"); }
     })();
   },[]);
-  if(err) return <div style={{padding:16}}>{err}</section>|</div>;
-  if(!me) return <div style={{padding:16}}>Loading…</section>|</div>;
+  if(err) return <div style={{padding:16}}>{err}</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
 
   return (
     <div>
@@ -1339,10 +1339,10 @@ function Dashboard(){
         <Stat title="Plan" value={me.plan}/>
         <Stat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? "-"}/>
         <Stat title="Alerts (24h)" value={stats?.alerts_24h ?? "-"}/>
-      </section>|</div>
+      </div>
 
       <div style={{marginTop:16}}>
-        <div style={{fontWeight:700, marginBottom:8}}>Recent alerts</section>|</div>
+        <div style={{fontWeight:700, marginBottom:8}}>Recent alerts</div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead><tr>
@@ -1360,21 +1360,21 @@ function Dashboard(){
               {(!alerts || alerts.length===0) && <tr><td style={td} colSpan={4}>No alerts yet.</td></tr>}
             </tbody>
           </table>
-        </section>|</div>
+        </div>
         <RealtimeEmailScans />
-      </section>|</div>
-    </section>|</div>
+      </div>
+    </div>
   );
 }
-function Stat({title,value}){ return <div style={card}><div style={{opacity:.75,fontSize:13}}>{title}</section>|</div><div style={{fontSize:22,fontWeight:700,marginTop:6}}>{value}</section>|</div></section>|</div>; }
+function Stat({title,value}){ return <div style={card}><div style={{opacity:.75,fontSize:13}}>{title}</div><div style={{fontSize:22,fontWeight:700,marginTop:6}}>{value}</div></div>; }
 
 
 function Block({title,children,disabled}){
   return (
     <div style={{...card, opacity: disabled ? 0.8 : 1}}>
-      <div style={{fontWeight:700,marginBottom:6}}>{title}</section>|</div>
+      <div style={{fontWeight:700,marginBottom:6}}>{title}</div>
       {children}
-    </section>|</div>
+    </div>
   );
 }
 function Code({children}){ return <pre style={pre}>{children}</pre>; }
@@ -1391,26 +1391,26 @@ function Policy(){
       setTimeout(()=>setMsg(""),1500);
     }catch(e){ setErr(e.error||"Save failed"); }
   }
-  if(err) return <div>{err}</section>|</div>;
-  if(!p) return <div>Loading…</section>|</div>;
+  if(err) return <div>{err}</div>;
+  if(!p) return <div>Loading…</div>;
   const row={display:"grid",gridTemplateColumns:"1fr 200px",alignItems:"center",gap:10,margin:"8px 0"};
   const field={padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"inherit"};
   return (
     <div>
       <h1 style={{marginTop:0}}>Policy</h1>
       <div style={card}>
-        <div style={row}><div>Enabled</section>|</div><input type="checkbox" checked={!!p.enabled} onChange={e=>setP({...p,enabled:e.target.checked})}/></section>|</div>
-        <div style={row}><div>Threshold</section>|</div><input className="field" style={field} type="number" step="0.1" value={p.threshold} onChange={e=>setP({...p,threshold:parseFloat(e.target.value)})}/></section>|</div>
-        <div style={row}><div>Allow quarantine</section>|</div><input type="checkbox" checked={!!p.allow_quarantine} onChange={e=>setP({...p,allow_quarantine:e.target.checked})}/></section>|</div>
-        <div style={row}><div>Allow DNS deny</section>|</div><input type="checkbox" checked={!!p.allow_dns_deny} onChange={e=>setP({...p,allow_dns_deny:e.target.checked})}/></section>|</div>
-        <div style={row}><div>Allow disable account</section>|</div><input type="checkbox" checked={!!p.allow_disable_account} onChange={e=>setP({...p,allow_disable_account:e.target.checked})}/></section>|</div>
-        <div style={row}><div>Dry-run (audit only)</section>|</div><input type="checkbox" checked={!!p.dry_run} onChange={e=>setP({...p,dry_run:e.target.checked})}/></section>|</div>
+        <div style={row}><div>Enabled</div><input type="checkbox" checked={!!p.enabled} onChange={e=>setP({...p,enabled:e.target.checked})}/></div>
+        <div style={row}><div>Threshold</div><input className="field" style={field} type="number" step="0.1" value={p.threshold} onChange={e=>setP({...p,threshold:parseFloat(e.target.value)})}/></div>
+        <div style={row}><div>Allow quarantine</div><input type="checkbox" checked={!!p.allow_quarantine} onChange={e=>setP({...p,allow_quarantine:e.target.checked})}/></div>
+        <div style={row}><div>Allow DNS deny</div><input type="checkbox" checked={!!p.allow_dns_deny} onChange={e=>setP({...p,allow_dns_deny:e.target.checked})}/></div>
+        <div style={row}><div>Allow disable account</div><input type="checkbox" checked={!!p.allow_disable_account} onChange={e=>setP({...p,allow_disable_account:e.target.checked})}/></div>
+        <div style={row}><div>Dry-run (audit only)</div><input type="checkbox" checked={!!p.dry_run} onChange={e=>setP({...p,dry_run:e.target.checked})}/></div>
         <div style={{marginTop:12}}>
           <button style={btn} onClick={save}>Save</button>
           <span style={{marginLeft:10,opacity:.85}}>{msg}</span>
-        </section>|</div>
-      </section>|</div>
-    </section>|</div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1420,7 +1420,7 @@ function Account(){
   const [promo, setPromo] = useState(localStorage.getItem("promo_code") || "");
 
   useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
-  if(!me) return <div>Loading…</section>|</div>;
+  if(!me) return <div>Loading…</div>;
 
   const paid = me.plan !== "trial";
 
@@ -1467,12 +1467,12 @@ function Account(){
       <h1 style={{marginTop:0}}>Account</h1>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(280px,1fr))",gap:12}}>
         <div style={card}>
-          <div style={{marginBottom:8}}><b>Current plan</b>: {me.plan}</section>|</div>
+          <div style={{marginBottom:8}}><b>Current plan</b>: {me.plan}</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <button style={btn} onClick={()=>activate("basic")}>Choose Basic</button>
             <button style={btn} onClick={()=>activate("pro")}>Choose Pro</button>
             <button style={btn} onClick={()=>activate("pro_plus")}>Choose Pro+</button>
-          </section>|</div>
+          </div>
           <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center"}}>
             <input
               style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)",background:"rgba(255,255,255,.05)",color:"inherit"}}
@@ -1481,27 +1481,27 @@ function Account(){
               onChange={e=>setPromo(e.target.value)}
             />
             <button style={btn} onClick={savePromo}>Save code</button>
-          </section>|</div>
+          </div>
           <div style={{opacity:.8,marginTop:6}}>
             Discounts are applied during checkout/billing. Saved locally and sent with upgrades.
-          </section>|</div>
-        </section>|</div>
+          </div>
+        </div>
         <div style={card}>
-          <div style={{marginBottom:8}}><b>API Key</b></section>|</div>
+          <div style={{marginBottom:8}}><b>API Key</b></div>
           {!paid ? (
-            <div>Activate a paid plan to enable API keys.</section>|</div>
+            <div>Activate a paid plan to enable API keys.</div>
           ) : (
             <>
-              <div style={{marginBottom:8}}>Current (localStorage): <code>{localStorage.getItem("api_key") || "— none —"}</code></section>|</div>
+              <div style={{marginBottom:8}}>Current (localStorage): <code>{localStorage.getItem("api_key") || "— none —"}</code></div>
               <button style={btn} onClick={createAccountKey}>Create API Key</button>
             </>
           )}
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
       {/* API Keys card */}
       <KeysCard />
-      {msg && <div style={{marginTop:10}}>{msg}</section>|</div>}
-    </section>|</div>
+      {msg && <div style={{marginTop:10}}>{msg}</div>}
+    </div>
   );
 }
 
@@ -1583,7 +1583,7 @@ function Pricing(){
       <div style={{marginBottom:12, display:"grid", gridTemplateColumns:"1fr 220px", gap:10, alignItems:"center"}}>
         <div style={{opacity:.9}}>
           Choose a plan. You can manage or cancel anytime in the billing portal.
-        </section>|</div>
+        </div>
         <div style={{display:"flex", gap:8, alignItems:"center"}}>
           <input
             value={coupon}
@@ -1600,58 +1600,58 @@ function Pricing(){
           >
             Save
           </button>
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
 
       <div style={s.grid}>
         <div style={s.card}>
-          <div style={s.h}>Basic</section>|</div>
-          <div style={s.price}>£19.99/mo</section>|</div>
+          <div style={s.h}>Basic</div>
+          <div style={s.price}>£19.99/mo</div>
           <ul style={{opacity:.9,lineHeight:1.5}}>
             <li>Email threat scanning</li>
             <li>Core dashboards &amp; alerts</li>
             <li>Community support</li>
           </ul>
           <button disabled={busy} style={s.btn} onClick={()=>checkout("basic")}>Start Basic</button>
-        </section>|</div>
+        </div>
 
         <div style={s.card}>
-          <div style={s.h}>Pro</section>|</div>
-          <div style={s.price}>£39.99/mo</section>|</div>
+          <div style={s.h}>Pro</div>
+          <div style={s.price}>£39.99/mo</div>
           <ul style={{opacity:.9,lineHeight:1.5}}>
             <li>Everything in Basic</li>
             <li>Endpoint (EDR) &amp; DNS protection</li>
             <li>Email &amp; chat support</li>
           </ul>
           <button disabled={busy} style={s.btn} onClick={()=>checkout("pro")}>Start Pro</button>
-        </section>|</div>
+        </div>
 
         <div style={s.card}>
-          <div style={s.h}>Pro+</section>|</div>
-          <div style={s.price}>£99.99/mo</section>|</div>
+          <div style={s.h}>Pro+</div>
+          <div style={s.price}>£99.99/mo</div>
           <ul style={{opacity:.9,lineHeight:1.5}}>
             <li>Everything in Pro</li>
             <li>UEBA &amp; Cloud security</li>
             <li>AI assistant &amp; priority support</li>
           </ul>
           <button disabled={busy} style={s.btn} onClick={()=>checkout("pro_plus")}>Start Pro+</button>
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
 
       <div style={{marginTop:14, display:"flex", gap:10, alignItems:"center"}}>
         <button disabled={busy || !paid} style={s.ghost} onClick={portal}>
           Manage billing
         </button>
         {paid ? <span style={{opacity:.85}}>Current plan: <b>{me?.plan}</b></span> : <span style={{opacity:.75}}>You’ll see the billing portal after subscribing.</span>}
-      </section>|</div>
+      </div>
 
       {(msg || err) && (
         <div style={{marginTop:10}}>
-          {msg && <div style={{padding:"8px 10px",border:"1px solid #7bd88f66",background:"#7bd88f22",borderRadius:10}}>{msg}</section>|</div>}
-          {err && <div style={{padding:"8px 10px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10}}>{err}</section>|</div>}
-        </section>|</div>
+          {msg && <div style={{padding:"8px 10px",border:"1px solid #7bd88f66",background:"#7bd88f22",borderRadius:10}}>{msg}</div>}
+          {err && <div style={{padding:"8px 10px",border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:10}}>{err}</div>}
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 
@@ -1717,8 +1717,8 @@ function Admin(){
 
   useEffect(()=>{ loadTenants(); },[]);
 
-  if(!me) return <div style={{padding:16}}>Loading…</section>|</div>;
-  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</section>|</div>;
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
 
   const s = {
     wrap:{padding:16,color:'#e6e9ef'},
@@ -1735,12 +1735,12 @@ function Admin(){
   return (
     <div style={s.wrap}>
       <div style={s.header}>
-        <div style={{fontWeight:700}}>Admin</section>|</div>
-        <div style={{opacity:.8,fontSize:13}}>Super-admin tools</section>|</div>
-      </section>|</div>
+        <div style={{fontWeight:700}}>Admin</div>
+        <div style={{opacity:.8,fontSize:13}}>Super-admin tools</div>
+      </div>
 
       <div style={{display:'flex',gap:8,alignItems:'center',margin:'6px 0 12px'}}>
-        <div style={{fontSize:12,opacity:.8}}>Preview plan as:</section>|</div>
+        <div style={{fontSize:12,opacity:.8}}>Preview plan as:</div>
         <select
           defaultValue={typeof localStorage!=='undefined' ? (localStorage.getItem('admin_plan_preview')||'') : ''}
           onChange={e=>{ const v=e.target.value; if(typeof localStorage!=='undefined'){ if(v) localStorage.setItem('admin_plan_preview', v); else localStorage.removeItem('admin_plan_preview'); } alert('Plan preview set. Reloading…'); location.reload(); }}
@@ -1756,37 +1756,37 @@ function Admin(){
           <input type="checkbox" defaultChecked={typeof localStorage!=='undefined' && localStorage.getItem('admin_override')==='1'} onChange={e=>{ if(typeof localStorage!=='undefined'){ if(e.target.checked) localStorage.setItem('admin_override','1'); else localStorage.removeItem('admin_override'); } alert('Override updated. Reloading…'); location.reload(); }} />
           Bypass paywall (override)
         </label>
-      </section>|</div>
+      </div>
 
-      {err && <div style={s.err}>{err}</section>|</div>}
+      {err && <div style={s.err}>{err}</div>}
 
       <div style={s.grid}>
         <div>
           <div style={s.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:600}}>Tenants</section>|</div>
+              <div style={{fontWeight:600}}>Tenants</div>
               <button onClick={loadTenants} style={s.ghost}>{loading? 'Loading…':'Refresh'}</button>
-            </section>|</div>
+            </div>
             <div style={{marginTop:8}}>
-              {(!tenants||!tenants.length) && <div style={{opacity:.7}}>No tenants found.</section>|</div>}
+              {(!tenants||!tenants.length) && <div style={{opacity:.7}}>No tenants found.</div>}
               {tenants && tenants.map(t=> (
                 <div key={t.id} style={s.row}>
                   <div>
-                    <div style={{fontWeight:600}}>{t.name||t.id}</section>|</div>
-                    <div style={{fontSize:12,opacity:.7}}>plan: {t.plan||'trial'}</section>|</div>
-                  </section>|</div>
+                    <div style={{fontWeight:600}}>{t.name||t.id}</div>
+                    <div style={{fontSize:12,opacity:.7}}>plan: {t.plan||'trial'}</div>
+                  </div>
                   <div style={{display:'flex',gap:8}}>
                     <button onClick={()=>viewTenant(t.id)} style={s.btn}>Open</button>
                     {t.plan==='suspended'
                       ? <button onClick={()=>suspend(t.id,false)} style={s.btn}>Unsuspend</button>
                       : <button onClick={()=>suspend(t.id,true)} style={s.warn}>Suspend</button>}
                     <button onClick={()=>impersonate(t.id)} style={s.ghost}>Impersonate</button>
-                  </section>|</div>
-                </section>|</div>
+                  </div>
+                </div>
               ))}
-            </section>|</div>
-          </section>|</div>
-        </section>|</div>
+            </div>
+          </div>
+        </div>
 
         <div>
           {selected ? (
@@ -1796,38 +1796,38 @@ function Admin(){
 
               <div style={s.card}>
                 <div style={{display:'flex',justifyContent:'space-between'}}>
-                  <div style={{fontWeight:600}}>Support Chat</section>|</div>
+                  <div style={{fontWeight:600}}>Support Chat</div>
                   <button onClick={()=>reply(selected)} style={s.btn}>Reply</button>
-                </section>|</div>
+                </div>
                 <div style={{marginTop:8, maxHeight:300, overflow:'auto'}}>
-                  {(!chat||!chat.length) && <div style={{opacity:.7}}>No messages yet.</section>|</div>}
+                  {(!chat||!chat.length) && <div style={{opacity:.7}}>No messages yet.</div>}
                   {chat.map(m=> (
                     <div key={m.id} style={{margin:'8px 0'}}>
-                      <div style={{fontSize:12,opacity:.7}}>{m.author} • {new Date((m.created_at||0)*1000).toLocaleString()}</section>|</div>
-                      <div>{m.body}</section>|</div>
-                    </section>|</div>
+                      <div style={{fontSize:12,opacity:.7}}>{m.author} • {new Date((m.created_at||0)*1000).toLocaleString()}</div>
+                      <div>{m.body}</div>
+                    </div>
                   ))}
-                </section>|</div>
-              </section>|</div>
+                </div>
+              </div>
 
               <div style={s.card}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{fontWeight:600}}>AI Admin Assistant</section>|</div>
-                </section>|</div>
+                  <div style={{fontWeight:600}}>AI Admin Assistant</div>
+                </div>
                 <div style={{marginTop:8}}>
                   <form onSubmit={async (e)=>{ e.preventDefault(); const q = e.target.q.value.trim(); if(!q) return; try{ const r = await apiPost('/admin/ai/ask', { question: q, tenant_id: selected }); alert(r?.answer || 'No answer'); e.target.reset(); }catch(_e){ alert('Assistant failed'); } }}>
                     <input name="q" placeholder="Ask about configuration, errors, or how to…" style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,.14)',background:'rgba(255,255,255,.06)',color:'#e6e9ef'}} />
-                    <div style={{marginTop:8}}><button style={s.btn}>Ask</button></section>|</div>
+                    <div style={{marginTop:8}}><button style={s.btn}>Ask</button></div>
                   </form>
-                </section>|</div>
-              </section>|</div>
-            </section>|</div>
+                </div>
+              </div>
+            </div>
           ) : (
-            <div style={{opacity:.7}}>Select a tenant to view details.</section>|</div>
+            <div style={{opacity:.7}}>Select a tenant to view details.</div>
           )}
-        </section>|</div>
-      </section>|</div>
-    </section>|</div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1929,8 +1929,8 @@ function AlertsPage(){
           <button className="btn" style={s.btn} onClick={()=>setLimit(l=>l+50)} disabled={loading}>
             Load more (+50)
           </button>
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
 
       <div style={{display:'flex',gap:8,alignItems:'center',margin:'6px 0 12px',flexWrap:'wrap'}}>
         <span style={{fontSize:12,opacity:.8}}>Threat levels:</span>
@@ -1944,30 +1944,30 @@ function AlertsPage(){
             {r.label}
           </span>
         ))}
-      </section>|</div>
+      </div>
 
-      {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</section>|</div>}
+      {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</div>}
 
       <div style={s.card}>
         {!loading && list.length===0 ? (
-          <div style={{opacity:.75,padding:12}}>No alerts{q? ' match your search' : ''}.</section>|</div>
+          <div style={{opacity:.75,padding:12}}>No alerts{q? ' match your search' : ''}.</div>
         ) : (
           list.map(a=>{
             const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
             return (
               <div key={a.id} style={s.row} onClick={()=>setSelected(a)} title="View details">
                 <div>
-                  <div style={{fontWeight:600}}>{a.from || a.from_addr || '—'}</section>|</div>
-                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</section>|</div>
-                </section>|</div>
+                  <div style={{fontWeight:600}}>{a.from || a.from_addr || '—'}</div>
+                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
+                </div>
                 <div>
                   <div style={{fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                     {a.subject || '—'}
-                  </section>|</div>
+                  </div>
                   <div style={{opacity:.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:4}}>
                     {a.preview || '—'}
-                  </section>|</div>
-                </section>|</div>
+                  </div>
+                </div>
                 <div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
                   {a.evt_type && <span style={s.tag}>{a.evt_type}</span>}
                   {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
@@ -1980,49 +1980,49 @@ function AlertsPage(){
                         );
                       })()
                     : null}
-                </section>|</div>
-              </section>|</div>
+                </div>
+              </div>
             );
           })
         )}
-        {loading && <div style={{opacity:.75,padding:12}}>Loading…</section>|</div>}
-      </section>|</div>
+        {loading && <div style={{opacity:.75,padding:12}}>Loading…</div>}
+      </div>
 
       {/* Details Drawer / Modal */}
       {selected && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000}}>
           <div style={{width:'min(840px,94vw)',maxHeight:'86vh',overflow:'auto',background:'linear-gradient(180deg, rgba(28,30,38,.96), rgba(22,24,30,.94))',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,padding:16,boxShadow:'0 18px 48px rgba(0,0,0,.35)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <div style={{fontWeight:700}}>Alert details</section>|</div>
+              <div style={{fontWeight:700}}>Alert details</div>
               <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
-            </section>|</div>
+            </div>
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 240px',gap:12,alignItems:'start'}}>
               <div>
-                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</section>|</div>
-                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</section>|</div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</div>
+                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</div>
 
-                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</section>|</div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</div>
                 <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{selected.preview || '—'}</pre>
-              </section>|</div>
+              </div>
               <div>
                 <div style={{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
-                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</section>|</div>
+                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</div>
                   <div style={{fontSize:13,display:'grid',gap:4}}>
-                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</section>|</div>
-                    <div><b>Type:</b> {selected.evt_type || '—'}</section>|</div>
+                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
+                    <div><b>Type:</b> {selected.evt_type || '—'}</div>
                     {selected.score!=null
                       ? (()=>{ const risk = riskFromScore(selected.score);
                           return (
                             <div>
                               <b>Threat:</b> {risk.label} <span style={{opacity:.8}}>(score {selected.score})</span>
-                            </section>|</div>
+                            </div>
                           );
                         })()
-                      : <div><b>Threat:</b> —</section>|</div>}
-                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</section>|</div>
+                      : <div><b>Threat:</b> —</div>}
+                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
                     {(selected.anomaly_txt||"").trim() ? (
-                      <div><b>Anomaly:</b> {selected.anomaly_txt}</section>|</div>
+                      <div><b>Anomaly:</b> {selected.anomaly_txt}</div>
                     ) : null}
                     <div style={{marginTop:8}}>
                       <button style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}
@@ -2034,16 +2034,16 @@ function AlertsPage(){
                         }}>
                         Copy JSON
                       </button>
-                    </section>|</div>
-                  </section>|</div>
-                </section>|</div>
-              </section>|</div>
-            </section>|</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          </section>|</div>
-        </section>|</div>
+          </div>
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 
@@ -2096,23 +2096,23 @@ function OnboardingChecklist(){
   return (
     <div style={s.wrap}>
       <div style={s.head}>
-        <div style={{fontWeight:700}}>Getting started</section>|</div>
-        <div style={s.badge}>{doneCount}/{steps.length} done</section>|</div>
-      </section>|</div>
+        <div style={{fontWeight:700}}>Getting started</div>
+        <div style={s.badge}>{doneCount}/{steps.length} done</div>
+      </div>
       {loading ? (
-        <div style={{opacity:.75}}>Loading checklist…</section>|</div>
+        <div style={{opacity:.75}}>Loading checklist…</div>
       ) : (
         <div>
           {steps.map(step=> (
             <div key={step.key} style={s.row}>
-              <div style={{width:22, textAlign:'center'}}>{step.done ? '✅' : '⬜️'}</section>|</div>
-              <div style={{flex:1}}>{step.label}</section>|</div>
+              <div style={{width:22, textAlign:'center'}}>{step.done ? '✅' : '⬜️'}</div>
+              <div style={{flex:1}}>{step.label}</div>
               <a href={step.href} style={s.btn}>Open</a>
-            </section>|</div>
+            </div>
           ))}
-        </section>|</div>
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 
@@ -2124,19 +2124,19 @@ function OnboardingTips() {
   };
   return (
     <div style={s.wrap}>
-      <div style={s.tip}>• The dashboard shows your security integrations and live alerts.</section>|</div>
-      <div style={s.tip}>• Green "Connected" means data is flowing in from that source.</section>|</div>
-      <div style={s.tip}>• The Alerts page lists suspicious activity — click any alert for details.</section>|</div>
+      <div style={s.tip}>• The dashboard shows your security integrations and live alerts.</div>
+      <div style={s.tip}>• Green "Connected" means data is flowing in from that source.</div>
+      <div style={s.tip}>• The Alerts page lists suspicious activity — click any alert for details.</div>
       <div style={{...s.tip, marginTop:4}}>Threat score legend:&nbsp;
         <span style={{background:'rgba(34,197,94,.2)',padding:'1px 6px',borderRadius:6}}>Low (0–39)</span>
         &nbsp;·&nbsp;
         <span style={{background:'rgba(234,179,8,.2)',padding:'1px 6px',borderRadius:6}}>Medium (40–69)</span>
         &nbsp;·&nbsp;
         <span style={{background:'rgba(220,38,38,.2)',padding:'1px 6px',borderRadius:6}}>High (70–100)</span>
-      </section>|</div>
-      <div style={s.tip}>Sources: Email, DNS, EDR, Cloud (shown per alert).</section>|</div>
-      <div style={s.tip}>Tip: hover any status label to see what it means.</section>|</div>
-    </section>|</div>
+      </div>
+      <div style={s.tip}>Sources: Email, DNS, EDR, Cloud (shown per alert).</div>
+      <div style={s.tip}>Tip: hover any status label to see what it means.</div>
+    </div>
   );
 }
 // Wrap Dashboard to inject onboarding widget without touching original Dashboard implementation
@@ -2172,15 +2172,15 @@ function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
             {collapsed ? '▸' : '▾'}
           </button>
           <h2 style={{margin:0,fontSize:16}}>{title}</h2>
-        </section>|</div>
-        <div style={{opacity:.7,fontSize:12}}>{collapsed ? 'Show' : 'Hide'}</section>|</div>
-      </section>|</div>
+        </div>
+        <div style={{opacity:.7,fontSize:12}}>{collapsed ? 'Show' : 'Hide'}</div>
+      </div>
       {!collapsed && (
         <div style={{padding:'0 12px 12px 12px'}}>
           {children}
-        </section>|</div>
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 // Futuristic real-time email scan visualizer
@@ -2350,25 +2350,25 @@ function LiveEmailScanner(){
   return (
     <div style={s.shell}>
       <div style={s.head}>
-        <div style={s.live}><span style={s.dot}/><b>LIVE</b>&nbsp;Email scanning</section>|</div>
+        <div style={s.live}><span style={s.dot}/><b>LIVE</b>&nbsp;Email scanning</div>
         <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-          <div style={s.stat}>Alerts (24h): <b>{stats.total}</b></section>|</div>
-          <div style={s.stat}>New (5m): <b>{stats.new5}</b></section>|</div>
-          <div style={s.stat}>Anomalies: <b>{stats.anomalies}</b></section>|</div>
-          <div style={{fontSize:12,opacity:.65}}>Updated: {stats.updatedAt||'–'}</section>|</div>
-        </section>|</div>
-      </section>|</div>
+          <div style={s.stat}>Alerts (24h): <b>{stats.total}</b></div>
+          <div style={s.stat}>New (5m): <b>{stats.new5}</b></div>
+          <div style={s.stat}>Anomalies: <b>{stats.anomalies}</b></div>
+          <div style={{fontSize:12,opacity:.65}}>Updated: {stats.updatedAt||'–'}</div>
+        </div>
+      </div>
 
       <div style={s.canvasWrap}>
         <canvas ref={canvasRef} style={{width:'100%',height:'100%',display:'block'}}/>
-      </section>|</div>
+      </div>
 
       {/* NEW: Recently scanned emails list */}
       <div style={s.listWrap}>
-        <div style={{padding:'8px 10px',opacity:.85,fontSize:13,background:'rgba(255,255,255,.02)'}}>Recently scanned (latest 50)</section>|</div>
+        <div style={{padding:'8px 10px',opacity:.85,fontSize:13,background:'rgba(255,255,255,.02)'}}>Recently scanned (latest 50)</div>
         <div style={{maxHeight:240, overflowY:'auto'}}>
           {recent.length===0 ? (
-            <div style={{opacity:.75,padding:10}}>Waiting for scans…</section>|</div>
+            <div style={{opacity:.75,padding:10}}>Waiting for scans…</div>
           ) : recent.map(a=>{
             const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
             const risk = (a?.score!=null) ? riskFromScore(a.score) : null;
@@ -2376,51 +2376,51 @@ function LiveEmailScanner(){
             return (
               <div key={a.id} style={s.row} onClick={()=>setSelected(a)}>
                 <div>
-                  <div style={{fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</section>|</div>
-                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</section>|</div>
-                </section>|</div>
+                  <div style={{fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</div>
+                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
+                </div>
                 <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                  <div style={{fontWeight:600}}>{a.subject || '—'}</section>|</div>
-                  <div style={{opacity:.85}}>{a.preview || '—'}</section>|</div>
-                </section>|</div>
+                  <div style={{fontWeight:600}}>{a.subject || '—'}</div>
+                  <div style={{opacity:.85}}>{a.preview || '—'}</div>
+                </div>
                 <div style={{display:'flex',gap:6,justifyContent:'flex-end',alignItems:'center'}}>
                   <span style={s.tag}>{type}</span>
                   {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
                   {risk && <span style={{...s.tag, borderColor:risk.color, background:risk.bg, color:risk.color}}>{risk.label}</span>}
-                </section>|</div>
-              </section>|</div>
+                </div>
+              </div>
             );
           })}
-        </section>|</div>
-      </section>|</div>
+        </div>
+      </div>
 
       {/* NEW: quick details modal */}
       {selected && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000}}>
           <div style={{width:'min(840px,94vw)',maxHeight:'86vh',overflow:'auto',background:'linear-gradient(180deg, rgba(28,30,38,.96), rgba(22,24,30,.94))',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,padding:16,boxShadow:'0 18px 48px rgba(0,0,0,.35)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <div style={{fontWeight:700}}>Email details</section>|</div>
+              <div style={{fontWeight:700}}>Email details</div>
               <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
-            </section>|</div>
+            </div>
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 260px',gap:12,alignItems:'start'}}>
               <div>
-                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</section>|</div>
-                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</section>|</div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</div>
+                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</div>
 
-                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</section>|</div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</div>
                 <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{selected.preview || '—'}</pre>
-              </section>|</div>
+              </div>
               <div>
                 <div style={{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
-                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</section>|</div>
+                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</div>
                   <div style={{fontSize:13,display:'grid',gap:6}}>
-                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</section>|</div>
-                    <div><b>Type:</b> {selected.evt_type || 'email'}</section>|</div>
-                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</section>|</div>
-                    {selected.score!=null ? (()=>{ const r=riskFromScore(selected.score); return (<div><b>Threat:</b> {r.label} <span style={{opacity:.7}}>(score {selected.score})</span></section>|</div>); })() : <div><b>Threat:</b> —</section>|</div>}
-                    {(selected.anomaly_txt||"").trim() ? <div><b>Anomaly:</b> {selected.anomaly_txt}</section>|</div> : null}
-                  </section>|</div>
+                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
+                    <div><b>Type:</b> {selected.evt_type || 'email'}</div>
+                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
+                    {selected.score!=null ? (()=>{ const r=riskFromScore(selected.score); return (<div><b>Threat:</b> {r.label} <span style={{opacity:.7}}>(score {selected.score})</span></div>); })() : <div><b>Threat:</b> —</div>}
+                    {(selected.anomaly_txt||"").trim() ? <div><b>Anomaly:</b> {selected.anomaly_txt}</div> : null}
+                  </div>
 
                   <div style={{marginTop:10, display:'flex', gap:8, flexWrap:'wrap'}}>
                     <button
@@ -2438,15 +2438,15 @@ function LiveEmailScanner(){
                       }}>
                       Copy JSON
                     </button>
-                  </section>|</div>
-                </section>|</div>
-              </section>|</div>
-            </section>|</div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          </section>|</div>
-        </section>|</div>
+          </div>
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 function DashboardWithOnboarding(props){
@@ -2459,7 +2459,7 @@ function DashboardWithOnboarding(props){
       <div style={{marginTop:20}}>
         <h2 style={{marginBottom:10}}>Live email scan</h2>
         <LiveEmailScanner/>
-      </section>|</div>
+      </div>
 
       {/* Keep onboarding/tips collapsible */}
       <CollapsibleSection id="onboarding" title="Get started" defaultCollapsed={true}>
@@ -2468,7 +2468,7 @@ function DashboardWithOnboarding(props){
       <CollapsibleSection id="explain" title="What am I looking at?" defaultCollapsed={true}>
         <OnboardingTips/>
       </CollapsibleSection>
-    </section>|</div>
+    </div>
   );
 }
 
@@ -2498,7 +2498,7 @@ function AuthLogin(){
         />
         <button type="submit" style={{padding:'10px 12px', borderRadius:8}}>Save & Continue</button>
       </form>
-    </section>|</div>
+    </div>
   );
 }
 function RequireAuth({ children }){
@@ -2507,7 +2507,6 @@ function RequireAuth({ children }){
   return children;
 }
 function App(){
-  // Hide legacy "Real-time Email Scans" panel if it still exists anywhere
   React.useEffect(() => {
     try {
       const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5')).filter(h =>
@@ -2761,41 +2760,41 @@ function Integrations({ api }) {
       <div style={{margin:"10px 0", padding:"10px 12px", border:"1px solid #e5e7eb", background:"#0b0c0d", borderRadius:10}}>
         <div style={{fontSize:14, opacity:0.9, marginBottom:6}}>
           <b>Current connections</b> {loadingStatus ? '(refreshing...)' : ''}
-        </section>|</div>
+        </div>
         {Array.isArray(connStatus) && connStatus.length > 0 ? (
           <ul style={{listStyle:"none", padding:0, margin:0, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8}}>
             {connStatus.map((c,i)=>(
               <li key={i} style={{padding:"8px 10px", background:"#111316", border:"1px solid #1f2328", borderRadius:8}}>
-                <div style={{fontSize:12, opacity:0.8}}>{(c.type||'').toUpperCase()} • {c.provider||'—'}</section>|</div>
+                <div style={{fontSize:12, opacity:0.8}}>{(c.type||'').toUpperCase()} • {c.provider||'—'}</div>
                 <div style={{fontSize:13, marginTop:4}} title={statusHelp(c.status)}>
                   {c.status === 'connected' ? '✅ Connected'
                     : c.status === 'pending' ? '⏳ Pending'
                     : c.status === 'error'   ? '❌ Error'
                     : '—'}
-                </section>|</div>
+                </div>
                 {c.account && (
                   <div style={{fontSize:12, opacity:.8, marginTop:4}}>
                     Connected as: {c.account.displayName || c.account.mail || c.account.userPrincipalName || '—'}
-                  </section>|</div>
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         ) : (
-          <div style={{fontSize:13, opacity:0.8}}>No integrations connected yet.</section>|</div>
+          <div style={{fontSize:13, opacity:0.8}}>No integrations connected yet.</div>
         )}
-      </section>|</div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12 }}>
 
         {/* Email */}
         <div style={styles.card}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{fontWeight:700}}>Email Security</section>|</div>
+            <div style={{fontWeight:700}}>Email Security</div>
             <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('email').status)}>
               {getState('email').status}
             </span>
-          </section>|</div>
-          <div style={{opacity:.85,marginTop:6}}>Connect your provider to scan for phishing/malware.</section>|</div>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>Connect your provider to scan for phishing/malware.</div>
           <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
             <select value={emailProvider} onChange={e=>setEmailProvider(e.target.value)} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
               <option value="o365">Microsoft 365</option>
@@ -2818,19 +2817,19 @@ function Integrations({ api }) {
             >
               Connect
             </button>
-          </section>|</div>
-        </section>|</div>
+          </div>
+        </div>
 
         {/* EDR */}
         {caps.edr ? (
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:700}}>Endpoint (EDR)</section>|</div>
+              <div style={{fontWeight:700}}>Endpoint (EDR)</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('edr').status)}>
                 {getState('edr').status}
               </span>
-            </section>|</div>
-            <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</section>|</div>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
               <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.post('/integrations/edr/enrollment-token',{}); setEdrToken(j?.token||''); return j; })}>Get enrollment token</button>
               {edrToken && (
@@ -2839,8 +2838,8 @@ function Integrations({ api }) {
                   <button style={styles.ghost} onClick={()=>copy(edrToken)}>Copy</button>
                 </span>
               )}
-            </section>|</div>
-          </section>|</div>
+            </div>
+          </div>
         ) : (
           <LockedTile title="Endpoint (EDR)" reason="Upgrade to Pro or Pro+ to enable endpoint security." />
         )}
@@ -2849,12 +2848,12 @@ function Integrations({ api }) {
         {caps.dns ? (
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:700}}>DNS Protection</section>|</div>
+              <div style={{fontWeight:700}}>DNS Protection</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('dns').status)}>
                 {getState('dns').status}
               </span>
-            </section>|</div>
-            <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</section>|</div>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
               <button style={btn} disabled={busy} onClick={()=>safe(async()=>{ const j=await api.get('/integrations/dns/bootstrap'); setDnsInfo(j); return j; })}>Bootstrap</button>
               {dnsInfo && (
@@ -2864,8 +2863,8 @@ function Integrations({ api }) {
                   <button style={styles.ghost} onClick={()=>copy(dnsInfo.token)}>Copy</button>
                 </span>
               )}
-            </section>|</div>
-          </section>|</div>
+            </div>
+          </div>
         ) : (
           <LockedTile title="DNS Protection" reason="Upgrade to Pro or Pro+ to enable DNS protection." />
         )}
@@ -2874,17 +2873,17 @@ function Integrations({ api }) {
         {caps.ueba ? (
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:700}}>UEBA</section>|</div>
+              <div style={{fontWeight:700}}>UEBA</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('ueba').status)}>
                 {getState('ueba').status}
               </span>
-            </section>|</div>
-            <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</section>|</div>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
               <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'m365', settings:{} }))}>Connect M365</button>
               <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/ueba/connect', { provider:'gworkspace', settings:{} }))}>Connect GWS</button>
-            </section>|</div>
-          </section>|</div>
+            </div>
+          </div>
         ) : (
           <LockedTile title="UEBA" reason="Available on Pro+ plan." />
         )}
@@ -2893,155 +2892,155 @@ function Integrations({ api }) {
         {caps.cloud ? (
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:700}}>Cloud Security</section>|</div>
+              <div style={{fontWeight:700}}>Cloud Security</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('cloud').status)}>
                 {getState('cloud').status}
               </span>
-            </section>|</div>
-            <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</section>|</div>
+            </div>
+            <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
               <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'aws', settings:{} }))}>Connect AWS</button>
               <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'azure', settings:{} }))}>Connect Azure</button>
               <button style={btn} disabled={busy} onClick={()=>safe(()=>api.post('/integrations/cloud/connect', { provider:'gcp', settings:{} }))}>Connect GCP</button>
-            </section>|</div>
-          </section>|</div>
+            </div>
+          </div>
         ) : (
           <LockedTile title="Cloud Security" reason="Available on Pro+ plan." />
         )}
 
         {/* AI Assistant (placeholder) */}
         <div style={styles.card}>
-          <div style={{fontWeight:700}}>AI Security Assistant</section>|</div>
-          <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</section>|</div>
+          <div style={{fontWeight:700}}>AI Security Assistant</div>
+          <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</div>
           <div style={{marginTop:8}}>
             {planCapabilities(meState?.plan || 'trial', meState).ai ? (
               <button style={btn} onClick={()=>alert('AI assistant preview. Full features on Pro+.')}>Open Assistant</button>
             ) : (
               <LockedTile title="AI Security Assistant" reason="Available on Pro+ (trial preview unlocks it temporarily)." />
             )}
-          </section>|</div>
-        </section>|</div>
-      </section>|</div>
+          </div>
+        </div>
+      </div>
 
       {/* Debug panel toggle */}
       <div style={{marginTop:12}}>
         <button style={styles.ghost} onClick={()=>setOut(o=> o ? '' : '{"ok": true}')}>
           {out? 'Hide debug' : 'Show debug'}
         </button>
-      </section>|</div>
+      </div>
       {(out||err) && (
         <div style={{marginTop:12}}>
-          {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</section>|</div>}
+          {err && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10,margin:'10px 0'}}>Error: {err}</div>}
           {out && <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{out}</pre>}
-        </section>|</div>
+        </div>
       )}
 
       {wizOpen && (
         <div style={styles.modal}>
           <div style={styles.sheet}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{fontWeight:700}}>Email Setup — {wizProvider==='o365'?'Microsoft 365':wizProvider==='gmail'?'Google Workspace':'Generic IMAP'}</section>|</div>
+              <div style={{fontWeight:700}}>Email Setup — {wizProvider==='o365'?'Microsoft 365':wizProvider==='gmail'?'Google Workspace':'Generic IMAP'}</div>
               <button style={styles.ghost} onClick={wizClose}>Close</button>
-            </section>|</div>
+            </div>
 
             {/* Stepper */}
             <div style={{display:'flex',gap:8,margin:'12px 0'}}>
               {[0,1,2,3].map(i=> (
-                <div key={i} style={{padding:'4px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)',background: i<=wizStep ? '#1f6feb' : 'transparent'}}>{i+1}</section>|</div>
+                <div key={i} style={{padding:'4px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)',background: i<=wizStep ? '#1f6feb' : 'transparent'}}>{i+1}</div>
               ))}
-            </section>|</div>
+            </div>
 
             {/* Steps */}
             {wizStep===0 && (
               <div>
-                <div style={{opacity:.85}}>Choose scope and confirm provider.</section>|</div>
+                <div style={{opacity:.85}}>Choose scope and confirm provider.</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:10}}>
                   <div>
-                    <div style={{opacity:.8,marginBottom:6}}>Provider</section>|</div>
+                    <div style={{opacity:.8,marginBottom:6}}>Provider</div>
                     <select value={wizProvider} onChange={e=>setWizProvider(e.target.value)} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
                       <option value="o365">Microsoft 365</option>
                       <option value="gmail">Google Workspace</option>
                       <option value="imap">Generic IMAP</option>
                     </select>
-                  </section>|</div>
+                  </div>
                   <div>
-                    <div style={{opacity:.8,marginBottom:6}}>Mailbox scope</section>|</div>
+                    <div style={{opacity:.8,marginBottom:6}}>Mailbox scope</div>
                     <select value={wizForm.scope} onChange={e=>setWizForm({...wizForm, scope:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
                       <option value="all">All users</option>
                       <option value="subset">Selected users</option>
                     </select>
-                  </section>|</div>
-                </section>|</div>
+                  </div>
+                </div>
                 <div style={{marginTop:12}}>
                   <button style={btn} onClick={wizNext}>Continue</button>
-                </section>|</div>
-              </section>|</div>
+                </div>
+              </div>
             )}
 
             {wizStep===1 && (
               <div>
                 {wizProvider==='imap' ? (
                   <div>
-                    <div style={{opacity:.85}}>Enter your IMAP server details.</section>|</div>
+                    <div style={{opacity:.85}}>Enter your IMAP server details.</div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:10}}>
                       <input placeholder="Host" value={wizForm.imapHost} onChange={e=>setWizForm({...wizForm, imapHost:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
                       <input placeholder="Port" type="number" value={wizForm.imapPort} onChange={e=>setWizForm({...wizForm, imapPort:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
                       <input placeholder="Username" value={wizForm.imapUser} onChange={e=>setWizForm({...wizForm, imapUser:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
                       <input placeholder="Password" type="password" value={wizForm.imapPass} onChange={e=>setWizForm({...wizForm, imapPass:e.target.value})} style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}/>
                       <label style={{display:'flex',alignItems:'center',gap:8}}><input type="checkbox" checked={!!wizForm.imapTLS} onChange={e=>setWizForm({...wizForm, imapTLS:e.target.checked})}/>Use TLS</label>
-                    </section>|</div>
+                    </div>
                     <div style={{marginTop:12,display:'flex',gap:8}}>
                       <button style={btn} onClick={wizBack}>Back</button>
                       <button style={btn} onClick={wizNext}>Connect</button>
-                    </section>|</div>
-                  </section>|</div>
+                    </div>
+                  </div>
                 ) : (
                   <div>
-                    <div style={{opacity:.85}}>We will open the provider authorization flow and request read‑only access to messages for scanning.</section>|</div>
+                    <div style={{opacity:.85}}>We will open the provider authorization flow and request read‑only access to messages for scanning.</div>
                     <div style={{marginTop:12,display:'flex',gap:8}}>
                       <button style={btn} onClick={wizBack}>Back</button>
                       <button style={btn} onClick={wizNext}>Authorize & Connect</button>
-                    </section>|</div>
-                  </section>|</div>
+                    </div>
+                  </div>
                 )}
-              </section>|</div>
+              </div>
             )}
 
             {wizStep===2 && (
               <div>
-                <div style={{opacity:.85}}>Connection complete. Send a test to verify events are arriving.</section>|</div>
+                <div style={{opacity:.85}}>Connection complete. Send a test to verify events are arriving.</div>
                 <div style={{marginTop:12,display:'flex',gap:8}}>
                   <button style={btn} onClick={wizBack}>Back</button>
                   <button style={btn} onClick={wizNext}>Send test</button>
-                </section>|</div>
-              </section>|</div>
+                </div>
+              </div>
             )}
 
             {wizStep===3 && (
               <div>
-                <div style={{opacity:.85}}>All set. You can close this window.</section>|</div>
+                <div style={{opacity:.85}}>All set. You can close this window.</div>
                 <div style={{marginTop:12}}>
                   <button style={btn} onClick={wizClose}>Finish</button>
-                </section>|</div>
-              </section>|</div>
+                </div>
+              </div>
             )}
 
             {(wizErr || wizMsg) && (
               <div style={{marginTop:12}}>
-                {wizErr && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10}}>Error: {wizErr}</section>|</div>}
-                {wizMsg && <div style={{padding:'10px 12px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:10}}>{wizMsg}</section>|</div>}
-              </section>|</div>
+                {wizErr && <div style={{padding:'10px 12px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:10}}>Error: {wizErr}</div>}
+                {wizMsg && <div style={{padding:'10px 12px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:10}}>{wizMsg}</div>}
+              </div>
             )}
-          </section>|</div>
-        </section>|</div>
+          </div>
+        </div>
       )}
 
       {toast && (
         <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
           {toast}
-        </section>|</div>
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 // --- Alerts Page ---
@@ -3129,33 +3128,33 @@ function Alerts(){
           <span style={{fontSize:12,opacity:.8}}>Last</span>
           <input type="number" min="1" max="90" value={days} onChange={e=>setDays(Number(e.target.value)||7)} style={{...s.input,width:70}}/>
           <span style={{fontSize:12,opacity:.8}}>days</span>
-        </section>|</div>
+        </div>
         <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13}}>
           <input type="checkbox" checked={onlyAnomalies} onChange={e=>setOnlyAnomalies(e.target.checked)}/>Only anomalies
         </label>
         <button onClick={()=>fetchAlerts(true)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>{loading?"Loading…":"Refresh"}</button>
         <button onClick={()=>fetchAlerts(false)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>Load more</button>
-      </section>|</div>
-    </section>|</div>
-    {loading && <div style={{opacity:.8}}>Loading…</section>|</div>}
-    {err && <div style={{border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:8,padding:10,margin:"8px 0"}}>Error: {err}</section>|</div>}
-    {!loading && !items.length && !err && <div style={{opacity:.7}}>No alerts.</section>|</div>}
+      </div>
+    </div>
+    {loading && <div style={{opacity:.8}}>Loading…</div>}
+    {err && <div style={{border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:8,padding:10,margin:"8px 0"}}>Error: {err}</div>}
+    {!loading && !items.length && !err && <div style={{opacity:.7}}>No alerts.</div>}
     {!!items.length && <div>
       <div style={{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.12)"}}>
-        <div style={s.head}>When</section>|</div><div style={s.head}>Source</section>|</div><div style={s.head}>From</section>|</div><div style={s.head}>Subject</section>|</div><div style={s.head}>Preview</section>|</div><div style={s.head}>Status</section>|</div><div style={s.head}>Threat</section>|</div>
-      </section>|</div>
+        <div style={s.head}>When</div><div style={s.head}>Source</div><div style={s.head}>From</div><div style={s.head}>Subject</div><div style={s.head}>Preview</div><div style={s.head}>Status</div><div style={s.head}>Threat</div>
+      </div>
       {items.map(a=><div key={a.id} style={{...s.row,cursor:"pointer"}} onClick={()=>openAlert(a)}>
-        <div style={{opacity:.85}}>{fmt(a.created_at||a.event?.when)}</section>|</div>
-        <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></section>|</div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.from||a.from_addr||"—"}</section>|</div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.subject||"—"}</section>|</div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.preview||"—"}</section>|</div>
-        <div><span style={s.badge(a.status||"new")}>{a.status||"new"}</span></section>|</div>
-        <div>{a.score!=null?<span style={s.threat(a.score)}>{threatLabel(a.score)} • {a.score}</span>:"—"}</section>|</div>
-      </section>|</div>)}
-    </section>|</div>}
-    {drawerOpen && <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:1000}} onClick={closeDrawer}/><aside style={{position:"fixed",top:0,right:0,height:"100%",width:"min(560px,92vw)",background:"rgba(28,30,38,.96)",borderLeft:"1px solid rgba(255,255,255,.12)",zIndex:1001,display:"flex",flexDirection:"column"}}><div style={{display:"flex",justifyContent:"space-between",padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.08)"}}><div><div style={{fontWeight:700,fontSize:16}}>{selected?.subject||"(no subject)"}</section>|</div><div style={{fontSize:12,opacity:.8}}>From: {selected?.from||selected?.from_addr||"—"}</section>|</div></section>|</div><button onClick={closeDrawer} style={{padding:"6px 10px",borderRadius:8}}>Close</button></section>|</div><div style={{padding:16,overflow:"auto"}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div><b>Source</b><div>{sourceOf(selected)}</section>|</div></section>|</div><div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></section>|</div></section>|</div></section>|</div><pre style={{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"}}>{JSON.stringify(selected,null,2)}</pre></section>|</div></aside></>}
-  </section>|</div>);
+        <div style={{opacity:.85}}>{fmt(a.created_at||a.event?.when)}</div>
+        <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></div>
+        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.from||a.from_addr||"—"}</div>
+        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.subject||"—"}</div>
+        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.preview||"—"}</div>
+        <div><span style={s.badge(a.status||"new")}>{a.status||"new"}</span></div>
+        <div>{a.score!=null?<span style={s.threat(a.score)}>{threatLabel(a.score)} • {a.score}</span>:"—"}</div>
+      </div>)}
+    </div>}
+    {drawerOpen && <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:1000}} onClick={closeDrawer}/><aside style={{position:"fixed",top:0,right:0,height:"100%",width:"min(560px,92vw)",background:"rgba(28,30,38,.96)",borderLeft:"1px solid rgba(255,255,255,.12)",zIndex:1001,display:"flex",flexDirection:"column"}}><div style={{display:"flex",justifyContent:"space-between",padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.08)"}}><div><div style={{fontWeight:700,fontSize:16}}>{selected?.subject||"(no subject)"}</div><div style={{fontSize:12,opacity:.8}}>From: {selected?.from||selected?.from_addr||"—"}</div></div><button onClick={closeDrawer} style={{padding:"6px 10px",borderRadius:8}}>Close</button></div><div style={{padding:16,overflow:"auto"}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div><b>Source</b><div>{sourceOf(selected)}</div></div><div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></div></div></div><pre style={{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"}}>{JSON.stringify(selected,null,2)}</pre></div></aside></>}
+  </div>);
 }
 function TestEvents({ api }){
   const [out, setOut] = React.useState("");
@@ -3197,12 +3196,12 @@ function TestEvents({ api }){
      {showTrial && !isProPlus && (
   <div style={{margin:"10px 0",padding:"10px 12px",border:"1px solid #c69026",background:"#c6902615",borderRadius:10}}>
     Pro+ trial — <b>{trialDays}</b> day{trialDays===1?'':'s'} left. Enjoy Pro+ features during your trial.
-  </section>|</div>
+  </div>
 )}
       {!apiKey && (
         <div style={styles.warn}>
           No API key set. Create one in <a href="/account">Account</a>; it will be read from <code>localStorage.api_key</code>.
-        </section>|</div>
+        </div>
       )}
 
       {/* Email — always */}
@@ -3215,7 +3214,7 @@ function TestEvents({ api }){
             emails:[{from:"Support <help@paypa1.com>",subject:"Urgent: verify your account"}]
           })}
         >Send sample</button>
-      </section>|</div>
+      </div>
 
       {/* EDR — Pro/Pro+ */}
       {caps.edr ? (
@@ -3229,10 +3228,10 @@ function TestEvents({ api }){
                 events:[{host:"FINANCE-LAPTOP-7",process:"powershell.exe",cmdline:"powershell -enc SQBFAE4A...",file_ops:{burst:1200}}]
               })}
             >Send sample</button>
-          </section>|</div>
+          </div>
         </>
       ) : (
-        <div style={styles.row}><b>EDR</b><span style={{opacity:.8}}>Locked — upgrade to Pro or Pro+.</span></section>|</div>
+        <div style={styles.row}><b>EDR</b><span style={{opacity:.8}}>Locked — upgrade to Pro or Pro+.</span></div>
       )}
 
       {/* DNS — Pro/Pro+ */}
@@ -3247,10 +3246,10 @@ function TestEvents({ api }){
                 events:[{qname:"evil-top-domain.top",qtype:"A",newly_registered:true,verdict:"dns-tunnel"}]
               })}
             >Send sample</button>
-          </section>|</div>
+          </div>
         </>
       ) : (
-        <div style={styles.row}><b>DNS</b><span style={{opacity:.8}}>Locked — upgrade to Pro or Pro+.</span></section>|</div>
+        <div style={styles.row}><b>DNS</b><span style={{opacity:.8}}>Locked — upgrade to Pro or Pro+.</span></div>
       )}
 
       {/* UEBA — Pro+ */}
@@ -3261,9 +3260,9 @@ function TestEvents({ api }){
             style={styles.btn}
             onClick={()=>alert("UEBA test will be enabled once /ueba/ingest exists in the API.")}
           >Coming soon</button>
-        </section>|</div>
+        </div>
       ) : (
-        <div style={styles.row}><b>UEBA</b><span style={{opacity:.8}}>Locked — available on Pro+.</span></section>|</div>
+        <div style={styles.row}><b>UEBA</b><span style={{opacity:.8}}>Locked — available on Pro+.</span></div>
       )}
 
       {/* Cloud — Pro+ */}
@@ -3274,9 +3273,9 @@ function TestEvents({ api }){
             style={styles.btn}
             onClick={()=>alert("Cloud test will be enabled once /cloud/ingest exists in the API.")}
           >Coming soon</button>
-        </section>|</div>
+        </div>
       ) : (
-        <div style={styles.row}><b>Cloud</b><span style={{opacity:.8}}>Locked — available on Pro+.</span></section>|</div>
+        <div style={styles.row}><b>Cloud</b><span style={{opacity:.8}}>Locked — available on Pro+.</span></div>
       )}
 
       {/* AI — Pro+ (preview on Trial) */}
@@ -3289,18 +3288,18 @@ function TestEvents({ api }){
               ? "Trial preview: this will call /ai/ask with a sample question and display the model's answer."
               : "AI test coming soon: will exercise /ai/ask with a sample question and show the model's answer here.")}
           >{showTrial ? "Preview (trial)" : "Preview"}</button>
-        </section>|</div>
+        </div>
       ) : (
-        <div style={styles.row}><b>AI</b><span style={{opacity:.8}}>Locked — available on Pro+.</span></section>|</div>
+        <div style={styles.row}><b>AI</b><span style={{opacity:.8}}>Locked — available on Pro+.</span></div>
       )}
 
       {(out||err) && (
         <div>
-          {err && <div style={styles.err}>Error: {err}</section>|</div>}
+          {err && <div style={styles.err}>Error: {err}</div>}
           {out && <pre style={styles.pre}>{out}</pre>}
-        </section>|</div>
+        </div>
       )}
-    </section>|</div>
+    </div>
   );
 }
 // ---- Capabilities Helper ----
@@ -3410,7 +3409,7 @@ function BillingPanel() {
       {err ? (
         <div style={{ background: "#fee", border: "1px solid #f99", padding: 12, borderRadius: 6, marginBottom: 12 }}>
           {String(err)}
-        </section>|</div>
+        </div>
       ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px,1fr))", gap: 16 }}>
@@ -3448,15 +3447,15 @@ function BillingPanel() {
           loading={loading}
           highlight
         />
-      </section>|</div>
+      </div>
 
       <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
         <button onClick={openPortal} disabled={loading} style={{ padding: "10px 14px" }}>
           Manage billing (Stripe portal)
         </button>
         <Link to="/" style={{ alignSelf: "center" }}>← Back to dashboard</Link>
-      </section>|</div>
-    </section>|</div>
+      </div>
+    </div>
   );
 }
 
@@ -3469,7 +3468,7 @@ function PlanCard({ name, price, features, onChoose, loading, highlight }) {
       boxShadow: highlight ? "0 2px 10px rgba(0,0,0,0.06)" : "none"
     }}>
       <h3 style={{ marginTop: 0 }}>{name}</h3>
-      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{price}</section>|</div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{price}</div>
       <ul style={{ paddingLeft: 18, marginTop: 8 }}>
         {features.map((f, i) => <li key={i}>{f}</li>)}
       </ul>
@@ -3480,7 +3479,7 @@ function PlanCard({ name, price, features, onChoose, loading, highlight }) {
       >
         {loading ? "Please wait…" : `Choose ${name}`}
       </button>
-    </section>|</div>
+    </div>
   );
 }
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -3490,4 +3489,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </React.StrictMode>
 );
-</section>|</div>
+</div>
