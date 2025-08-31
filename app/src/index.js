@@ -700,7 +700,7 @@ function extractBearer(req) {
 // --- M365 OAuth start (robust) ---
 app.get("/auth/m365/start", async (req, res) => {
   try {
-    const FRONTEND_URL = process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com";
+    const FRONTEND_URL = process.env.FRONTEND_URL || "https://cyberguard-pro-cloud.onrender.com";
     // Prefer multi-tenant flows unless a specific tenant is configured
     const wantedTenant = (process.env.M365_TENANT || "").trim().toLowerCase();
     const TENANT = wantedTenant && wantedTenant !== "common" && wantedTenant !== "consumers"
@@ -770,6 +770,7 @@ app.get("/auth/m365/diag", (req, res) => {
 
 app.get("/auth/m365/callback", async (req, res) => {
   try {
+    const FRONTEND_URL = process.env.FRONTEND_URL || "https://cyberguard-pro-cloud.onrender.com";
     const { code, state, error, error_description } = req.query || {};
     if (error) return res.status(400).send(String(error_description || error));
     if (!code || !state) return res.status(400).send("missing code/state");
@@ -794,7 +795,7 @@ app.get("/auth/m365/callback", async (req, res) => {
     // Preferred tenant from env; fall back to 'common'
     const envTenant = (process.env.M365_TENANT || process.env.M365_TENANT_ID || "").trim();
     const preferredTenant = envTenant || "common";
-    const redirectUri = process.env.M365_REDIRECT_URI || process.env.M365_REDIRECT || ((process.env.FRONTEND_URL || "https://cyberguard-pro-cloud-1.onrender.com").replace(/\/$/, "") + "/auth/m365/callback");
+    const redirectUri = process.env.M365_REDIRECT_URI || process.env.M365_REDIRECT || ((process.env.FRONTEND_URL || "https://cyberguard-pro-cloud.onrender.com").replace(/\/$/, "") + "/auth/m365/callback");
 
     async function exchangeWithTenant(tenantSlug) {
       const body = new URLSearchParams({
