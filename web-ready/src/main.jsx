@@ -1085,12 +1085,6 @@ function useNav(){
   },[]);
   return { me, loading, err };
 }
-function RequireAuth({children}){
-  const { me, loading } = useNav();
-  if(loading) return <div style={{padding:16}}>Loading…</div>;
-  if(!me) return <Navigate to="/login" replace />;
-  return children;
-}
 
 // ---------- Pages ----------
 function Login(){
