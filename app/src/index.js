@@ -2338,15 +2338,16 @@ async function writeAlert(tenant_id, ev){
     return s === 'true' || s === '1' || s === 'yes';
   })(_ev?.anomaly);
 
-  await q(`INSERT INTO alerts(
+  const ts = now();
+await q(`INSERT INTO alerts(
              id, tenant_id, event_json, score, status, created_at,
              from_addr, type, subject, preview, anomaly
            )
            VALUES($1,$2,$3,$4,'new',$5,$6,$7,$8,$9,$10)`,
-          [id, tenant_id, ev, score, now(),
+          [id, tenant_id, ev, score, ts,
            _from_addr, _type, _subject, _preview, _anomaly]);
 
-  const alert={id,tenant_id,event_json:ev,score,status:'new',created_at:now()};
+const alert = { id, tenant_id, event_json: ev, score, status: 'new', created_at: ts };
   await maybeAct(tenant_id,alert,p);
   try { bus.emit('alert', { tenant_id, alert }); } catch(_e) {}
   return alert;
