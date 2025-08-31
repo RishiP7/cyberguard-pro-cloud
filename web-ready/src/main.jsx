@@ -2560,9 +2560,9 @@ function Integrations({ api }) {
   }
 
   // Handle OAuth return flags (?connected=..., ok=..., err=...)
-  React.useEffect(() => {
-    const url = new URL(window.location.href);
-    const sp = url.searchParams;
+React.useEffect(() => {
+  try {
+    const sp = new URLSearchParams(window.location.search || '');
     const connected = sp.get('connected');
     if (connected) {
       const ok  = sp.get('ok');
@@ -2575,16 +2575,21 @@ function Integrations({ api }) {
       }
       setTimeout(() => setToast(''), 1800);
 
-      // remove flags from the URL
+      // remove flags from the URL (Safari-safe)
       sp.delete('connected');
       sp.delete('ok');
       sp.delete('err');
-      window.history.replaceState({}, '', url.toString());
+
+      const qs = sp.toString();
+      const clean = window.location.origin + window.location.pathname + (qs ? ('?' + qs) : '');
+      window.history.replaceState({}, '', clean);
 
       fetchConnStatus();
     }
-  }, []);
-
+  } catch (_e) {
+    // ignore parsing errors
+  }
+}, []);
   // Load current connection status on first render
   React.useEffect(() => {
     fetchConnStatus();
