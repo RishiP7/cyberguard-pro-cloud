@@ -894,10 +894,11 @@ function Layout({children}){
         </div>
         <div style={navRow}>
           <N to="/">Dashboard</N>
+          <N to="/alerts">Alerts</N>
           <N to="/integrations">Integrations</N>
-<N to="/policy">Policy</N>
-<N to="/pricing">Pricing</N>
-<N to="/account">Account</N>
+          <N to="/policy">Policy</N>
+          <N to="/pricing">Pricing</N>
+          <N to="/account">Account</N>
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin">Admin</N>)}
           {(me?.is_super || me?.role === 'owner') && (<N to="/admin/console/trial">Admin Console</N>)}
           <N to="/test">Test</N>
