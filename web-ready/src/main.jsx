@@ -2760,241 +2760,99 @@ function Alerts(){
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
   const [q, setQ] = React.useState("");
+  const [days, setDays] = React.useState(7);
+  const [onlyAnomalies, setOnlyAnomalies] = React.useState(false);
+  const [page, setPage] = React.useState(0);
 
-  // --- Details drawer state & helpers ---
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [selected, setSelected] = React.useState(null);
 
-  function openAlert(a){
-    setSelected(a);
-    setDrawerOpen(true);
-  }
-  function closeDrawer(){
-    setDrawerOpen(false);
-    setSelected(null);
-  }
-  function copyText(text){
-    try{ navigator.clipboard.writeText(String(text||'')); }catch(_e){}
-  }
-  const drawer = {
-    overlay:{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',zIndex:1000},
-    panel:{position:'fixed',top:0,right:0,height:'100%',width:'min(560px, 92vw)',background:'linear-gradient(180deg, rgba(28,30,38,.98), rgba(22,24,30,.96))',borderLeft:'1px solid rgba(255,255,255,.12)',boxShadow:'-24px 0 48px rgba(0,0,0,.4)',zIndex:1001,display:'flex',flexDirection:'column'},
-    header:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,.08)'},
-    body:{padding:16,overflow:'auto'}
-  };
+  function openAlert(a){ setSelected(a); setDrawerOpen(true); }
+  function closeDrawer(){ setSelected(null); setDrawerOpen(false); }
+  function copyText(txt){ try{ navigator.clipboard.writeText(String(txt||"")); }catch{} }
+
   function threatLabel(score){
-    if(score>=70) return 'High';
-    if(score>=40) return 'Medium';
-    if(score!=null) return 'Low';
-    return '—';
+    if(score>=70) return "High";
+    if(score>=40) return "Medium";
+    if(score!=null) return "Low";
+    return "—";
   }
 
+  function buildAlertsUrl(days, limit, query, anomaliesOnly){
+    const origin = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+           ? "https://cyberguard-pro-cloud.onrender.com"
+           : "http://localhost:8080");
+    const params = new URLSearchParams();
+    params.set("days", String(days||7));
+    params.set("limit", String(limit||100));
+    if(query) params.set("q", query);
+    if(anomaliesOnly) params.set("anomaly", "1");
+    return `${origin}/alerts/export?${params.toString()}`;
+  }
+
+  async function fetchAlerts(reset=false){
+    const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+    const url = buildAlertsUrl(days,100,q,onlyAnomalies);
+    setLoading(true); setErr("");
+    try{
+      const r = await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      const list = Array.isArray(j?.alerts)? j.alerts:[];
+      setItems(prev=>reset?list:[...prev,...list]);
+      setPage(p=>reset?1:p+1);
+    }catch(e){ setErr(e?.message||"Failed to load alerts"); }
+    finally{ setLoading(false); }
+  }
+
+  React.useEffect(()=>{ fetchAlerts(true); },[]);
   React.useEffect(()=>{
-    let live = true;
-    (async()=>{
-      setLoading(true); setErr("");
-      try{
-        const j = await apiGet('/alerts/recent');
-        if(live) setItems(Array.isArray(j?.alerts) ? j.alerts : []);
-      }catch(e){ if(live) setErr('Failed to load alerts'); }
-      finally{ if(live) setLoading(false); }
-    })();
-    return ()=>{ live = false; };
-  },[]);
+    const t=setTimeout(()=>fetchAlerts(true),300);
+    return ()=>clearTimeout(t);
+  },[q,days,onlyAnomalies]);
 
-  const filtered = React.useMemo(()=>{
-    const term = (q||"").trim().toLowerCase();
-    if(!term) return items;
-    return items.filter(a => {
-      const from = String(a.from || a.from_addr || "").toLowerCase();
-      const subj = String(a.subject || "").toLowerCase();
-      const prev = String(a.preview || "").toLowerCase();
-      return from.includes(term) || subj.includes(term) || prev.includes(term);
-    });
-  },[q, items]);
+  const s={wrap:{padding:16},row:{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,.08)"},head:{fontSize:12,opacity:.7,padding:"6px 0"},badge:(st)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:st==="new"?"rgba(59,130,246,.15)":"transparent"}),src:(k)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:k==="Email"?"rgba(59,130,246,.18)":k==="DNS"?"rgba(99,102,241,.18)":k==="EDR"?"rgba(16,185,129,.18)":k==="Cloud"?"rgba(234,179,8,.18)":"transparent"}),threat:(sc)=>({fontSize:12,padding:"2px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.18)",background:sc>=70?"rgba(220,38,38,.2)":sc>=40?"rgba(234,179,8,.2)":"rgba(34,197,94,.2)"}),input:{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit"}};
 
-  const s = {
-    wrap:{ padding:16 },
-    row:{ display:'grid', gridTemplateColumns:'160px 120px 220px 1fr 1fr 80px 120px', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,.08)' },
-    head:{ fontSize:12, opacity:.7, padding:'6px 0' },
-    badge:(st)=>({ fontSize:12, padding:'2px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.18)', background: st==='new' ? 'rgba(59,130,246,.15)' : 'transparent' }),
-    src:(kind)=>({
-      fontSize:12,
-      padding:'2px 8px',
-      borderRadius:999,
-      border:'1px solid rgba(255,255,255,.18)',
-      background: kind==='Email' ? 'rgba(59,130,246,.18)'
-               : kind==='DNS'   ? 'rgba(99,102,241,.18)'
-               : kind==='EDR'   ? 'rgba(16,185,129,.18)'
-               : kind==='Cloud' ? 'rgba(234,179,8,.18)'
-               : 'transparent'
-    }),
-    threat:(score)=>({
-      fontSize:12,
-      padding:'2px 6px',
-      borderRadius:6,
-      border:'1px solid rgba(255,255,255,.18)',
-      background: score>=70 ? 'rgba(220,38,38,.2)' : score>=40 ? 'rgba(234,179,8,.2)' : 'rgba(34,197,94,.2)'
-    })
-  };
+  function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch{ return "—"; } }
+  function sourceOf(a){ const v=String(a?.source||a?.evt_type||a?.type||a?.event?.type||"").toLowerCase(); if(v.includes("email")||a?.from) return "Email"; if(v.includes("dns")) return "DNS"; if(v.includes("edr")||v.includes("endpoint")) return "EDR"; if(v.includes("cloud")||v.includes("aws")||v.includes("azure")||v.includes("gcp")) return "Cloud"; return "—"; }
 
-  function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch(_e){ return '—'; } }
-
-  function sourceOf(a){
-    const v = String(a?.source || a?.evt_type || a?.type || a?.event?.type || '').toLowerCase();
-    if (v.includes('email') || a?.from || a?.from_addr) return 'Email';
-    if (v.includes('dns')) return 'DNS';
-    if (v.includes('edr') || v.includes('endpoint')) return 'EDR';
-    if (v.includes('cloud') || v.includes('aws') || v.includes('azure') || v.includes('gcp')) return 'Cloud';
-    return '—';
-  }
-
-  return (
-    <div style={s.wrap}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-        <h1 style={{margin:0}}>Alerts</h1>
-        <input
-          placeholder="Filter by from / subject / preview"
-          value={q}
-          onChange={e=>setQ(e.target.value)}
-          style={{padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.14)', background:'rgba(255,255,255,.06)', color:'inherit', width:320}}
-        />
-      </div>
-
-      {loading && <div style={{opacity:.8}}>Loading…</div>}
-      {err && <div style={{border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8, padding:10, margin:'8px 0'}}>Error: {err}</div>}
-      {!loading && !filtered.length && <div style={{opacity:.7}}>No alerts found.</div>}
-
-      {!!filtered.length && (
-        <div>
-          <div style={{display:'flex',gap:8,alignItems:'center',margin:'8px 0',fontSize:12,opacity:.85}}>
-            <b>Threat levels:</b>
-            <span style={{padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.18)',background:'rgba(34,197,94,.2)'}}>Low (0–39)</span>
-            <span style={{padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.18)',background:'rgba(234,179,8,.2)'}}>Medium (40–69)</span>
-            <span style={{padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.18)',background:'rgba(220,38,38,.2)'}}>High (70–100)</span>
-          </div>
-          <div style={{display:'grid', gridTemplateColumns:'160px 120px 220px 1fr 1fr 80px 120px', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.12)'}}>
-            <div style={s.head}>When</div>
-            <div style={s.head}>Source</div>
-            <div style={s.head}>From</div>
-            <div style={s.head}>Subject</div>
-            <div style={s.head}>Preview</div>
-            <div style={s.head}>Status</div>
-            <div style={s.head}>Threat</div>
-          </div>
-          {filtered.map(a => (
-            <div
-              key={a.id}
-              style={{...s.row, cursor:'pointer'}}
-              onClick={()=>openAlert(a)}
-              title="View details"
-            >
-              <div style={{opacity:.85}}>{fmt(a.created_at || a.event?.when)}</div>
-              <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></div>
-              <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</div>
-              <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.subject || '—'}</div>
-              <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.preview || '—'}</div>
-              <div><span style={s.badge(a.status || 'new')}>{a.status || 'new'}</span></div>
-              <div>
-                {a.score!=null ? (
-                  <span style={s.threat(a.score)}>
-                    {a.score>=70 ? `High` : a.score>=40 ? `Medium` : `Low`}
-                  </span>
-                ) : '—'}
-              </div>
-            </div>
-          ))}
+  return (<div style={s.wrap}>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"space-between",marginBottom:8}}>
+      <h1 style={{margin:0}}>Alerts</h1>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...s.input,width:320}}/>
+        <div style={{display:"inline-flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:12,opacity:.8}}>Last</span>
+          <input type="number" min="1" max="90" value={days} onChange={e=>setDays(Number(e.target.value)||7)} style={{...s.input,width:70}}/>
+          <span style={{fontSize:12,opacity:.8}}>days</span>
         </div>
-      )}
-      {drawerOpen && (
-        <>
-          <div style={drawer.overlay} onClick={closeDrawer} />
-          <aside style={drawer.panel} role="dialog" aria-modal="true" aria-label="Alert details">
-            <div style={drawer.header}>
-              <div style={{display:'grid', gap:4}}>
-                <div style={{fontWeight:700, fontSize:16}}>
-                  {selected?.subject || '(no subject)'}
-                </div>
-                <div style={{fontSize:12, opacity:.8}}>
-                  From: {selected?.from || selected?.from_addr || '—'}
-                </div>
-              </div>
-              <button
-                onClick={closeDrawer}
-                style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'inherit'}}
-              >
-                Close
-              </button>
-            </div>
-            <div style={drawer.body}>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12}}>
-                <div><b>Source</b><div style={{opacity:.85}}>{sourceOf(selected)}</div></div>
-                <div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></div></div>
-                <div><b>Status</b><div><span style={s.badge(selected?.status || 'new')}>{selected?.status || 'new'}</span></div></div>
-                <div><b>When</b><div style={{opacity:.85}}>{fmt(selected?.created_at || selected?.event?.when)}</div></div>
-              </div>
-
-              {selected?.preview ? (
-                <>
-                  <b>Preview</b>
-                  <div style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)',margin:'6px 0 12px'}}>
-                    {selected.preview}
-                  </div>
-                </>
-              ) : null}
-
-              {/* Raw event / full JSON */}
-              {selected ? (
-                <>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:6}}>
-                    <b>Raw event</b>
-                    <button
-                      onClick={()=>copyText(JSON.stringify(selected,null,2))}
-                      style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'inherit'}}
-                      title="Copy JSON"
-                    >Copy JSON</button>
-                  </div>
-                  <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>
-{JSON.stringify(selected, null, 2)}
-                  </pre>
-                </>
-              ) : null}
-
-              {/* Simple guidance */}
-              <div style={{marginTop:16, padding:'10px 12px', border:'1px solid rgba(255,255,255,.12)', borderRadius:10, background:'rgba(255,255,255,.04)'}}>
-                <div style={{fontWeight:600, marginBottom:6}}>What to do</div>
-                <ul style={{margin:0, paddingLeft:18}}>
-                  {sourceOf(selected)==='Email' ? (
-                    <>
-                      <li>Verify the sender and any links before interacting.</li>
-                      <li>If unexpected or suspicious, mark as phishing in your mail client.</li>
-                    </>
-                  ) : sourceOf(selected)==='DNS' ? (
-                    <>
-                      <li>Check the domain in your DNS security policy.</li>
-                      <li>Consider blocking or quarantining if reputation is poor.</li>
-                    </>
-                  ) : sourceOf(selected)==='EDR' ? (
-                    <>
-                      <li>Review the process and host details on your endpoint.</li>
-                      <li>Isolate the device if malicious behavior is confirmed.</li>
-                    </>
-                  ) : sourceOf(selected)==='Cloud' ? (
-                    <>
-                      <li>Validate the cloud resource and action in your provider console.</li>
-                      <li>Revoke suspicious access keys or roles.</li>
-                    </>
-                  ) : (
-                    <li>Review context and confirm if this requires action.</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-          </aside>
-        </>
-      )}
+        <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13}}>
+          <input type="checkbox" checked={onlyAnomalies} onChange={e=>setOnlyAnomalies(e.target.checked)}/>Only anomalies
+        </label>
+        <button onClick={()=>fetchAlerts(true)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>{loading?"Loading…":"Refresh"}</button>
+        <button onClick={()=>fetchAlerts(false)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>Load more</button>
+      </div>
     </div>
-  );
+    {loading && <div style={{opacity:.8}}>Loading…</div>}
+    {err && <div style={{border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:8,padding:10,margin:"8px 0"}}>Error: {err}</div>}
+    {!loading && !items.length && !err && <div style={{opacity:.7}}>No alerts.</div>}
+    {!!items.length && <div>
+      <div style={{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.12)"}}>
+        <div style={s.head}>When</div><div style={s.head}>Source</div><div style={s.head}>From</div><div style={s.head}>Subject</div><div style={s.head}>Preview</div><div style={s.head}>Status</div><div style={s.head}>Threat</div>
+      </div>
+      {items.map(a=><div key={a.id} style={{...s.row,cursor:"pointer"}} onClick={()=>openAlert(a)}>
+        <div style={{opacity:.85}}>{fmt(a.created_at||a.event?.when)}</div>
+        <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></div>
+        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.from||a.from_addr||"—"}</div>
+        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.subject||"—"}</div>
+        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.preview||"—"}</div>
+        <div><span style={s.badge(a.status||"new")}>{a.status||"new"}</span></div>
+        <div>{a.score!=null?<span style={s.threat(a.score)}>{threatLabel(a.score)}</span>:"—"}</div>
+      </div>)}
+    </div>}
+    {drawerOpen && <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:1000}} onClick={closeDrawer}/><aside style={{position:"fixed",top:0,right:0,height:"100%",width:"min(560px,92vw)",background:"rgba(28,30,38,.96)",borderLeft:"1px solid rgba(255,255,255,.12)",zIndex:1001,display:"flex",flexDirection:"column"}}><div style={{display:"flex",justifyContent:"space-between",padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.08)"}}><div><div style={{fontWeight:700,fontSize:16}}>{selected?.subject||"(no subject)"}</div><div style={{fontSize:12,opacity:.8}}>From: {selected?.from||selected?.from_addr||"—"}</div></div><button onClick={closeDrawer} style={{padding:"6px 10px",borderRadius:8}}>Close</button></div><div style={{padding:16,overflow:"auto"}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div><b>Source</b><div>{sourceOf(selected)}</div></div><div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></div></div></div><pre style={{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"}}>{JSON.stringify(selected,null,2)}</pre></div></aside></>}
+  </div>);
 }
 function TestEvents({ api }){
   const [out, setOut] = React.useState("");
