@@ -2189,6 +2189,11 @@ function LiveEmailScanner(){
   const rafRef = React.useRef(0);
   const particlesRef = React.useRef([]);
   const lastCountRef = React.useRef(0);
+
+  // NEW: hold recent alerts (last ~50) and currently selected alert
+  const [recent, setRecent] = React.useState([]);
+  const [selected, setSelected] = React.useState(null);
+
   const [stats, setStats] = React.useState({
     total: 0,
     new5: 0,
@@ -2214,6 +2219,10 @@ function LiveEmailScanner(){
         const j = await r.json();
         if(!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
         const list = Array.isArray(j.alerts) ? j.alerts : [];
+
+        // sort newest first and store the most recent 50
+        list.sort((a,b)=> (Number(b.created_at||0) - Number(a.created_at||0)));
+        setRecent(list.slice(0,50));
 
         const now = Date.now();
         const new5 = list.filter(a=> (Number(a.created_at)||0)*1000 >= (now - 5*60*1000)).length;
@@ -2312,6 +2321,15 @@ function LiveEmailScanner(){
     }
   }
 
+  // simple threat mapping shared with AlertsPage
+  function riskFromScore(score){
+    const s = Number(score);
+    if (isNaN(s)) return {label:'—', color:'#a1a1aa', bg:'rgba(161,161,170,.12)'};
+    if (s >= 70) return {label:'High', color:'#ef4444', bg:'rgba(239,68,68,.12)'};
+    if (s >= 40) return {label:'Medium', color:'#eab308', bg:'rgba(234,179,8,.15)'};
+    return {label:'Low', color:'#22c55e', bg:'rgba(34,197,94,.15)'};
+  }
+
   const s = {
     shell:{
       border:'1px solid rgba(255,255,255,.12)',
@@ -2323,7 +2341,10 @@ function LiveEmailScanner(){
     live:{display:'inline-flex',alignItems:'center',gap:6,fontSize:12,letterSpacing:.3},
     dot:{width:8,height:8,borderRadius:99,background:'#14f195',boxShadow:'0 0 12px #14f195aa, 0 0 20px #14f19566'},
     stat:{fontSize:13,opacity:.9},
-    canvasWrap:{height:180,border:'1px solid rgba(255,255,255,.08)',borderRadius:10,overflow:'hidden'}
+    canvasWrap:{height:180,border:'1px solid rgba(255,255,255,.08)',borderRadius:10,overflow:'hidden'},
+    listWrap:{marginTop:12, border:'1px solid rgba(255,255,255,.08)', borderRadius:10, overflow:'hidden'},
+    row:{display:'grid',gridTemplateColumns:'220px 1fr 140px',gap:10,alignItems:'center',padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.06)',cursor:'pointer'},
+    tag:{display:'inline-block',padding:'2px 6px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,opacity:.85,fontSize:12}
   };
 
   return (
@@ -2337,27 +2358,116 @@ function LiveEmailScanner(){
           <div style={{fontSize:12,opacity:.65}}>Updated: {stats.updatedAt||'–'}</div>
         </div>
       </div>
+
       <div style={s.canvasWrap}>
         <canvas ref={canvasRef} style={{width:'100%',height:'100%',display:'block'}}/>
       </div>
+
+      {/* NEW: Recently scanned emails list */}
+      <div style={s.listWrap}>
+        <div style={{padding:'8px 10px',opacity:.85,fontSize:13,background:'rgba(255,255,255,.02)'}}>Recently scanned (latest 50)</div>
+        <div style={{maxHeight:240, overflowY:'auto'}}>
+          {recent.length===0 ? (
+            <div style={{opacity:.75,padding:10}}>Waiting for scans…</div>
+          ) : recent.map(a=>{
+            const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
+            const risk = (a?.score!=null) ? riskFromScore(a.score) : null;
+            const type = a?.evt_type || a?.type || 'email';
+            return (
+              <div key={a.id} style={s.row} onClick={()=>setSelected(a)}>
+                <div>
+                  <div style={{fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</div>
+                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
+                </div>
+                <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                  <div style={{fontWeight:600}}>{a.subject || '—'}</div>
+                  <div style={{opacity:.85}}>{a.preview || '—'}</div>
+                </div>
+                <div style={{display:'flex',gap:6,justifyContent:'flex-end',alignItems:'center'}}>
+                  <span style={s.tag}>{type}</span>
+                  {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
+                  {risk && <span style={{...s.tag, borderColor:risk.color, background:risk.bg, color:risk.color}}>{risk.label}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* NEW: quick details modal */}
+      {selected && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000}}>
+          <div style={{width:'min(840px,94vw)',maxHeight:'86vh',overflow:'auto',background:'linear-gradient(180deg, rgba(28,30,38,.96), rgba(22,24,30,.94))',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,padding:16,boxShadow:'0 18px 48px rgba(0,0,0,.35)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div style={{fontWeight:700}}>Email details</div>
+              <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 260px',gap:12,alignItems:'start'}}>
+              <div>
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</div>
+                <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</div>
+
+                <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</div>
+                <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{selected.preview || '—'}</pre>
+              </div>
+              <div>
+                <div style={{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
+                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</div>
+                  <div style={{fontSize:13,display:'grid',gap:6}}>
+                    <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
+                    <div><b>Type:</b> {selected.evt_type || 'email'}</div>
+                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
+                    {selected.score!=null ? (()=>{ const r=riskFromScore(selected.score); return (<div><b>Threat:</b> {r.label} <span style={{opacity:.7}}>(score {selected.score})</span></div>); })() : <div><b>Threat:</b> —</div>}
+                    {(selected.anomaly_txt||"").trim() ? <div><b>Anomaly:</b> {selected.anomaly_txt}</div> : null}
+                  </div>
+
+                  <div style={{marginTop:10, display:'flex', gap:8, flexWrap:'wrap'}}>
+                    <button
+                      style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}
+                      onClick={async ()=>{
+                        const q = `from:"${(selected.from||selected.from_addr||'').replace(/"/g,'\\"')}" subject:"${(selected.subject||'').replace(/"/g,'\\"')}"`;
+                        try{ await navigator.clipboard.writeText(q); alert('Copied Outlook search to clipboard'); }catch(_e){ alert('Copy failed'); }
+                      }}>
+                      Copy Outlook Search
+                    </button>
+                    <button
+                      style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}
+                      onClick={async ()=>{
+                        try{ await navigator.clipboard.writeText(JSON.stringify(selected,null,2)); alert('Copied JSON to clipboard'); }catch(_e){ alert('Copy failed'); }
+                      }}>
+                      Copy JSON
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 function DashboardWithOnboarding(props){
   return (
     <div style={{padding:16}}>
-      {/* Live real-time visual */}
-      <CollapsibleSection id="live-scan" title="Live email scan" defaultCollapsed={false}>
+      {/* Render existing Dashboard first */}
+      <Dashboard {...props} />
+
+      {/* Live real-time visual – always shown */}
+      <div style={{marginTop:20}}>
+        <h2 style={{marginBottom:10}}>Live email scan</h2>
         <LiveEmailScanner/>
-      </CollapsibleSection>
+      </div>
+
+      {/* Keep onboarding/tips collapsible */}
       <CollapsibleSection id="onboarding" title="Get started" defaultCollapsed={true}>
         <OnboardingChecklist/>
       </CollapsibleSection>
       <CollapsibleSection id="explain" title="What am I looking at?" defaultCollapsed={true}>
         <OnboardingTips/>
       </CollapsibleSection>
-      {/* Render existing Dashboard below */}
-      <Dashboard {...props} />
     </div>
   );
 }
