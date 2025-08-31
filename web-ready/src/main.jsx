@@ -2760,6 +2760,34 @@ function Alerts(){
   const [err, setErr] = React.useState("");
   const [q, setQ] = React.useState("");
 
+  // --- Details drawer state & helpers ---
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState(null);
+
+  function openAlert(a){
+    setSelected(a);
+    setDrawerOpen(true);
+  }
+  function closeDrawer(){
+    setDrawerOpen(false);
+    setSelected(null);
+  }
+  function copyText(text){
+    try{ navigator.clipboard.writeText(String(text||'')); }catch(_e){}
+  }
+  const drawer = {
+    overlay:{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',zIndex:1000},
+    panel:{position:'fixed',top:0,right:0,height:'100%',width:'min(560px, 92vw)',background:'linear-gradient(180deg, rgba(28,30,38,.98), rgba(22,24,30,.96))',borderLeft:'1px solid rgba(255,255,255,.12)',boxShadow:'-24px 0 48px rgba(0,0,0,.4)',zIndex:1001,display:'flex',flexDirection:'column'},
+    header:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,.08)'},
+    body:{padding:16,overflow:'auto'}
+  };
+  function threatLabel(score){
+    if(score>=70) return 'High';
+    if(score>=40) return 'Medium';
+    if(score!=null) return 'Low';
+    return '—';
+  }
+
   React.useEffect(()=>{
     let live = true;
     (async()=>{
@@ -2854,7 +2882,12 @@ function Alerts(){
             <div style={s.head}>Threat</div>
           </div>
           {filtered.map(a => (
-            <div key={a.id} style={s.row}>
+            <div
+              key={a.id}
+              style={{...s.row, cursor:'pointer'}}
+              onClick={()=>openAlert(a)}
+              title="View details"
+            >
               <div style={{opacity:.85}}>{fmt(a.created_at || a.event?.when)}</div>
               <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></div>
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</div>
@@ -2862,15 +2895,102 @@ function Alerts(){
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.preview || '—'}</div>
               <div><span style={s.badge(a.status || 'new')}>{a.status || 'new'}</span></div>
               <div>
-  {a.score!=null ? (
-    <span style={s.threat(a.score)}>
-      {a.score>=70 ? `High` : a.score>=40 ? `Medium` : `Low`}
-    </span>
-  ) : '—'}
-</div>
+                {a.score!=null ? (
+                  <span style={s.threat(a.score)}>
+                    {a.score>=70 ? `High` : a.score>=40 ? `Medium` : `Low`}
+                  </span>
+                ) : '—'}
+              </div>
             </div>
           ))}
         </div>
+      )}
+      {drawerOpen && (
+        <>
+          <div style={drawer.overlay} onClick={closeDrawer} />
+          <aside style={drawer.panel} role="dialog" aria-modal="true" aria-label="Alert details">
+            <div style={drawer.header}>
+              <div style={{display:'grid', gap:4}}>
+                <div style={{fontWeight:700, fontSize:16}}>
+                  {selected?.subject || '(no subject)'}
+                </div>
+                <div style={{fontSize:12, opacity:.8}}>
+                  From: {selected?.from || selected?.from_addr || '—'}
+                </div>
+              </div>
+              <button
+                onClick={closeDrawer}
+                style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'inherit'}}
+              >
+                Close
+              </button>
+            </div>
+            <div style={drawer.body}>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12}}>
+                <div><b>Source</b><div style={{opacity:.85}}>{sourceOf(selected)}</div></div>
+                <div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></div></div>
+                <div><b>Status</b><div><span style={s.badge(selected?.status || 'new')}>{selected?.status || 'new'}</span></div></div>
+                <div><b>When</b><div style={{opacity:.85}}>{fmt(selected?.created_at || selected?.event?.when)}</div></div>
+              </div>
+
+              {selected?.preview ? (
+                <>
+                  <b>Preview</b>
+                  <div style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)',margin:'6px 0 12px'}}>
+                    {selected.preview}
+                  </div>
+                </>
+              ) : null}
+
+              {/* Raw event / full JSON */}
+              {selected ? (
+                <>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:6}}>
+                    <b>Raw event</b>
+                    <button
+                      onClick={()=>copyText(JSON.stringify(selected,null,2))}
+                      style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'inherit'}}
+                      title="Copy JSON"
+                    >Copy JSON</button>
+                  </div>
+                  <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>
+{JSON.stringify(selected, null, 2)}
+                  </pre>
+                </>
+              ) : null}
+
+              {/* Simple guidance */}
+              <div style={{marginTop:16, padding:'10px 12px', border:'1px solid rgba(255,255,255,.12)', borderRadius:10, background:'rgba(255,255,255,.04)'}}>
+                <div style={{fontWeight:600, marginBottom:6}}>What to do</div>
+                <ul style={{margin:0, paddingLeft:18}}>
+                  {sourceOf(selected)==='Email' ? (
+                    <>
+                      <li>Verify the sender and any links before interacting.</li>
+                      <li>If unexpected or suspicious, mark as phishing in your mail client.</li>
+                    </>
+                  ) : sourceOf(selected)==='DNS' ? (
+                    <>
+                      <li>Check the domain in your DNS security policy.</li>
+                      <li>Consider blocking or quarantining if reputation is poor.</li>
+                    </>
+                  ) : sourceOf(selected)==='EDR' ? (
+                    <>
+                      <li>Review the process and host details on your endpoint.</li>
+                      <li>Isolate the device if malicious behavior is confirmed.</li>
+                    </>
+                  ) : sourceOf(selected)==='Cloud' ? (
+                    <>
+                      <li>Validate the cloud resource and action in your provider console.</li>
+                      <li>Revoke suspicious access keys or roles.</li>
+                    </>
+                  ) : (
+                    <li>Review context and confirm if this requires action.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </aside>
+        </>
       )}
     </div>
   );
