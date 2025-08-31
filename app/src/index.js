@@ -3762,11 +3762,17 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
     const tid = req.user.tenant_id;
     const stats = { from_addr: 0, subject: 0, preview: 0, type: 0, anomaly: 0 };
 
-    // from_addr
+    // from_addr (supports legacy event.from and Microsoft Graph nested shapes)
     try {
       const r1 = await q(`
         UPDATE alerts
-           SET from_addr = COALESCE(NULLIF(from_addr, ''), (event::jsonb)->>'from')
+           SET from_addr = COALESCE(
+                 NULLIF(from_addr, ''),
+                 (event::jsonb)->>'from',
+                 (event::jsonb->'from'->'emailAddress'->>'address'),
+                 (event::jsonb->'sender'->'emailAddress'->>'address'),
+                 (event::jsonb->'from'->>'address')
+               )
          WHERE tenant_id = $1
            AND (from_addr IS NULL OR from_addr = '')
            AND event IS NOT NULL
@@ -3775,11 +3781,14 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
       stats.from_addr = r1.rowCount || (r1.rows ? r1.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // subject
+    // subject (fallback to Microsoft Graph subject)
     try {
       const r2 = await q(`
         UPDATE alerts
-           SET subject = COALESCE(subject, (event::jsonb)->>'subject')
+           SET subject = COALESCE(
+                 NULLIF(subject, ''),
+                 (event::jsonb)->>'subject'
+               )
          WHERE tenant_id = $1
            AND (subject IS NULL OR subject = '')
            AND event IS NOT NULL
@@ -3788,11 +3797,16 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
       stats.subject = r2.rowCount || (r2.rows ? r2.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // preview
+    // preview (prefer explicit preview; fallback to Microsoft Graph bodyPreview/body.content)
     try {
       const r3 = await q(`
         UPDATE alerts
-           SET preview = COALESCE(preview, (event::jsonb)->>'preview')
+           SET preview = COALESCE(
+                 NULLIF(preview, ''),
+                 (event::jsonb)->>'preview',
+                 (event::jsonb)->>'bodyPreview',
+                 LEFT((event::jsonb->'body'->>'content'), 280)
+               )
          WHERE tenant_id = $1
            AND (preview IS NULL OR preview = '')
            AND event IS NOT NULL
@@ -3801,11 +3815,15 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
       stats.preview = r3.rowCount || (r3.rows ? r3.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // type (quoted in SELECTs elsewhere as evt_type)
+    // type (evt_type elsewhere); default to 'email' if nothing present
     try {
       const r4 = await q(`
         UPDATE alerts
-           SET type = COALESCE(type, (event::jsonb)->>'type')
+           SET type = COALESCE(
+                 NULLIF(type, ''),
+                 (event::jsonb)->>'type',
+                 'email'
+               )
          WHERE tenant_id = $1
            AND (type IS NULL OR type = '')
            AND event IS NOT NULL
@@ -3814,11 +3832,14 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
       stats.type = r4.rowCount || (r4.rows ? r4.rows.length : 0) || 0;
     } catch (_e) {}
 
-    // anomaly (store as text 'true'/'false' if column is text, otherwise best-effort cast)
+    // anomaly (accept text/boolean, prefer explicit event.anomaly)
     try {
       const r5 = await q(`
         UPDATE alerts
-           SET anomaly = COALESCE(NULLIF(anomaly, ''), (event::jsonb)->>'anomaly')
+           SET anomaly = COALESCE(
+                 NULLIF(anomaly, ''),
+                 (event::jsonb)->>'anomaly'
+               )
          WHERE tenant_id = $1
            AND (anomaly IS NULL OR anomaly = '')
            AND event IS NOT NULL
@@ -4094,10 +4115,28 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
                score,
                status,
                created_at,
-               COALESCE(from_addr, (event::jsonb)->>'from')    AS from_addr,
-               COALESCE(type,      (event::jsonb)->>'type')    AS evt_type,
-               COALESCE(subject,   (event::jsonb)->>'subject') AS subject,
-               COALESCE(preview,   (event::jsonb)->>'preview') AS preview,
+               COALESCE(
+                 from_addr,
+                 (event::jsonb)->>'from',
+                 (event::jsonb->'from'->'emailAddress'->>'address'),
+                 (event::jsonb->'sender'->'emailAddress'->>'address'),
+                 (event::jsonb->'from'->>'address')
+               ) AS from_addr,
+               COALESCE(
+                 type,
+                 (event::jsonb)->>'type',
+                 'email'
+               ) AS evt_type,
+               COALESCE(
+                 subject,
+                 (event::jsonb)->>'subject'
+               ) AS subject,
+               COALESCE(
+                 preview,
+                 (event::jsonb)->>'preview',
+                 (event::jsonb)->>'bodyPreview',
+                 LEFT((event::jsonb->'body'->>'content'), 280)
+               ) AS preview,
                COALESCE(CAST(anomaly AS TEXT), (event::jsonb)->>'anomaly') AS anomaly_txt
           FROM alerts
          WHERE tenant_id=$1 AND created_at > $2
