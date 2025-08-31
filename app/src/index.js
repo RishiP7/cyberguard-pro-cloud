@@ -4300,37 +4300,57 @@ app.get('/admin/ops/connector/show', authMiddleware, requireSuper, async (req, r
 });
 
 // =====================
-// BACKGROUND POLLER
+// BACKGROUND POLLER (ESM-safe, no external scheduler)
 // =====================
 
-const schedule = require('node-schedule');
+// Enable with ENABLE_BG_POLLER=1 (or true/yes/on)
+const BG_ENABLED = ['1','true','yes','on'].includes(
+  String(process.env.ENABLE_BG_POLLER || '').toLowerCase()
+);
 
 // helper: run poll for all tenants/providers every N minutes
 async function runBackgroundPoll() {
   try {
     console.log('[bg-poll] starting background poll cycle');
-    // fetch all connectors
-    const connectors = await db.any('SELECT tenant_id, provider, status FROM connectors WHERE status=$1', ['connected']);
+    // fetch all connectors that are currently connected
+    const connectors = await db.any(
+      'SELECT tenant_id, provider, status FROM connectors WHERE status=$1',
+      ['connected']
+    );
     for (const c of connectors) {
       try {
         console.log(`[bg-poll] polling ${c.tenant_id}:${c.provider}`);
         // reuse the same poll logic as /admin/ops/poll/now
         await runPollForTenant(c.tenant_id, c.provider, { limit: 25 });
       } catch (err) {
-        console.error(`[bg-poll] error polling ${c.tenant_id}:${c.provider}`, err.message);
+        console.error(`[bg-poll] error polling ${c.tenant_id}:${c.provider}`, err?.message || err);
       }
     }
     console.log('[bg-poll] cycle done');
   } catch (err) {
-    console.error('[bg-poll] failed to run background poll', err.message);
+    console.error('[bg-poll] failed to run background poll', err?.message || err);
   }
 }
 
-// schedule: every 5 minutes with jitter
-schedule.scheduleJob('*/5 * * * *', () => {
-  setTimeout(runBackgroundPoll, Math.floor(Math.random() * 60000)); // up to 60s jitter
-});
+function startBackgroundPoller() {
+  if (!BG_ENABLED) {
+    console.log('[bg-poll] disabled (set ENABLE_BG_POLLER=1 to enable)');
+    return;
+  }
+  // initial jittered kickoff (up to 60s)
+  const firstJitter = Math.floor(Math.random() * 60000);
+  setTimeout(() => {
+    runBackgroundPoll();
+    // then every 5 minutes; each cycle gets its own 0–60s jitter
+    setInterval(() => {
+      const jitter = Math.floor(Math.random() * 60000);
+      setTimeout(runBackgroundPoll, jitter);
+    }, 5 * 60 * 1000);
+  }, firstJitter);
+}
 
+// start the background poller (no-op if disabled)
+startBackgroundPoller();
 // ---------- Alerts export (JSON/CSV) ----------
 // GET /alerts/export?format=json|csv&days=7&limit=1000
 // - format: json (default) or csv
