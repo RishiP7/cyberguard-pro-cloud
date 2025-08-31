@@ -2119,26 +2119,78 @@ function OnboardingChecklist(){
 function OnboardingTips() {
   const s = {
     wrap: { marginTop: 12, padding: 12, border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, background: 'rgba(255,255,255,.03)' },
-    head: { fontWeight: 600, marginBottom: 6 },
     tip: { fontSize: 13, marginBottom: 4, opacity: 0.85 }
   };
   return (
     <div style={s.wrap}>
-      <div style={s.head}>🔎 What am I looking at?</div>
       <div style={s.tip}>• The dashboard shows your security integrations and live alerts.</div>
       <div style={s.tip}>• Green "Connected" means data is flowing in from that source.</div>
       <div style={s.tip}>• The Alerts page lists suspicious activity — click any alert for details.</div>
-      <div style={s.tip}>• Use the checklist above to finish setup and strengthen protection.</div>
-      <div style={s.tip}>• Tip: hover any status label to see what it means.</div>
+      <div style={{...s.tip, marginTop:4}}>Threat score legend:&nbsp;
+        <span style={{background:'rgba(34,197,94,.2)',padding:'1px 6px',borderRadius:6}}>Low (0–39)</span>
+        &nbsp;·&nbsp;
+        <span style={{background:'rgba(234,179,8,.2)',padding:'1px 6px',borderRadius:6}}>Medium (40–69)</span>
+        &nbsp;·&nbsp;
+        <span style={{background:'rgba(220,38,38,.2)',padding:'1px 6px',borderRadius:6}}>High (70–100)</span>
+      </div>
+      <div style={s.tip}>Sources: Email, DNS, EDR, Cloud (shown per alert).</div>
+      <div style={s.tip}>Tip: hover any status label to see what it means.</div>
     </div>
   );
 }
 // Wrap Dashboard to inject onboarding widget without touching original Dashboard implementation
+// Reusable collapsible section with localStorage persistence
+function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
+  const key = `cgpc:collapse:${id}`;
+  const [collapsed, setCollapsed] = React.useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? v === '1' : defaultCollapsed;
+    } catch {
+      return defaultCollapsed;
+    }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(key, collapsed ? '1' : '0'); } catch {}
+  }, [collapsed]);
+
+  return (
+    <div style={{border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)', margin:'12px 0'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,padding:'10px 12px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <button
+            onClick={() => setCollapsed(x => !x)}
+            aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+            title={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+            style={{
+              width:28,height:28,display:'inline-flex',alignItems:'center',justifyContent:'center',
+              borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'transparent',
+              cursor:'pointer',color:'inherit'
+            }}
+          >
+            {collapsed ? '▸' : '▾'}
+          </button>
+          <h2 style={{margin:0,fontSize:16}}>{title}</h2>
+        </div>
+        <div style={{opacity:.7,fontSize:12}}>{collapsed ? 'Show' : 'Hide'}</div>
+      </div>
+      {!collapsed && (
+        <div style={{padding:'0 12px 12px 12px'}}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 function DashboardWithOnboarding(props){
   return (
     <div style={{padding:16}}>
-      <OnboardingChecklist/>
-      <OnboardingTips/>
+      <CollapsibleSection id="onboarding" title="Get started" defaultCollapsed={true}>
+        <OnboardingChecklist/>
+      </CollapsibleSection>
+      <CollapsibleSection id="explain" title="What am I looking at?" defaultCollapsed={true}>
+        <OnboardingTips/>
+      </CollapsibleSection>
       {/* Render existing Dashboard below */}
       <Dashboard {...props} />
     </div>
