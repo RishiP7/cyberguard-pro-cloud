@@ -2660,9 +2660,20 @@ function Alerts(){
 
   const s = {
     wrap:{ padding:16 },
-    row:{ display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px 120px', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,.08)' },
+    row:{ display:'grid', gridTemplateColumns:'160px 120px 220px 1fr 1fr 80px 120px', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,.08)' },
     head:{ fontSize:12, opacity:.7, padding:'6px 0' },
     badge:(st)=>({ fontSize:12, padding:'2px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.18)', background: st==='new' ? 'rgba(59,130,246,.15)' : 'transparent' }),
+    src:(kind)=>({
+      fontSize:12,
+      padding:'2px 8px',
+      borderRadius:999,
+      border:'1px solid rgba(255,255,255,.18)',
+      background: kind==='Email' ? 'rgba(59,130,246,.18)'
+               : kind==='DNS'   ? 'rgba(99,102,241,.18)'
+               : kind==='EDR'   ? 'rgba(16,185,129,.18)'
+               : kind==='Cloud' ? 'rgba(234,179,8,.18)'
+               : 'transparent'
+    }),
     threat:(score)=>({
       fontSize:12,
       padding:'2px 6px',
@@ -2673,6 +2684,15 @@ function Alerts(){
   };
 
   function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch(_e){ return '—'; } }
+
+  function sourceOf(a){
+    const v = String(a?.source || a?.evt_type || a?.type || a?.event?.type || '').toLowerCase();
+    if (v.includes('email') || a?.from || a?.from_addr) return 'Email';
+    if (v.includes('dns')) return 'DNS';
+    if (v.includes('edr') || v.includes('endpoint')) return 'EDR';
+    if (v.includes('cloud') || v.includes('aws') || v.includes('azure') || v.includes('gcp')) return 'Cloud';
+    return '—';
+  }
 
   return (
     <div style={s.wrap}>
@@ -2692,8 +2712,15 @@ function Alerts(){
 
       {!!filtered.length && (
         <div>
-          <div style={{display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px 120px', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.12)'}}>
+          <div style={{display:'flex',gap:8,alignItems:'center',margin:'8px 0',fontSize:12,opacity:.85}}>
+            <b>Threat levels:</b>
+            <span style={{padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.18)',background:'rgba(34,197,94,.2)'}}>Low (0–39)</span>
+            <span style={{padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.18)',background:'rgba(234,179,8,.2)'}}>Medium (40–69)</span>
+            <span style={{padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.18)',background:'rgba(220,38,38,.2)'}}>High (70–100)</span>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'160px 120px 220px 1fr 1fr 80px 120px', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.12)'}}>
             <div style={s.head}>When</div>
+            <div style={s.head}>Source</div>
             <div style={s.head}>From</div>
             <div style={s.head}>Subject</div>
             <div style={s.head}>Preview</div>
@@ -2703,6 +2730,7 @@ function Alerts(){
           {filtered.map(a => (
             <div key={a.id} style={s.row}>
               <div style={{opacity:.85}}>{fmt(a.created_at || a.event?.when)}</div>
+              <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></div>
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</div>
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.subject || '—'}</div>
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.preview || '—'}</div>
