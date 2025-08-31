@@ -2145,6 +2145,11 @@ function DashboardWithOnboarding(props){
   );
 }
 
+function Login(){
+  const [token, setToken] = React.useState(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('token') || '') : ''
+  );
+
   function onSubmit(e){
     e.preventDefault();
     try {
@@ -2168,6 +2173,7 @@ function DashboardWithOnboarding(props){
       </form>
     </div>
   );
+}
 function RequireAuth({ children }){
   const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
   if (!token) return <Navigate to="/login" replace />;
