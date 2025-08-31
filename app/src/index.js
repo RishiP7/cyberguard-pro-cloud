@@ -3845,6 +3845,45 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
   }
 });
 
+// ---------- Admin: reset connector (wipe tokens/state) ----------
+app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const { provider } = req.body || {};
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+
+    const tid = req.user.tenant_id;
+
+    // Best-effort: clear token/state columns if they exist; ignore errors per column
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
+
+    // Null out common token/state fields (some may not exist; ignore per-field failures)
+    const fields = [
+      'access_token',
+      'refresh_token',
+      'id_token',
+      'expires_at',
+      'status',
+      'last_error',
+      'last_sync_at'
+    ];
+
+    for (const col of fields) {
+      try {
+        await q(`UPDATE connectors SET ${col}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
+      } catch(_e) { /* column may not exist; continue */ }
+    }
+
+    // Record and return
+    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider }); } catch(_e) {}
+    return res.json({ ok:true });
+  } catch (e) {
+    console.error('connector/reset failed', e);
+    return res.status(500).json({ ok:false, error: 'reset failed' });
+  }
+});
+
 // ---------- Alerts export (JSON/CSV) ----------
 // GET /alerts/export?format=json|csv&days=7&limit=1000
 // - format: json (default) or csv
