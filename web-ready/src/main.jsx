@@ -2012,6 +2012,86 @@ function AlertsPage(){
     </div>
   );
 }
+
+// --- Onboarding Checklist for Dashboard ---
+function OnboardingChecklist(){
+  const [me, setMe] = React.useState(null);
+  const [conn, setConn] = React.useState([]);
+  const [hasAlert, setHasAlert] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(()=>{
+    (async()=>{
+      try{
+        const m = await apiGet('/me');
+        setMe(m||{});
+        try{
+          const s = await apiGet('/integrations/status');
+          setConn(s?.items||[]);
+        }catch(_e){}
+        try{
+          const a = await apiGet('/alerts/export?days=30&limit=1');
+          setHasAlert(Array.isArray(a?.alerts) && a.alerts.length>0);
+        }catch(_e){ setHasAlert(false); }
+      }finally{ setLoading(false); }
+    })();
+  },[]);
+
+  const get = (t)=> (conn||[]).find(x=>x.type===t);
+  const emailConnected = !!get('email') && get('email').status==='connected';
+  const edrConnected   = !!get('edr')   && get('edr').status==='connected';
+  const dnsConnected   = !!get('dns')   && get('dns').status==='connected';
+
+  const steps = [
+    { key:'email',  label:'Connect your email provider', done: emailConnected,    href:'/integrations' },
+    { key:'poll',   label:'Ingest your first batch of alerts', done: hasAlert,     href:'/alerts' },
+    { key:'review', label:'Review alerts and mark any anomalies', done: hasAlert,  href:'/alerts' },
+    { key:'edr',    label:'Protect endpoints (EDR)', done: edrConnected,           href:'/integrations' },
+    { key:'dns',    label:'Enable DNS protection', done: dnsConnected,             href:'/integrations' },
+  ];
+  const doneCount = steps.filter(s=>s.done).length;
+
+  const s = {
+    wrap:{padding:12, marginBottom:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)'},
+    head:{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8},
+    row:{display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.06)'},
+    btn:{padding:'6px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer'},
+    badge:{fontSize:12, opacity:.85, border:'1px solid rgba(255,255,255,.18)', borderRadius:999, padding:'2px 8px'}
+  };
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.head}>
+        <div style={{fontWeight:700}}>Getting started</div>
+        <div style={s.badge}>{doneCount}/{steps.length} done</div>
+      </div>
+      {loading ? (
+        <div style={{opacity:.75}}>Loading checklist…</div>
+      ) : (
+        <div>
+          {steps.map(step=> (
+            <div key={step.key} style={s.row}>
+              <div style={{width:22, textAlign:'center'}}>{step.done ? '✅' : '⬜️'}</div>
+              <div style={{flex:1}}>{step.label}</div>
+              <a href={step.href} style={s.btn}>Open</a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Wrap Dashboard to inject onboarding widget without touching original Dashboard implementation
+function DashboardWithOnboarding(props){
+  return (
+    <div style={{padding:16}}>
+      <OnboardingChecklist/>
+      {/* Render existing Dashboard below */}
+      <Dashboard {...props} />
+    </div>
+  );
+}
 function App(){
   return (
     <ErrorBoundary>
@@ -2019,7 +2099,7 @@ function App(){
         <Routes>
           <Route path="/login" element={<Login/>}/>
           <Route path="/register" element={<Register/>}/>
-          <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>}/>
+          <Route path="/" element={<RequireAuth><DashboardWithOnboarding api={API}/></RequireAuth>}/>
           <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>}/>
           <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>}/>
           <Route path="/pricing" element={<RequireAuth><Pricing/></RequireAuth>} />
