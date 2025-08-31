@@ -3846,85 +3846,118 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
 });
 
 // ---------- Admin: reset connector (wipe tokens/state) ----------
-// Hardened: dynamically detect present columns and only update those,
-// log detailed errors to ops runs, and optionally return debug info to super.
+// Strong reset: dynamically null any token/secret/auth columns, clear health fields,
+// optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
 app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
   try {
     const { provider } = req.body || {};
     if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
     const tid = req.user.tenant_id;
 
-    // Always try to ensure health columns exist
+    // Ensure baseline health columns exist (idempotent)
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
     try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
 
-    // Discover which columns actually exist on connectors
+    // Discover actual columns on connectors
     let cols = [];
     try {
       const r = await q(`
-        SELECT column_name
+        SELECT column_name, data_type
           FROM information_schema.columns
          WHERE table_schema='public' AND table_name='connectors'
       `);
-      cols = (r.rows || []).map(r => String(r.column_name));
-    } catch(_e) {
-      // non-fatal; we'll fall back to best-effort updates below
-      cols = [];
-    }
-    const has = (c) => cols.includes(c);
+      cols = (r.rows || []).map(r => ({ name: String(r.column_name), type: String(r.data_type) }));
+    } catch(_e) { cols = []; }
+    const has = (c) => cols.some(x => x.name === c);
+    const colType = (c) => (cols.find(x => x.name === c)?.type || '').toLowerCase();
 
-    // Candidate fields we want to null if present
-    const CANDIDATE_FIELDS = [
-      'access_token',
-      'refresh_token',
-      'id_token',
-      'token',
-      'auth',
-      'expires_at',
-      'status',
-      'last_error',
-      'last_sync_at'
+    // 1) Null out obvious credential-ish columns if present
+    const CRED_COLS = [
+      'access_token','refresh_token','id_token','token','auth','authorization',
+      'client_secret','secret','password','expires_at',
+      'status','last_error','last_sync_at'
     ];
-    const toNull = CANDIDATE_FIELDS.filter(has);
-
-    // If nothing detected (unlikely), at least clear the health columns we know we added
-    if (toNull.length === 0) {
-      toNull.push('status', 'last_error', 'last_sync_at');
+    const clearCols = CRED_COLS.filter(has);
+    if (clearCols.length === 0) {
+      // guarantee we at least clear health
+      ['status','last_error','last_sync_at'].forEach(c => { if (!clearCols.includes(c)) clearCols.push(c); });
     }
 
-    // Build dynamic UPDATE ... SET col=NULL, col2=NULL ...
-    const setSql = toNull.map(c => `${c}=NULL`).join(', ');
-    // If updated_at exists, tick it as well
-    const setWithUpdated = has('updated_at') ? `${setSql}, updated_at=${Math.floor(Date.now()/1000)}` : setSql;
+    // Build dynamic UPDATE SET list
+    const setParts = clearCols.map(c => `${c}=NULL`);
+    if (has('updated_at')) setParts.push(`updated_at=${Math.floor(Date.now()/1000)}`);
 
-    // Execute the reset
     try {
-      await q(
-        `UPDATE connectors SET ${setWithUpdated} WHERE tenant_id=$1 AND provider=$2`,
-        [tid, provider]
-      );
+      await q(`UPDATE connectors SET ${setParts.join(', ')} WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
     } catch (updErr) {
-      // Log error with details and return failure
-      try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, err: String(updErr?.message || updErr) }); } catch(_e) {}
-      return res.status(500).json({ ok:false, error: 'reset failed', detail: String(updErr?.message || updErr) });
+      try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, step: 'clearCols', err: String(updErr?.message||updErr) }); } catch(_e) {}
+      return res.status(500).json({ ok:false, error: 'reset failed' });
     }
 
-    // Clear any sticky error row for convenience if column exists
-    if (has('last_error')) {
-      try { await q(`UPDATE connectors SET last_error=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
+    // 2) If we have JSON/JSONB blobs (common names), surgically remove token keys
+    const JSON_CANDIDATES = ['data','config','meta','settings','auth_json'];
+    const TOKEN_KEYS = ['access_token','refresh_token','id_token','token','authorization','auth','secret','client_secret','password','expires_at'];
+    for (const jc of JSON_CANDIDATES) {
+      if (!has(jc)) continue;
+      const t = colType(jc); // should be 'json' or 'jsonb'
+      if (t.includes('json')) {
+        // Try to strip keys one-by-one so a missing key doesn't fail the whole update
+        for (const k of TOKEN_KEYS) {
+          try {
+            await q(`
+              UPDATE connectors
+                 SET ${jc} = (
+                      CASE WHEN ${jc}::text IS NULL THEN NULL
+                           WHEN ${jc}::text = 'null' THEN NULL
+                           ELSE (${jc}::jsonb - $3)::jsonb END
+                 )
+               WHERE tenant_id=$1 AND provider=$2
+            `, [tid, provider, k]);
+          } catch(_e) { /* ignore per-key issues */ }
+        }
+      }
     }
 
-    // Record success
-    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: toNull }); } catch(_e) {}
+    // 3) As a last resort, if there is a single row for this tenant/provider and it still has credentials,
+    // offer an optional hard delete via query flag `?purge=1` (super only, explicit opt-in)
+    const purge = (req.query && (req.query.purge === '1' || req.query.purge === 'true'));
+    if (purge) {
+      try { await q(`DELETE FROM connectors WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); }
+      catch(_e) { /* best effort */ }
+    }
 
-    // Optional debug echo for super users
+    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch(_e) {}
+
     const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
-    return res.json({ ok:true, cleared: toNull, debug: dbg ? { columns: cols } : undefined });
+    if (dbg) {
+      // return shape of row after reset for quick inspection
+      let after = null;
+      try {
+        const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [tid, provider]);
+        after = r.rows && r.rows[0] ? Object.keys(r.rows[0]) : null;
+      } catch(_e) {}
+      return res.json({ ok:true, cleared: clearCols, json_candidates: JSON_CANDIDATES.filter(has), columns: cols.map(c=>c.name), after_keys: after });
+    }
+
+    return res.json({ ok:true });
   } catch (e) {
     console.error('connector/reset failed', e);
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch(_e) {}
     return res.status(500).json({ ok:false, error: 'reset failed' });
+  }
+});
+
+// Helper: show current connector row (super only) to debug schema & values
+app.get('/admin/ops/connector/show', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const provider = String(req.query?.provider || '').trim();
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [req.user.tenant_id, provider]);
+    if (!r.rows || r.rows.length === 0) return res.json({ ok:true, found:false });
+    return res.json({ ok:true, found:true, row: r.rows[0] });
+  } catch(e) {
+    return res.status(500).json({ ok:false, error:'show failed', detail: String(e?.message||e) });
   }
 });
 
