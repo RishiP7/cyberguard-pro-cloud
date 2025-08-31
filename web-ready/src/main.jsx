@@ -2082,11 +2082,30 @@ function OnboardingChecklist(){
   );
 }
 
+// Onboarding tips block for dashboard
+function OnboardingTips() {
+  const s = {
+    wrap: { marginTop: 12, padding: 12, border: '1px solid rgba(255,255,255,.12)', borderRadius: 12, background: 'rgba(255,255,255,.03)' },
+    head: { fontWeight: 600, marginBottom: 6 },
+    tip: { fontSize: 13, marginBottom: 4, opacity: 0.85 }
+  };
+  return (
+    <div style={s.wrap}>
+      <div style={s.head}>🔎 What am I looking at?</div>
+      <div style={s.tip}>• The dashboard shows your security integrations and live alerts.</div>
+      <div style={s.tip}>• Green "Connected" means data is flowing in from that source.</div>
+      <div style={s.tip}>• The Alerts page lists suspicious activity — click any alert for details.</div>
+      <div style={s.tip}>• Use the checklist above to finish setup and strengthen protection.</div>
+      <div style={s.tip}>• Tip: hover any status label to see what it means.</div>
+    </div>
+  );
+}
 // Wrap Dashboard to inject onboarding widget without touching original Dashboard implementation
 function DashboardWithOnboarding(props){
   return (
     <div style={{padding:16}}>
       <OnboardingChecklist/>
+      <OnboardingTips/>
       {/* Render existing Dashboard below */}
       <Dashboard {...props} />
     </div>
@@ -2120,6 +2139,15 @@ function App(){
 
 // --- Integrations Wizard UI ---
 function Integrations({ api }) {
+  // Human-friendly help text for connection statuses (used as hover tooltips)
+  function statusHelp(st) {
+    const s = String(st || '').toLowerCase();
+    if (s === 'connected') return '✅ We are receiving data from this integration.';
+    if (s === 'pending')   return '⏳ Waiting for setup to complete or data to arrive.';
+    if (s === 'error')     return '❌ Connection failed. Click Connect again or re-authorize.';
+    if (s === 'new')       return 'New: not connected yet.';
+    return 'Status unknown.';
+  }
   const [meState, setMeState] = React.useState(null);
   React.useEffect(()=>{ apiGet('/me').then(setMeState).catch(()=>setMeState(null)); },[]);
   // Listen for global /me-updated events and refresh
@@ -2322,7 +2350,7 @@ function Integrations({ api }) {
             {connStatus.map((c,i)=>(
               <li key={i} style={{padding:"8px 10px", background:"#111316", border:"1px solid #1f2328", borderRadius:8}}>
                 <div style={{fontSize:12, opacity:0.8}}>{(c.type||'').toUpperCase()} • {c.provider||'—'}</div>
-                <div style={{fontSize:13, marginTop:4}}>
+                <div style={{fontSize:13, marginTop:4}} title={statusHelp(c.status)}>
                   {c.status === 'connected' ? '✅ Connected'
                     : c.status === 'pending' ? '⏳ Pending'
                     : c.status === 'error'   ? '❌ Error'
@@ -2346,7 +2374,9 @@ function Integrations({ api }) {
         <div style={styles.card}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div style={{fontWeight:700}}>Email Security</div>
-            <span style={{opacity:.85,fontSize:12}}>{getState('email').status}</span>
+            <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('email').status)}>
+              {getState('email').status}
+            </span>
           </div>
           <div style={{opacity:.85,marginTop:6}}>Connect your provider to scan for phishing/malware.</div>
           <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
@@ -2379,7 +2409,9 @@ function Integrations({ api }) {
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{fontWeight:700}}>Endpoint (EDR)</div>
-              <span style={{opacity:.85,fontSize:12}}>{getState('edr').status}</span>
+              <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('edr').status)}>
+                {getState('edr').status}
+              </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
@@ -2401,7 +2433,9 @@ function Integrations({ api }) {
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{fontWeight:700}}>DNS Protection</div>
-              <span style={{opacity:.85,fontSize:12}}>{getState('dns').status}</span>
+              <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('dns').status)}>
+                {getState('dns').status}
+              </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
@@ -2424,7 +2458,9 @@ function Integrations({ api }) {
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{fontWeight:700}}>UEBA</div>
-              <span style={{opacity:.85,fontSize:12}}>{getState('ueba').status}</span>
+              <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('ueba').status)}>
+                {getState('ueba').status}
+              </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
@@ -2441,7 +2477,9 @@ function Integrations({ api }) {
           <div style={styles.card}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{fontWeight:700}}>Cloud Security</div>
-              <span style={{opacity:.85,fontSize:12}}>{getState('cloud').status}</span>
+              <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('cloud').status)}>
+                {getState('cloud').status}
+              </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</div>
             <div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}}>
@@ -2622,9 +2660,16 @@ function Alerts(){
 
   const s = {
     wrap:{ padding:16 },
-    row:{ display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,.08)' },
+    row:{ display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px 120px', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,.08)' },
     head:{ fontSize:12, opacity:.7, padding:'6px 0' },
-    badge:(st)=>({ fontSize:12, padding:'2px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.18)', background: st==='new' ? 'rgba(59,130,246,.15)' : 'transparent' })
+    badge:(st)=>({ fontSize:12, padding:'2px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.18)', background: st==='new' ? 'rgba(59,130,246,.15)' : 'transparent' }),
+    threat:(score)=>({
+      fontSize:12,
+      padding:'2px 6px',
+      borderRadius:6,
+      border:'1px solid rgba(255,255,255,.18)',
+      background: score>=70 ? 'rgba(220,38,38,.2)' : score>=40 ? 'rgba(234,179,8,.2)' : 'rgba(34,197,94,.2)'
+    })
   };
 
   function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch(_e){ return '—'; } }
@@ -2647,12 +2692,13 @@ function Alerts(){
 
       {!!filtered.length && (
         <div>
-          <div style={{display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.12)'}}>
+          <div style={{display:'grid', gridTemplateColumns:'160px 220px 1fr 1fr 80px 120px', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,.12)'}}>
             <div style={s.head}>When</div>
             <div style={s.head}>From</div>
             <div style={s.head}>Subject</div>
             <div style={s.head}>Preview</div>
             <div style={s.head}>Status</div>
+            <div style={s.head}>Threat</div>
           </div>
           {filtered.map(a => (
             <div key={a.id} style={s.row}>
@@ -2661,6 +2707,13 @@ function Alerts(){
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.subject || '—'}</div>
               <div style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.preview || '—'}</div>
               <div><span style={s.badge(a.status || 'new')}>{a.status || 'new'}</span></div>
+              <div>
+                {a.score!=null ? (
+                  <span style={s.threat(a.score)}>
+                    {a.score>=70 ? `High (${a.score})` : a.score>=40 ? `Medium (${a.score})` : `Low (${a.score})`}
+                  </span>
+                ) : '—'}
+              </div>
             </div>
           ))}
         </div>
