@@ -1458,7 +1458,16 @@ function Pricing(){
         <button disabled={busy || !paid} style={s.ghost} onClick={portal}>
           Manage billing
         </button>
-        {paid ? <span style={{opacity:.85}}>Current plan: <b>{me?.plan}</b></span> : <span style={{opacity:.75}}>You’ll see the billing portal after subscribing.</span>}
+        {paid ? (
+          <span style={{opacity:.85}}>
+            Current plan: <b>{me?.plan}</b>
+            {me?.billing_status ? (
+              <> — <span style={{fontSize:12, padding:'2px 6px', border:'1px solid rgba(255,255,255,.25)', borderRadius:999}}>{String(me.billing_status)}</span></>
+            ) : null}
+          </span>
+        ) : (
+          <span style={{opacity:.75}}>You’ll see the billing portal after subscribing.</span>
+        )}
       </div>
 
       {(msg || err) && (
@@ -2537,6 +2546,40 @@ function Integrations({ api }) {
                     Connected as: {c.account.displayName || c.account.mail || c.account.userPrincipalName || '—'}
                   </div>
                 )}
+                {(c.status === 'error' || (c.last_error && String(c.last_error).trim())) && (
+                  <div style={{marginTop:6, display:'grid', gap:6}}>
+                    <div style={{fontSize:12, padding:'4px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:6}}>
+                      Error{c.last_error ? ': ' + String(c.last_error) : ''}
+                    </div>
+                    <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                      {/* Re-auth / Reconnect */}
+                      <button
+                        style={styles.ghost}
+                        onClick={() => {
+                          const t = String(c.provider || c.type || '').toLowerCase();
+                          if (t.includes('m365') || t.includes('o365') || t.includes('office')) { startEmailOAuth('o365'); return; }
+                          if (t.includes('google') || t.includes('gws')  || t.includes('gmail')) { startEmailOAuth('gmail'); return; }
+                          if (t.includes('imap')) { openEmailWizard('imap'); return; }
+                          if (c.type === 'edr') { safe(()=>api.post('/integrations/edr/enrollment-token',{})); return; }
+                          if (c.type === 'dns') { safe(()=>api.get('/integrations/dns/bootstrap')); return; }
+                        }}
+                      >
+                        Re-auth / Reconnect
+                      </button>
+
+                      {/* Admin-only: Reset connector */}
+                      {(meState?.is_super || meState?.role === 'owner') && (
+                        <button
+                          style={styles.ghost}
+                          title="Admin: reset connector state"
+                          onClick={() => { if (confirm(`Reset ${String(c.type||'integration')} connector?`)) { safe(()=>api.post('/admin/ops/connector/reset', { type: c.type })); } }}
+                        >
+                          Reset connector (admin)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -2552,6 +2595,9 @@ function Integrations({ api }) {
             <div style={{fontWeight:700}}>Email Security</div>
             <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('email').status)}>
               {getState('email').status}
+              {getState('email').status === 'error' && (
+                <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+              )}
             </span>
           </div>
           <div style={{opacity:.85,marginTop:6}}>Connect your provider to scan for phishing/malware.</div>
@@ -2587,6 +2633,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>Endpoint (EDR)</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('edr').status)}>
                 {getState('edr').status}
+                {getState('edr').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</div>
@@ -2611,6 +2660,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>DNS Protection</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('dns').status)}>
                 {getState('dns').status}
+                {getState('dns').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</div>
@@ -2636,6 +2688,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>UEBA</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('ueba').status)}>
                 {getState('ueba').status}
+                {getState('ueba').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</div>
@@ -2655,6 +2710,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>Cloud Security</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('cloud').status)}>
                 {getState('cloud').status}
+                {getState('cloud').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</div>
@@ -3048,6 +3106,9 @@ function BillingPanel() {
       <h2 style={{ marginBottom: 8 }}>Billing</h2>
       <p style={{ color: "#666", marginTop: 0 }}>
         Current plan: <b>{String(effective).toUpperCase()}</b>
+        {me?.billing_status ? (
+          <> — <span style={{fontSize:12, padding:'2px 6px', border:'1px solid rgba(255,255,255,.25)', borderRadius:999}}>{String(me.billing_status)}</span></>
+        ) : null}
         {me?.trial?.active ? (
           <> — trial active, <b>{trialDays}</b> day{trialDays===1?"":"s"} left</>
         ) : null}
