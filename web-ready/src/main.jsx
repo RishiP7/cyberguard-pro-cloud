@@ -2250,36 +2250,73 @@ function LiveEmailScan(){
     grid:{display:'grid',gridTemplateColumns:'160px 120px 1fr 140px',gap:10,alignItems:'center'},
     pill:(c,b)=>({fontSize:12,padding:'2px 8px',borderRadius:999,border:`1px solid ${c}`,background:b,color:c,display:'inline-block'})
   };
-  const scanCss = `
-  @keyframes pulse {0%{opacity:.25;transform:scaleY(.4)}50%{opacity:1;transform:scaleY(1)}100%{opacity:.25;transform:scaleY(.4)}}
-  .scanbar{width:3px;height:16px;margin-right:3px;background:#7bd88f;display:inline-block;border-radius:2px;animation:pulse 1.2s ease-in-out infinite;}
-  .scanbar:nth-child(3n+1){animation-duration:1.0s}
-  .scanbar:nth-child(3n+2){animation-duration:1.3s}
-  .scanbar:nth-child(3n+3){animation-duration:1.6s}
-  /* Futuristic ring + sweeping beam */
-  @keyframes ringPulse {0%{transform:scale(.9);opacity:.6}50%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.6}}
-  @keyframes sweep {0%{transform:translateX(-10%)}100%{transform:translateX(110%)}}
-  .liveviz{position:relative;display:inline-flex;align-items:center;gap:10px;height:22px}
-  .liveviz .ring{width:18px;height:18px;border-radius:999px;box-shadow:0 0 12px #7bd88f,inset 0 0 8px rgba(123,216,143,.5);border:1px solid rgba(123,216,143,.7);animation:ringPulse 1.8s ease-in-out infinite}
-  .liveviz .bars{display:inline-flex;align-items:flex-end;height:16px;position:relative;overflow:hidden;border-radius:4px;padding-right:2px}
-  .liveviz .sweep{position:absolute;left:0;top:0;bottom:0;width:38px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(123,216,143,.25),transparent);filter:blur(.3px);animation:sweep 1.8s linear infinite}
+  const orbCss = `
+  /* Siri-like AI orb */
+  @keyframes aiPulse { 0%{transform:scale(.98);opacity:.85} 50%{transform:scale(1);opacity:1} 100%{transform:scale(.98);opacity:.85} }
+  @keyframes aiRotate { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes aiTwinkle { 0%{opacity:.15;transform:scale(.6)} 50%{opacity:1;transform:scale(1)} 100%{opacity:.15;transform:scale(.6)} }
+  @keyframes aiDrift { 0%{transform:translateX(0) translateY(0)} 50%{transform:translateX(2px) translateY(-2px)} 100%{transform:translateX(0) translateY(0)} }
+
+  .ai-orb{
+    position:relative;
+    width:36px;height:36px;
+    filter:drop-shadow(0 0 10px rgba(123,216,143,.35)) drop-shadow(0 0 24px rgba(37,161,255,.25));
+  }
+  .ai-orb__core{
+    position:absolute; inset:0; border-radius:50%;
+    background:
+      radial-gradient(60% 60% at 50% 40%, rgba(123,216,143,.9), rgba(37,161,255,.6) 40%, rgba(28,30,38,0) 70%),
+      radial-gradient(80% 80% at 60% 70%, rgba(37,161,255,.6), rgba(123,216,143,.2) 60%, rgba(28,30,38,0) 85%);
+    box-shadow:
+      inset 0 0 14px rgba(255,255,255,.35),
+      inset 0 0 24px rgba(37,161,255,.25);
+    animation: aiDrift 3.8s ease-in-out infinite;
+  }
+  .ai-orb__ring{
+    position:absolute; inset:-6px; border-radius:50%;
+    border:1px solid rgba(123,216,143,.45);
+    box-shadow: 0 0 18px rgba(123,216,143,.35), inset 0 0 22px rgba(37,161,255,.2);
+    animation: aiPulse 1.9s ease-in-out infinite;
+    pointer-events:none;
+  }
+  .ai-orb__sweep{
+    position:absolute; inset:-2px; border-radius:50%;
+    background:
+      conic-gradient(from 0deg, rgba(123,216,143,0) 0deg, rgba(123,216,143,.35) 20deg, rgba(37,161,255,.2) 40deg, rgba(0,0,0,0) 90deg);
+    mask: radial-gradient(closest-side, black 72%, transparent 73%);
+    animation: aiRotate 2.8s linear infinite;
+    filter: blur(.4px);
+    pointer-events:none;
+  }
+  .ai-orb__spark{
+    --i: 0;
+    position:absolute; left:50%; top:50%;
+    width:3px;height:3px; border-radius:50%;
+    background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,.6) 40%, rgba(255,255,255,0) 70%);
+    transform-origin: -10px -10px;
+    transform: rotate(calc(var(--i) * 26deg)) translate(16px);
+    animation:
+      aiRotate calc(4s + (var(--i) * .07s)) linear infinite,
+      aiTwinkle calc(1.8s + (var(--i) * .05s)) ease-in-out infinite;
+    opacity:.9;
+    pointer-events:none;
+  }
   `;
-  const scanBars = Array.from({length:18});
+  const sparks = Array.from({length:14});
 
   return (
     <div style={s.wrap} aria-label="Live Email Scan">
       <div style={s.head}>
         <div style={{fontWeight:700}}>Live Email Scan</div>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <style>{scanCss}</style>
-          <div className="liveviz" aria-hidden="true">
-            <span className="ring"></span>
-            <div className="bars">
-              <span className="sweep"></span>
-              {scanBars.map((_,i)=>(
-                <span key={i} className="scanbar" style={{animationDelay:`${i*0.08}s`}}/>
-              ))}
-            </div>
+          <style>{orbCss}</style>
+          <div className="ai-orb" aria-hidden="true">
+            <div className="ai-orb__core"></div>
+            <div className="ai-orb__ring"></div>
+            <div className="ai-orb__sweep"></div>
+            {sparks.map((_,i)=>(
+              <span key={i} className="ai-orb__spark" style={{"--i": i}}></span>
+            ))}
           </div>
           <div style={{opacity:.8,fontSize:12}}>
             {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
