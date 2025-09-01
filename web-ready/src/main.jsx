@@ -2202,6 +2202,7 @@ function AutonomyPage(){
                 <option value="executed">executed</option>
                 <option value="failed">failed</option>
               </select>
+              <span style={{fontSize:12,opacity:.8}}>({filteredActions.length})</span>
               <button style={s.btn} onClick={propose} disabled={busy}>Propose actions</button>
               {canApprove && <button style={s.ghost} onClick={bulkApprove} disabled={busy}>Approve all proposed</button>}
               {canApprove && <button style={s.ghost} onClick={bulkExecute} disabled={busy}>Execute all approved</button>}
@@ -3307,6 +3308,17 @@ function BillingPanel() {
     })();
   }, []);
 
+  // Billing status helper tooltip
+  function billingHelp(st){
+    const s = String(st||'').toLowerCase();
+    if(s==='active') return 'Active: billing is in good standing.';
+    if(s==='trialing' || s==='trial') return 'Trialing: you are on a trial; features may be limited after it ends.';
+    if(s==='past_due') return 'Past due: a payment failed or is overdue. Update your payment method.';
+    if(s==='payment_failed') return 'Payment failed: please update your card in the billing portal.';
+    if(s==='canceled' || s==='cancelled') return 'Canceled: your subscription is canceled; access may be limited.';
+    return 'Billing status';
+  }
+
   async function startCheckout(planKey) {
     setLoading(true); setErr("");
     try {
@@ -3348,7 +3360,7 @@ function BillingPanel() {
       <p style={{ color: "#666", marginTop: 0 }}>
         Current plan: <b>{String(effective).toUpperCase()}</b>
         {me?.billing_status ? (
-          <> — <span style={{fontSize:12, padding:'2px 6px', border:'1px solid rgba(255,255,255,.25)', borderRadius:999}}>{String(me.billing_status)}</span></>
+          <> — <span title={billingHelp(me.billing_status)} style={{fontSize:12, padding:'2px 6px', border:'1px solid rgba(255,255,255,.25)', borderRadius:999}}>{String(me.billing_status)}</span></>
         ) : null}
         {me?.trial?.active ? (
           <> — trial active, <b>{trialDays}</b> day{trialDays===1?"":"s"} left</>
