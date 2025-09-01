@@ -1067,8 +1067,10 @@ function useNav(){
               window.dispatchEvent(new Event('me-updated'));
             }, delta);
           }
-        } catch (_e) {}
-      }catch(e){ if(mounted) setErr(e.error||"API error"); }
+        } catch(e){ 
+  console.error(e);
+  setErr("Unable to load integration status.");
+}
       finally{ if(mounted) setLoading(false); }
     }
 
@@ -1241,8 +1243,8 @@ function RealtimeEmailScans() {
             return next.slice(0, 50);
           });
         } catch (_e) {
-          // ignore parse errors
-        }
+  console.warn("Ignored OAuth URL cleanup error", _e);
+}
       };
 
       es.onerror = () => {
@@ -2587,7 +2589,8 @@ React.useEffect(() => {
       fetchConnStatus();
     }
   } catch (_e) {
-    // ignore parsing errors
+  console.warn("Ignored OAuth URL cleanup error", _e);
+}
   }
 }, []);
   // Load current connection status on first render
