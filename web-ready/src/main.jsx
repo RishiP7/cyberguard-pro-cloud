@@ -1291,14 +1291,37 @@ function Dashboard(){
   }
 
   return (
-    <div>
-      <h1 style={{marginTop:0}}>Dashboard</h1>
+  <div style={{position:'relative'}}>
+    <h1 style={{marginTop:0}}>Dashboard</h1>
+{/* Futuristic ambient background */}
+<style>{`
+  @keyframes nebula { 
+    0%{background-position:0 0, 0 0} 
+    50%{background-position:240px 140px, -180px -100px} 
+    100%{background-position:0 0, 0 0} 
+  }
+`}</style>
+<div
+  aria-hidden="true"
+  style={{
+    position:'absolute',
+    inset:0,
+    zIndex:0,
+    pointerEvents:'none',
+    opacity:.14,
+    backgroundImage:
+      'radial-gradient(640px 320px at 18% 8%, rgba(31,111,235,.38), transparent 60%), ' +
+      'radial-gradient(560px 280px at 86% 24%, rgba(123,216,143,.32), transparent 60%)',
+    backgroundRepeat:'no-repeat',
+    animation:'nebula 28s ease-in-out infinite'
+  }}
+/>
 
       {/* AI Pulse hero */}
-      <AIPulseHero stats={stats} />
+      <div style={{position:'relative', zIndex:1}}><AIPulseHero stats={stats} /></div>
 
       {/* Futuristic stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4, minmax(200px,1fr))',gap:12, marginTop:12}}>
+      <div style={{position:'relative', zIndex:1, display:'grid',gridTemplateColumns:'repeat(4, minmax(200px,1fr))',gap:12, marginTop:12}}>
         <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
         <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
         <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
@@ -1306,7 +1329,7 @@ function Dashboard(){
       </div>
 
       {/* Quick AI ask */}
-      <div style={{marginTop:12, display:'grid', gridTemplateColumns:'2fr 3fr', gap:12}}>
+      <div style={{position:'relative', zIndex:1, marginTop:12, display:'grid', gridTemplateColumns:'2fr 3fr', gap:12}}>
         <div style={{...card}}>
           <div style={{fontWeight:700, marginBottom:8}}>Ask AI</div>
           <form onSubmit={quickAsk} style={{display:'grid', gap:8}}>
