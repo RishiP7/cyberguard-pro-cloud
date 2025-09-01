@@ -883,6 +883,10 @@ function AIDock({ me }) {
   );
 }
 function Layout({children}){
+  // Fetch /me so we can gate Autonomy nav by plan
+  const [meNav, setMeNav] = React.useState(null);
+  React.useEffect(()=>{ apiGet('/me').then(setMeNav).catch(()=>{}); },[]);
+  const capsNav = planCapabilities(meNav?.plan_actual || meNav?.plan || 'trial', meNav);
   const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
@@ -896,6 +900,23 @@ function Layout({children}){
           <N to="/">Dashboard</N>
           <N to="/alerts">Alerts</N>
           <N to="/integrations">Integrations</N>
+{capsNav.ai && (
+  <Link to="/autonomy" style={{textDecoration:'none'}}>
+    <button
+      className="ghost"
+      style={{
+        padding:'8px 12px',
+        borderRadius:10,
+        border:'1px solid rgba(255,255,255,.2)',
+        background:'transparent',
+        color:'#e6e9ef',
+        cursor:'pointer'
+      }}
+    >
+      Autonomy
+    </button>
+  </Link>
+)}
           <N to="/policy">Policy</N>
           <N to="/pricing">Pricing</N>
           <N to="/account">Account</N>
