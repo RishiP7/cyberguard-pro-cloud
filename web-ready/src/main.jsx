@@ -2200,11 +2200,22 @@ function LiveEmailScan(){
     setLoading(true); setErr("");
     try{
       const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-      const r = await fetch(`/alerts/export?days=1&limit=200`, {
+      const origin =
+        (import.meta?.env?.VITE_API_BASE)
+        || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+              ? "https://cyberguard-pro-cloud.onrender.com"
+              : "http://localhost:8080");
+
+      const r = await fetch(`${origin}/alerts/export?days=1&limit=200`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const j = await r.json();
-      if(!r.ok) throw new Error(j?.error || "fetch failed");
+
+      const text = await r.text();
+      let j;
+      try { j = JSON.parse(text); }
+      catch { throw new Error(text || "Invalid response"); }
+      if(!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
+
       const list = Array.isArray(j.alerts) ? j.alerts : [];
       list.sort((a,b)=> Number(b.created_at||0) - Number(a.created_at||0));
       setItems(list);
@@ -2238,13 +2249,27 @@ function LiveEmailScan(){
     grid:{display:'grid',gridTemplateColumns:'160px 120px 1fr 140px',gap:10,alignItems:'center'},
     pill:(c,b)=>({fontSize:12,padding:'2px 8px',borderRadius:999,border:`1px solid ${c}`,background:b,color:c,display:'inline-block'})
   };
+  const scanCss = `
+  @keyframes pulse {0%{opacity:.25;transform:scaleY(.4)}50%{opacity:1;transform:scaleY(1)}100%{opacity:.25;transform:scaleY(.4)}}
+  .scanbar{width:3px;height:16px;margin-right:3px;background:#7bd88f;display:inline-block;border-radius:2px;animation:pulse 1.2s ease-in-out infinite;}
+  .scanbar:nth-child(3n+1){animation-duration:1.0s}
+  .scanbar:nth-child(3n+2){animation-duration:1.3s}
+  .scanbar:nth-child(3n+3){animation-duration:1.6s}
+  `;
+  const scanBars = Array.from({length:18});
 
   return (
     <div style={s.wrap} aria-label="Live Email Scan">
       <div style={s.head}>
         <div style={{fontWeight:700}}>Live Email Scan</div>
-        <div style={{opacity:.8,fontSize:12}}>
-          {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <style>{scanCss}</style>
+          <div aria-hidden="true" style={{display:'inline-flex',alignItems:'flex-end',height:16}}>
+            {scanBars.map((_,i)=>(<span key={i} className="scanbar" style={{animationDelay:`${i*0.08}s`}}/>))}
+          </div>
+          <div style={{opacity:.8,fontSize:12}}>
+            {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
+          </div>
         </div>
       </div>
 
