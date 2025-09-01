@@ -2227,6 +2227,7 @@ function LiveEmailScan(){
   }
 
   React.useEffect(()=>{ load(); },[]);
+  React.useEffect(()=>{ const t = setInterval(load, 15000); return ()=>clearInterval(t); },[]);
 
   function riskFromScore(sc){
     const n = Number(sc);
@@ -2255,6 +2256,13 @@ function LiveEmailScan(){
   .scanbar:nth-child(3n+1){animation-duration:1.0s}
   .scanbar:nth-child(3n+2){animation-duration:1.3s}
   .scanbar:nth-child(3n+3){animation-duration:1.6s}
+  /* Futuristic ring + sweeping beam */
+  @keyframes ringPulse {0%{transform:scale(.9);opacity:.6}50%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.6}}
+  @keyframes sweep {0%{transform:translateX(-10%)}100%{transform:translateX(110%)}}
+  .liveviz{position:relative;display:inline-flex;align-items:center;gap:10px;height:22px}
+  .liveviz .ring{width:18px;height:18px;border-radius:999px;box-shadow:0 0 12px #7bd88f,inset 0 0 8px rgba(123,216,143,.5);border:1px solid rgba(123,216,143,.7);animation:ringPulse 1.8s ease-in-out infinite}
+  .liveviz .bars{display:inline-flex;align-items:flex-end;height:16px;position:relative;overflow:hidden;border-radius:4px;padding-right:2px}
+  .liveviz .sweep{position:absolute;left:0;top:0;bottom:0;width:38px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(123,216,143,.25),transparent);filter:blur(.3px);animation:sweep 1.8s linear infinite}
   `;
   const scanBars = Array.from({length:18});
 
@@ -2264,8 +2272,14 @@ function LiveEmailScan(){
         <div style={{fontWeight:700}}>Live Email Scan</div>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <style>{scanCss}</style>
-          <div aria-hidden="true" style={{display:'inline-flex',alignItems:'flex-end',height:16}}>
-            {scanBars.map((_,i)=>(<span key={i} className="scanbar" style={{animationDelay:`${i*0.08}s`}}/>))}
+          <div className="liveviz" aria-hidden="true">
+            <span className="ring"></span>
+            <div className="bars">
+              <span className="sweep"></span>
+              {scanBars.map((_,i)=>(
+                <span key={i} className="scanbar" style={{animationDelay:`${i*0.08}s`}}/>
+              ))}
+            </div>
           </div>
           <div style={{opacity:.8,fontSize:12}}>
             {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
