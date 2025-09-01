@@ -2001,6 +2001,133 @@ function OnboardingTips() {
     </div>
   );
 }
+
+// --- Autonomy (Pro+) ---
+function AutonomyPage(){
+  const [me, setMe] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [policy, setPolicy] = React.useState(null);
+  const [actions, setActions] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function api(path, opts = {}) {
+    const token = localStorage.getItem("token") || "";
+    const url = `${API_ORIGIN}${path.startsWith('/') ? path : '/' + path}`;
+    const res = await fetch(url, {
+      method: opts.method || "GET",
+      headers: { "Content-Type":"application/json", Authorization:`Bearer ${token}` },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    const text = await res.text();
+    let json; try { json = JSON.parse(text); } catch { json = { ok:false, error:text }; }
+    if (!res.ok) throw Object.assign(new Error(json.error || res.statusText), { detail: json });
+    return json;
+  }
+
+  async function loadAll(){
+    setLoading(true); setErr("");
+    try{
+      const m = await api('/me');
+      setMe(m);
+      const pol = await api('/ai/policies');
+      setPolicy(Array.isArray(pol?.items) ? pol.items[0] || { mode:'manual' } : { mode:'manual' });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.message || 'load failed'); }
+    finally{ setLoading(false); }
+  }
+
+  React.useEffect(()=>{ loadAll(); },[]);
+
+  const caps = planCapabilities(me?.plan_actual || me?.plan || 'trial', me);
+  const proPlus = caps.ai; // same gating
+
+  async function setMode(mode){
+    setBusy(true); setErr("");
+    try{
+      const j = await api('/ai/policies', { method:'POST', body:{ mode } });
+      setPolicy(j?.policy || { mode });
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'failed to update'); }
+    finally{ setBusy(false); }
+  }
+  async function propose(){
+    setBusy(true); setErr("");
+    try{
+      await api('/ai/propose', { method:'POST' });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'propose failed'); }
+    finally{ setBusy(false); }
+  }
+
+  const s={ wrap:{padding:16}, card:{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'},
+            btn:{padding:'8px 12px',borderRadius:8,border:'1px solid #2b6dff66',background:'#1f6feb',color:'#fff',cursor:'pointer'},
+            ghost:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'} };
+
+  if (loading) return <div style={s.wrap}>Loading…</div>;
+  if (!proPlus) return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Autonomy (beta)</h1>
+      <div style={s.card}>This feature is available on <b>Pro+</b>. If you are on a trial of Basic/Pro, it unlocks temporarily.</div>
+    </div>
+  );
+
+  return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Autonomy (beta)</h1>
+      {err && <div style={{padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8,marginBottom:8}}>Error: {err}</div>}
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr',gap:12}}>
+        <div style={s.card}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Policy</div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <span style={{opacity:.85,fontSize:12}}>Mode:</span>
+              <select value={policy?.mode||'manual'} onChange={e=>setMode(e.target.value)} disabled={busy} style={{padding:'6px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
+                <option value="manual">manual</option>
+                <option value="auto">auto</option>
+              </select>
+              <button style={s.ghost} onClick={loadAll} disabled={busy}>Refresh</button>
+            </div>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>When set to <b>auto</b>, approved actions will execute automatically.</div>
+        </div>
+
+        <div style={s.card}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Actions</div>
+            <div style={{display:'flex',gap:8}}>
+              <button style={s.btn} onClick={propose} disabled={busy}>Propose actions</button>
+              <button style={s.ghost} onClick={loadAll} disabled={busy}>Refresh</button>
+            </div>
+          </div>
+          <div style={{marginTop:8, borderTop:'1px solid rgba(255,255,255,.08)'}}>
+            <div style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px',gap:8,padding:'8px 0',opacity:.75,fontSize:12}}>
+              <div>When</div><div>Action</div><div>Status</div><div>By</div>
+            </div>
+            {actions.length===0 ? (
+              <div style={{opacity:.75}}>No actions yet.</div>
+            ) : actions.map(a=> (
+              <div key={a.id} style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px',gap:8,padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.06)'}}>
+                <div>{a.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—'}</div>
+                <div style={{whiteSpace:'pre-wrap'}}>{a.summary || a.type || JSON.stringify(a.params||{})}</div>
+                <div>{a.status || 'proposed'}</div>
+                <div>{a.actor || 'system'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 // Wrap Dashboard to inject onboarding widget without touching original Dashboard implementation
 // Reusable collapsible section with localStorage persistence
 function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
@@ -2302,6 +2429,7 @@ function App(){
           <Route path="/pricing" element={protect(<Pricing/>)} />
           <Route path="/account" element={protect(<Account api={API}/>)} />
           <Route path="/alerts" element={protect(<AlertsPage/>)} />
+          <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
           <Route path="/admin" element={protect(<Admin api={API}/>)} />
 
           <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
@@ -2732,7 +2860,7 @@ function Integrations({ api }) {
           <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</div>
           <div style={{marginTop:8}}>
             {planCapabilities(meState?.plan || 'trial', meState).ai ? (
-              <button style={btn} onClick={()=>alert('AI assistant preview. Full features on Pro+.')}>Open Assistant</button>
+              <Link to="/autonomy"><button style={btn}>Open Autonomy</button></Link>
             ) : (
               <LockedTile title="AI Security Assistant" reason="Available on Pro+ (trial preview unlocks it temporarily)." />
             )}
