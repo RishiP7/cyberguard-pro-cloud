@@ -887,7 +887,26 @@ function Layout({children}){
   const [meNav, setMeNav] = React.useState(null);
   React.useEffect(()=>{ apiGet('/me').then(setMeNav).catch(()=>{}); },[]);
   const capsNav = planCapabilities(meNav?.plan_actual || meNav?.plan || 'trial', meNav);
-  const nav = useNav();
+// Autonomy pending (proposed) actions count for navbar badge
+const [autoCount, setAutoCount] = React.useState(0);
+React.useEffect(()=>{
+  let timer = null;
+  async function load(){
+    try{
+      if(!capsNav.ai){ setAutoCount(0); return; }
+      const j = await apiGet('/ai/actions');
+      const n = Array.isArray(j?.items)
+        ? j.items.filter(a => String(a.status||'').toLowerCase()==='proposed').length
+        : 0;
+      setAutoCount(n);
+    }catch(_e){ /* ignore */ }
+  }
+  load();
+  // refresh every 60s
+  timer = setInterval(load, 60000);
+  return ()=>{ try{ if(timer) clearInterval(timer); }catch(_e){} };
+}, [capsNav.ai]);  
+const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
   return (
@@ -900,7 +919,24 @@ function Layout({children}){
           <N to="/">Dashboard</N>
           <N to="/alerts">Alerts</N>
           <N to="/integrations">Integrations</N>
-          {capsNav.ai && (<N to="/autonomy">Autonomy</N>)}
+          {capsNav.ai && (
+  <N to="/autonomy">
+    Autonomy{autoCount>0 && (
+      <span
+        style={{
+          marginLeft:6,
+          fontSize:11,
+          padding:'1px 6px',
+          border:'1px solid rgba(255,255,255,.25)',
+          borderRadius:999,
+          opacity:.9
+        }}
+      >
+        {autoCount}
+      </span>
+    )}
+  </N>
+)}
           <N to="/policy">Policy</N>
           <N to="/pricing">Pricing</N>
           <N to="/account">Account</N>
