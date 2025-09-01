@@ -2186,15 +2186,18 @@ function LiveEmailScan(){
 function DashboardWithOnboarding(props){
   return (
     <div style={{padding:16}}>
-      {/* Render existing Dashboard first */}
-      <Dashboard {...props} />
-      {/* Live Email Scan — static, always visible */}
-      <LiveEmailScan/>
-
-      {/* Onboarding/tips collapsible sections */}
+      {/* Onboarding/tips: place Get started first under trial banner */}
       <CollapsibleSection id="onboarding" title="Get started" defaultCollapsed={true}>
         <OnboardingChecklist/>
       </CollapsibleSection>
+
+      {/* Render existing Dashboard next */}
+      <Dashboard {...props} />
+
+      {/* Live Email Scan — static, always visible */}
+      <LiveEmailScan/>
+
+      {/* Explanation section remains collapsible */}
       <CollapsibleSection id="explain" title="What am I looking at?" defaultCollapsed={true}>
         <OnboardingTips/>
       </CollapsibleSection>
