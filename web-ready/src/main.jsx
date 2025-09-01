@@ -2066,6 +2066,26 @@ function AutonomyPage(){
     }catch(e){ setErr(e?.detail?.error || e?.message || 'propose failed'); }
     finally{ setBusy(false); }
   }
+  async function approveOne(id){
+    if(!id) return;
+    setBusy(true); setErr("");
+    try{
+      await api('/ai/approve', { method:'POST', body:{ id } });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'approve failed'); }
+    finally{ setBusy(false); }
+  }
+  async function executeOne(id){
+    if(!id) return;
+    setBusy(true); setErr("");
+    try{
+      await api('/ai/execute', { method:'POST', body:{ id } });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'execute failed'); }
+    finally{ setBusy(false); }
+  }
 
   const s={ wrap:{padding:16}, card:{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'},
             btn:{padding:'8px 12px',borderRadius:8,border:'1px solid #2b6dff66',background:'#1f6feb',color:'#fff',cursor:'pointer'},
@@ -2082,6 +2102,11 @@ function AutonomyPage(){
   return (
     <div style={s.wrap}>
       <h1 style={{marginTop:0}}>Autonomy (beta)</h1>
+      {policy?.mode === 'auto' && (
+        <div style={{margin:'8px 0', padding:'8px 10px', border:'1px solid #7bd88f55', background:'#7bd88f22', borderRadius:8}}>
+          <b>Auto-run is ON:</b> approved actions execute automatically every minute.
+        </div>
+      )}
       {err && <div style={{padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8,marginBottom:8}}>Error: {err}</div>}
 
       <div style={{display:'grid',gridTemplateColumns:'1fr',gap:12}}>
@@ -2109,17 +2134,25 @@ function AutonomyPage(){
             </div>
           </div>
           <div style={{marginTop:8, borderTop:'1px solid rgba(255,255,255,.08)'}}>
-            <div style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px',gap:8,padding:'8px 0',opacity:.75,fontSize:12}}>
-              <div>When</div><div>Action</div><div>Status</div><div>By</div>
+            <div style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px 180px',gap:8,padding:'8px 0',opacity:.75,fontSize:12}}>
+              <div>When</div><div>Action</div><div>Status</div><div>By</div><div>Controls</div>
             </div>
             {actions.length===0 ? (
               <div style={{opacity:.75}}>No actions yet.</div>
             ) : actions.map(a=> (
-              <div key={a.id} style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px',gap:8,padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.06)'}}>
+              <div key={a.id} style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px 180px',gap:8,padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.06)'}}>
                 <div>{a.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—'}</div>
                 <div style={{whiteSpace:'pre-wrap'}}>{a.summary || a.type || JSON.stringify(a.params||{})}</div>
                 <div>{a.status || 'proposed'}</div>
                 <div>{a.actor || 'system'}</div>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {String(a.status||'').toLowerCase()==='proposed' && (
+                    <button style={s.btn} disabled={busy} onClick={()=>approveOne(a.id)}>Approve</button>
+                  )}
+                  {String(a.status||'').toLowerCase()==='approved' && (
+                    <button style={s.btn} disabled={busy} onClick={()=>executeOne(a.id)}>Execute</button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
