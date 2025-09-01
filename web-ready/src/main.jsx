@@ -1665,11 +1665,18 @@ function Admin(){
 function AlertsPage(){
   const [items, setItems] = React.useState([]);
   const [limit, setLimit] = React.useState(50);
-  const [days, setDays]   = React.useState(7);
+  const [days, setDays]   = React.useState(()=>{ try{ const v=(typeof localStorage!=="undefined"&&localStorage.getItem('alerts:days'))||""; return v? Number(v)||7 : 7; }catch{ return 7; } });
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
-  const [q, setQ] = React.useState("");
-  const [onlyAnomaly, setOnlyAnomaly] = React.useState(false);
+  const [q, setQ] = React.useState(()=>{ try{ return (typeof localStorage!=="undefined"&&localStorage.getItem('alerts:q'))||""; }catch{ return ""; } });
+  const [onlyAnomaly, setOnlyAnomaly] = React.useState(()=>{ try{ return (typeof localStorage!=="undefined"&&localStorage.getItem('alerts:onlyAnomaly'))==="1"; }catch{ return false; } });
+  // Persist filters
+  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('alerts:days', String(days)); } }catch{} },[days]);
+  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('alerts:q', String(q||'')); } }catch{} },[q]);
+  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('alerts:onlyAnomaly', onlyAnomaly? '1':'0'); } }catch{} },[onlyAnomaly]);
+
+  // Toast state for CSV export
+  const [toast, setToast] = React.useState("");
   const [selected, setSelected] = React.useState(null);
 
   async function loadAlerts(nextLimit = limit, nextDays = days){
@@ -1759,6 +1766,8 @@ function AlertsPage(){
       a.click();
       a.remove();
       setTimeout(()=> URL.revokeObjectURL(a.href), 1500);
+      setToast('Exported CSV');
+      setTimeout(()=>setToast(''), 1600);
     }catch(e){
       setErr(e?.message || 'Export failed');
     }
@@ -1910,6 +1919,11 @@ function AlertsPage(){
           </div>
         </div>
       )}
+      {toast && (
+        <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -2016,6 +2030,8 @@ function AutonomyPage(){
   const [actions, setActions] = React.useState([]);
   const [busy, setBusy] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState('all'); // all | proposed | approved | executed | failed
+  const [toast, setToast] = React.useState("");
+  const canApprove = !!(me?.is_super || (String(me?.role||'').toLowerCase()==='owner') || (String(me?.role||'').toLowerCase()==='admin'));
 
   const API_ORIGIN =
     (import.meta?.env?.VITE_API_BASE)
@@ -2052,6 +2068,13 @@ function AutonomyPage(){
 
   React.useEffect(()=>{ loadAll(); },[]);
 
+  // Initialize filter from localStorage
+  React.useEffect(()=>{
+    try{ const v = (typeof localStorage!=="undefined" && localStorage.getItem('autonomy:filter')) || 'all'; setStatusFilter(v || 'all'); }catch{}
+  },[]);
+  // Persist filter on change
+  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('autonomy:filter', String(statusFilter)); } }catch{} },[statusFilter]);
+
   const caps = planCapabilities(me?.plan_actual || me?.plan || 'trial', me);
   const proPlus = caps.ai; // same gating
 
@@ -2073,7 +2096,7 @@ function AutonomyPage(){
     finally{ setBusy(false); }
   }
   async function approveOne(id){
-    if(!id) return;
+    if(!id) return; if(!canApprove){ setErr('Not permitted'); return; }
     setBusy(true); setErr("");
     try{
       await api('/ai/approve', { method:'POST', body:{ id } });
@@ -2083,7 +2106,7 @@ function AutonomyPage(){
     finally{ setBusy(false); }
   }
   async function executeOne(id){
-    if(!id) return;
+    if(!id) return; if(!canApprove){ setErr('Not permitted'); return; }
     setBusy(true); setErr("");
     try{
       await api('/ai/execute', { method:'POST', body:{ id } });
@@ -2094,6 +2117,7 @@ function AutonomyPage(){
   }
 
   async function bulkApprove(){
+    if(!canApprove){ setErr('Not permitted'); return; }
     const targets = actions.filter(a => String(a.status||'').toLowerCase()==='proposed').map(a=>a.id);
     if(targets.length===0) return;
     setBusy(true); setErr("");
@@ -2101,10 +2125,13 @@ function AutonomyPage(){
       for (const id of targets) { await api('/ai/approve', { method:'POST', body:{ id } }); }
       const acts = await api('/ai/actions');
       setActions(Array.isArray(acts?.items) ? acts.items : []);
+      setToast(`Approved ${targets.length} action${targets.length===1?'':'s'}`);
+      setTimeout(()=>setToast(''), 1600);
     }catch(e){ setErr(e?.detail?.error || e?.message || 'bulk approve failed'); }
     finally{ setBusy(false); }
   }
   async function bulkExecute(){
+    if(!canApprove){ setErr('Not permitted'); return; }
     const targets = actions.filter(a => String(a.status||'').toLowerCase()==='approved').map(a=>a.id);
     if(targets.length===0) return;
     setBusy(true); setErr("");
@@ -2112,6 +2139,8 @@ function AutonomyPage(){
       for (const id of targets) { await api('/ai/execute', { method:'POST', body:{ id } }); }
       const acts = await api('/ai/actions');
       setActions(Array.isArray(acts?.items) ? acts.items : []);
+      setToast(`Executed ${targets.length} action${targets.length===1?'':'s'}`);
+      setTimeout(()=>setToast(''), 1600);
     }catch(e){ setErr(e?.detail?.error || e?.message || 'bulk execute failed'); }
     finally{ setBusy(false); }
   }
@@ -2174,8 +2203,8 @@ function AutonomyPage(){
                 <option value="failed">failed</option>
               </select>
               <button style={s.btn} onClick={propose} disabled={busy}>Propose actions</button>
-              <button style={s.ghost} onClick={bulkApprove} disabled={busy}>Approve all proposed</button>
-              <button style={s.ghost} onClick={bulkExecute} disabled={busy}>Execute all approved</button>
+              {canApprove && <button style={s.ghost} onClick={bulkApprove} disabled={busy}>Approve all proposed</button>}
+              {canApprove && <button style={s.ghost} onClick={bulkExecute} disabled={busy}>Execute all approved</button>}
               <button style={s.ghost} onClick={loadAll} disabled={busy}>Refresh</button>
             </div>
           </div>
@@ -2192,10 +2221,10 @@ function AutonomyPage(){
                 <div>{a.status || 'proposed'}</div>
                 <div>{a.actor || 'system'}</div>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {String(a.status||'').toLowerCase()==='proposed' && (
+                  {canApprove && String(a.status||'').toLowerCase()==='proposed' && (
                     <button style={s.btn} disabled={busy} onClick={()=>approveOne(a.id)}>Approve</button>
                   )}
-                  {String(a.status||'').toLowerCase()==='approved' && (
+                  {canApprove && String(a.status||'').toLowerCase()==='approved' && (
                     <button style={s.btn} disabled={busy} onClick={()=>executeOne(a.id)}>Execute</button>
                   )}
                 </div>
@@ -2204,6 +2233,11 @@ function AutonomyPage(){
           </div>
         </div>
       </div>
+      {toast && (
+        <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
