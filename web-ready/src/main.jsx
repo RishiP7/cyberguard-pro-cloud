@@ -2567,37 +2567,36 @@ function Integrations({ api }) {
   }
 
   // Handle OAuth return flags (?connected=..., ok=..., err=...)
-React.useEffect(() => {
-  try {
-    const sp = new URLSearchParams(window.location.search || '');
-    const connected = sp.get('connected');
-    if (connected) {
-      const ok  = sp.get('ok');
-      const err = sp.get('err');
+  React.useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search || '');
+      const connected = sp.get('connected');
+      if (connected) {
+        const ok  = sp.get('ok');
+        const err = sp.get('err');
 
-      if (ok === '1') {
-        setToast((connected === 'm365' ? 'Microsoft 365' : 'Google') + ' connected');
-      } else {
-        setToast(`Connection failed${err ? `: ${err}` : ''}`);
+        if (ok === '1') {
+          setToast((connected === 'm365' ? 'Microsoft 365' : 'Google') + ' connected');
+        } else {
+          setToast(`Connection failed${err ? `: ${err}` : ''}`);
+        }
+        setTimeout(() => setToast(''), 1800);
+
+        // remove flags from the URL (Safari-safe)
+        sp.delete('connected');
+        sp.delete('ok');
+        sp.delete('err');
+
+        const qs = sp.toString();
+        const clean = window.location.origin + window.location.pathname + (qs ? ('?' + qs) : '');
+        window.history.replaceState({}, '', clean);
+
+        fetchConnStatus();
       }
-      setTimeout(() => setToast(''), 1800);
-
-      // remove flags from the URL (Safari-safe)
-      sp.delete('connected');
-      sp.delete('ok');
-      sp.delete('err');
-
-      const qs = sp.toString();
-      const clean = window.location.origin + window.location.pathname + (qs ? ('?' + qs) : '');
-      window.history.replaceState({}, '', clean);
-
-      fetchConnStatus();
+    } catch (_e) {
+      console.warn("Ignored OAuth URL cleanup error", _e);
     }
-  } catch (_e) {
-  console.warn("Ignored OAuth URL cleanup error", _e);
-}
-  }
-}, []);
+  }, []);
   // Load current connection status on first render
   React.useEffect(() => {
     fetchConnStatus();
