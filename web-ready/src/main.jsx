@@ -2010,6 +2010,7 @@ function AutonomyPage(){
   const [policy, setPolicy] = React.useState(null);
   const [actions, setActions] = React.useState([]);
   const [busy, setBusy] = React.useState(false);
+  const [statusFilter, setStatusFilter] = React.useState('all'); // all | proposed | approved | executed | failed
 
   const API_ORIGIN =
     (import.meta?.env?.VITE_API_BASE)
@@ -2087,6 +2088,29 @@ function AutonomyPage(){
     finally{ setBusy(false); }
   }
 
+  async function bulkApprove(){
+    const targets = actions.filter(a => String(a.status||'').toLowerCase()==='proposed').map(a=>a.id);
+    if(targets.length===0) return;
+    setBusy(true); setErr("");
+    try{
+      for (const id of targets) { await api('/ai/approve', { method:'POST', body:{ id } }); }
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'bulk approve failed'); }
+    finally{ setBusy(false); }
+  }
+  async function bulkExecute(){
+    const targets = actions.filter(a => String(a.status||'').toLowerCase()==='approved').map(a=>a.id);
+    if(targets.length===0) return;
+    setBusy(true); setErr("");
+    try{
+      for (const id of targets) { await api('/ai/execute', { method:'POST', body:{ id } }); }
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'bulk execute failed'); }
+    finally{ setBusy(false); }
+  }
+
   const s={ wrap:{padding:16}, card:{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'},
             btn:{padding:'8px 12px',borderRadius:8,border:'1px solid #2b6dff66',background:'#1f6feb',color:'#fff',cursor:'pointer'},
             ghost:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'} };
@@ -2098,6 +2122,12 @@ function AutonomyPage(){
       <div style={s.card}>This feature is available on <b>Pro+</b>. If you are on a trial of Basic/Pro, it unlocks temporarily.</div>
     </div>
   );
+
+  const filteredActions = Array.isArray(actions) ? actions.filter(a => {
+    const s = String(a.status||'').toLowerCase();
+    if (statusFilter === 'all') return true;
+    return s === statusFilter;
+  }) : [];
 
   return (
     <div style={s.wrap}>
@@ -2128,8 +2158,19 @@ function AutonomyPage(){
         <div style={s.card}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div style={{fontWeight:700}}>Actions</div>
-            <div style={{display:'flex',gap:8}}>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+              <label style={{fontSize:12,opacity:.85}}>Filter:</label>
+              <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} disabled={busy}
+                style={{padding:'6px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
+                <option value="all">all</option>
+                <option value="proposed">proposed</option>
+                <option value="approved">approved</option>
+                <option value="executed">executed</option>
+                <option value="failed">failed</option>
+              </select>
               <button style={s.btn} onClick={propose} disabled={busy}>Propose actions</button>
+              <button style={s.ghost} onClick={bulkApprove} disabled={busy}>Approve all proposed</button>
+              <button style={s.ghost} onClick={bulkExecute} disabled={busy}>Execute all approved</button>
               <button style={s.ghost} onClick={loadAll} disabled={busy}>Refresh</button>
             </div>
           </div>
@@ -2137,9 +2178,9 @@ function AutonomyPage(){
             <div style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px 180px',gap:8,padding:'8px 0',opacity:.75,fontSize:12}}>
               <div>When</div><div>Action</div><div>Status</div><div>By</div><div>Controls</div>
             </div>
-            {actions.length===0 ? (
+            {filteredActions.length===0 ? (
               <div style={{opacity:.75}}>No actions yet.</div>
-            ) : actions.map(a=> (
+            ) : filteredActions.map(a=> (
               <div key={a.id} style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px 180px',gap:8,padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.06)'}}>
                 <div>{a.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—'}</div>
                 <div style={{whiteSpace:'pre-wrap'}}>{a.summary || a.type || JSON.stringify(a.params||{})}</div>
