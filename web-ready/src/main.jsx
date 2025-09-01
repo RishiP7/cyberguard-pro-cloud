@@ -2250,104 +2250,91 @@ function LiveEmailScan(){
     grid:{display:'grid',gridTemplateColumns:'160px 120px 1fr 140px',gap:10,alignItems:'center'},
     pill:(c,b)=>({fontSize:12,padding:'2px 8px',borderRadius:999,border:`1px solid ${c}`,background:b,color:c,display:'inline-block'})
   };
-  const orbCss = `
-  /* Siri-like AI orb - Futuristic Pulse + Rotate */
-  @keyframes aiPulse {
-    0%   { transform: scale(0.97); opacity: .85; }
-    30%  { transform: scale(1.05); opacity: 1; }
-    60%  { transform: scale(0.99); opacity: .93; }
-    100% { transform: scale(0.97); opacity: .85; }
+  const scanCss = `
+  /* Futuristic left-to-right scanner bar */
+  @keyframes sweepX { from{ transform: translateX(-30%);} to{ transform: translateX(130%);} }
+  @keyframes glowPulse { 0%{opacity:.35} 50%{opacity:.95} 100%{opacity:.35} }
+  @keyframes particleBob {
+    0%{ transform: translateY(0) scale(.9); opacity:.45 }
+    50%{ transform: translateY(-6px) scale(1); opacity:1 }
+    100%{ transform: translateY(0) scale(.9); opacity:.45 }
   }
-  @keyframes aiRotate { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-  @keyframes aiTwinkle { 0%{opacity:.18;transform:scale(.68)} 50%{opacity:1;transform:scale(1)} 100%{opacity:.18;transform:scale(.68)} }
-  @keyframes aiDrift {
-    0%   { transform: translateX(0) translateY(0);}
-    20%  { transform: translateX(2px) translateY(-2px);}
-    50%  { transform: translateX(-2px) translateY(2px);}
-    80%  { transform: translateX(1px) translateY(-1px);}
-    100% { transform: translateX(0) translateY(0);}
-  }
-
-  .ai-orb{
+  .scan-rail{
     position:relative;
-    width:36px;height:36px;
-    filter:
-      drop-shadow(0 0 18px #7bd88f99)
-      drop-shadow(0 0 38px #25a1ff88)
-      drop-shadow(0 0 64px #25a1ff55);
-  }
-  .ai-orb__core{
-    position:absolute; inset:0; border-radius:50%;
-    background:
-      radial-gradient(65% 65% at 53% 38%, rgba(123,216,143,1), rgba(37,161,255,.86) 48%, rgba(28,30,38,0) 74%),
-      radial-gradient(85% 85% at 60% 74%, rgba(37,161,255,.75), rgba(123,216,143,.27) 60%, rgba(28,30,38,0) 92%);
+    height:18px;
+    flex:1;
+    border-radius:999px;
+    background: linear-gradient(90deg, rgba(37,161,255,.08), rgba(123,216,143,.08));
+    border:1px solid rgba(255,255,255,.12);
+    overflow:hidden;
     box-shadow:
-      0 0 36px 10px #25a1ff77,
-      0 0 12px 6px #7bd88f99,
-      inset 0 0 22px #fff9,
-      inset 0 0 44px #25a1ff55;
-    animation:
-      aiPulse 2.2s cubic-bezier(.42,0,.58,1) infinite,
-      aiDrift 4s ease-in-out infinite;
-    z-index: 1;
+      inset 0 0 14px rgba(37,161,255,.25),
+      0 0 24px rgba(123,216,143,.2);
   }
-  .ai-orb__ring{
-    position:absolute; inset:-6px; border-radius:50%;
-    border:2px solid rgba(123,216,143,.55);
-    box-shadow:
-      0 0 30px 5px #7bd88faa,
-      0 0 50px 10px #25a1ff88,
-      0 0 0 6px rgba(123,216,143,.18),
-      inset 0 0 32px #25a1ff44;
-    animation:
-      aiRotate 12s linear infinite,
-      aiPulse 2s cubic-bezier(.42,0,.58,1) infinite;
+  .scan-rail .grid{
+    position:absolute; inset:0;
+    background-image:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, transparent 1px 50px);
+    opacity:.25;
+    mix-blend-mode:screen;
     pointer-events:none;
-    z-index: 0;
   }
-  .ai-orb__sweep{
-    position:absolute; inset:-2px; border-radius:50%;
-    background:
-      conic-gradient(from 0deg, rgba(123,216,143,0) 0deg, rgba(123,216,143,.48) 20deg, rgba(37,161,255,.32) 40deg, rgba(0,0,0,0) 90deg);
-    mask: radial-gradient(closest-side, black 72%, transparent 73%);
-    animation: aiRotate 2.8s linear infinite;
-    filter: blur(.6px);
+  .scan-rail .sweep{
+    position:absolute; inset:-20% -40%;
+    background: linear-gradient(90deg,
+      rgba(37,161,255,0) 0%,
+      rgba(37,161,255,.6) 45%,
+      rgba(123,216,143,.7) 55%,
+      rgba(123,216,143,0) 100%);
+    filter: blur(6px);
+    animation: sweepX 2.6s linear infinite;
     pointer-events:none;
-    z-index: 2;
   }
-  .ai-orb__spark{
+  .scan-rail .glow{
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse at center, rgba(37,161,255,.35), rgba(37,161,255,0) 60%);
+    animation: glowPulse 3s ease-in-out infinite;
+    pointer-events:none;
+  }
+  .scan-rail .p{
     --i: 0;
-    position:absolute; left:50%; top:50%;
-    width:3.5px;height:3.5px; border-radius:50%;
-    background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,.78) 45%, rgba(255,255,255,0) 75%);
-    transform-origin: -10px -10px;
-    transform: rotate(calc(var(--i) * 26deg)) translate(16px);
-    animation:
-      aiRotate calc(4s + (var(--i) * .07s)) linear infinite,
-      aiTwinkle calc(1.8s + (var(--i) * .05s)) ease-in-out infinite;
-    opacity:.97;
-    filter: blur(1.2px);
+    --x: 0%;
+    --d: 0s;
+    position:absolute;
+    bottom:2px;
+    left: var(--x);
+    transform: translateX(-50%);
+    width:6px; height:6px; border-radius:50%;
+    background: radial-gradient(circle at 30% 30%, #fff, #25a1ff);
+    box-shadow:
+      0 0 10px #25a1ff,
+      0 0 18px #7bd88f;
+    animation: particleBob calc(1.6s + (var(--i) * .04s)) ease-in-out infinite;
+    animation-delay: var(--d);
     pointer-events:none;
-    z-index: 3;
   }
   `;
-  const sparks = Array.from({length:14});
+  const particles = Array.from({length:18});
 
   return (
     <div style={s.wrap} aria-label="Live Email Scan">
       <div style={s.head}>
         <div style={{fontWeight:700}}>Live Email Scan</div>
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <style>{orbCss}</style>
-          <div className="ai-orb" aria-hidden="true">
-            <div className="ai-orb__core"></div>
-            <div className="ai-orb__ring"></div>
-            <div className="ai-orb__sweep"></div>
-            {sparks.map((_,i)=>(
-              <span key={i} className="ai-orb__spark" style={{"--i": i}}></span>
+        <div style={{display:'flex',alignItems:'center',gap:10, flex:1}}>
+          <style>{scanCss}</style>
+          <div className="scan-rail" aria-hidden="true" style={{flex:1, minWidth:220}}>
+            <div className="grid"></div>
+            <div className="glow"></div>
+            <div className="sweep"></div>
+            {particles.map((_,i)=>(
+              <span
+                key={i}
+                className="p"
+                style={{"--i": i, "--x": `${(i/(particles.length-1))*100}%`, "--d": `${(i*0.12)%2.4}s`}}
+              />
             ))}
           </div>
-          <div style={{opacity:.8,fontSize:12}}>
+          <div style={{opacity:.8,fontSize:12, whiteSpace:'nowrap'}}>
             {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
           </div>
         </div>
