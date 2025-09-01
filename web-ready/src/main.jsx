@@ -1217,7 +1217,6 @@ function FuturisticStat({ title, value, sub, series }){
   );
 }
 
-function AIPulseHero({ stats }){
 // --- Dashboard Visuals: Risk gauge + Integration health strip ---
 function RiskGauge({ value=0, size=120 }){
   const pct = Math.max(0, Math.min(100, Number(value)||0));
@@ -1247,7 +1246,7 @@ function IntegrationHealthStrip({ items=[] }){
   const chip = {display:'inline-flex',alignItems:'center',gap:6,padding:'4px 8px',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,background:'rgba(255,255,255,.04)'};
   return (
     <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-      {names.map(n=>{
+      {['email','edr','dns','ueba','cloud'].map(n=>{
         const it = map[n];
         const status = it?.status || 'unknown';
         const ok = status==='connected' || status==='ok';
@@ -1262,6 +1261,8 @@ function IntegrationHealthStrip({ items=[] }){
     </div>
   );
 }
+
+function AIPulseHero({ stats }){
   const today = stats?.alerts_24h ?? stats?.day_events ?? 0;
   const api = stats?.api_calls_30d ?? stats?.month_events ?? 0;
   const styleTag = `@keyframes gridMove{0%{background-position:0 0,0 0}100%{background-position:60px 30px,120px 60px}}@keyframes pulse{0%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}100%{opacity:.6;transform:scale(1)}}`;
