@@ -2254,11 +2254,6 @@ function LiveEmailScan(){
   /* Futuristic left-to-right scanner bar */
   @keyframes sweepX { from{ transform: translateX(-30%);} to{ transform: translateX(130%);} }
   @keyframes glowPulse { 0%{opacity:.35} 50%{opacity:.95} 100%{opacity:.35} }
-  @keyframes particleBob {
-    0%{ transform: translateY(0) scale(.9); opacity:.45 }
-    50%{ transform: translateY(-6px) scale(1); opacity:1 }
-    100%{ transform: translateY(0) scale(.9); opacity:.45 }
-  }
   .scan-rail{
     position:relative;
     height:18px;
@@ -2296,25 +2291,7 @@ function LiveEmailScan(){
     animation: glowPulse 3s ease-in-out infinite;
     pointer-events:none;
   }
-  .scan-rail .p{
-    --i: 0;
-    --x: 0%;
-    --d: 0s;
-    position:absolute;
-    bottom:2px;
-    left: var(--x);
-    transform: translateX(-50%);
-    width:6px; height:6px; border-radius:50%;
-    background: radial-gradient(circle at 30% 30%, #fff, #25a1ff);
-    box-shadow:
-      0 0 10px #25a1ff,
-      0 0 18px #7bd88f;
-    animation: particleBob calc(1.6s + (var(--i) * .04s)) ease-in-out infinite;
-    animation-delay: var(--d);
-    pointer-events:none;
-  }
   `;
-  const particles = Array.from({length:18});
 
   return (
     <div style={s.wrap} aria-label="Live Email Scan">
@@ -2326,13 +2303,6 @@ function LiveEmailScan(){
             <div className="grid"></div>
             <div className="glow"></div>
             <div className="sweep"></div>
-            {particles.map((_,i)=>(
-              <span
-                key={i}
-                className="p"
-                style={{"--i": i, "--x": `${(i/(particles.length-1))*100}%`, "--d": `${(i*0.12)%2.4}s`}}
-              />
-            ))}
           </div>
           <div style={{opacity:.8,fontSize:12, whiteSpace:'nowrap'}}>
             {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
