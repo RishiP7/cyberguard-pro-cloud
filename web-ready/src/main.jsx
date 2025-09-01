@@ -1218,6 +1218,50 @@ function FuturisticStat({ title, value, sub, series }){
 }
 
 function AIPulseHero({ stats }){
+// --- Dashboard Visuals: Risk gauge + Integration health strip ---
+function RiskGauge({ value=0, size=120 }){
+  const pct = Math.max(0, Math.min(100, Number(value)||0));
+  const r = (size/2) - 8; // padding
+  const c = size/2;
+  const circ = 2*Math.PI*r;
+  const dash = (pct/100)*circ;
+  const rest = circ - dash;
+  // color: low=green, med=blue, high=amber, critical=red
+  const color = pct>=80? '#ef4444' : pct>=60? '#f59e0b' : pct>=30? '#3b82f6' : '#22c55e';
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={c} cy={c} r={r} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="8" />
+      <g transform={`rotate(-90 ${c} ${c})`}>
+        <circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${dash} ${rest}`} />
+      </g>
+      <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" style={{fontSize:20,fontWeight:800,fill:'#e6e9ef'}}>{Math.round(pct)}</text>
+    </svg>
+  );
+}
+
+function IntegrationHealthStrip({ items=[] }){
+  const names = ['email','edr','dns','ueba','cloud'];
+  const map = {};
+  (items||[]).forEach(i=>{ map[String(i.type||'').toLowerCase()] = i; });
+  const dot = (ok)=>({display:'inline-block',width:8,height:8,borderRadius:999,background: ok? '#22c55e' : '#f59e0b', boxShadow: ok? '0 0 10px #22c55e88':'0 0 10px #f59e0b88'});
+  const chip = {display:'inline-flex',alignItems:'center',gap:6,padding:'4px 8px',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,background:'rgba(255,255,255,.04)'};
+  return (
+    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+      {names.map(n=>{
+        const it = map[n];
+        const status = it?.status || 'unknown';
+        const ok = status==='connected' || status==='ok';
+        const title = it ? `${n}: ${status}` : `${n}: not configured`;
+        return (
+          <span key={n} style={chip} title={title}>
+            <span style={dot(ok)} />
+            <span style={{textTransform:'uppercase',fontSize:11,opacity:.85}}>{n}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
   const today = stats?.alerts_24h ?? stats?.day_events ?? 0;
   const api = stats?.api_calls_30d ?? stats?.month_events ?? 0;
   const styleTag = `@keyframes gridMove{0%{background-position:0 0,0 0}100%{background-position:60px 30px,120px 60px}}@keyframes pulse{0%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}100%{opacity:.6;transform:scale(1)}}`;
@@ -1249,6 +1293,7 @@ function Dashboard(){
   const [me,setMe]=useState(null);
   const [stats,setStats]=useState(null);
   const [alerts,setAlerts]=useState([]);
+  const [conn, setConn] = useState([]);
   const [err,setErr]=useState(null);
   const [askBusy, setAskBusy] = React.useState(false);
   const [askQ, setAskQ] = React.useState("");
@@ -1260,6 +1305,7 @@ function Dashboard(){
         const m = await apiGet("/me"); setMe(m);
         const u = await apiGet("/usage"); setStats(u);
         const a = await apiGet("/alerts"); setAlerts(a.alerts||[]);
+        try { const s = await apiGet('/integrations/status'); setConn(s?.items||[]); } catch(_e) {}
       }catch(e){ setErr(e.error||"API error"); }
     })();
   },[]);
@@ -1276,6 +1322,14 @@ function Dashboard(){
     const n = Number(stats?.api_calls_30d || stats?.month_events || 0);
     const base = Math.max(4, Math.round(n/10));
     return [base-2, base, base+1, base-1, base+2, base+3, base-1, base+2];
+  })();
+
+  // Compute overall risk from recent alerts (avg score of last 20 alerts)
+  const overallRisk = (function(){
+    const arr = (alerts||[]).slice(0,20).map(a=>Number(a?.score||0)).filter(n=>isFinite(n)&&n>=0);
+    if(!arr.length) return 0;
+    const avg = arr.reduce((s,n)=>s+n,0)/arr.length;
+    return Math.max(0, Math.min(100, Math.round(avg)));
   })();
 
   async function quickAsk(e){
@@ -1325,7 +1379,18 @@ function Dashboard(){
         <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
         <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
         <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
-        <FuturisticStat title="Connectors" value={(me.connectors_ok ?? me.integrations_ok ?? '—')} sub="healthy" />
+        <div style={{padding:14,border:'1px solid rgba(123,216,143,.35)',borderRadius:14,background:'linear-gradient(180deg, rgba(20,24,30,.72), rgba(12,14,18,.64))',boxShadow:'0 8px 24px rgba(0,0,0,.28), 0 0 24px rgba(123,216,143,.12) inset',display:'grid',gridTemplateColumns:'auto 1fr',gap:10,alignItems:'center'}}>
+          <RiskGauge value={overallRisk} size={88} />
+          <div>
+            <div style={{opacity:.75,fontSize:12}}>Overall risk</div>
+            <div style={{fontSize:22,fontWeight:800,marginTop:4}}>{overallRisk}</div>
+            <div style={{opacity:.8,fontSize:12,marginTop:4}}>avg threat score (last 20)</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{position:'relative', zIndex:1, marginTop:10}}>
+        <IntegrationHealthStrip items={conn} />
       </div>
 
       {/* Quick AI ask */}
