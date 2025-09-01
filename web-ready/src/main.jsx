@@ -1379,14 +1379,43 @@ function Dashboard(){
         <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
         <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
         <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
-        <div style={{padding:14,border:'1px solid rgba(123,216,143,.35)',borderRadius:14,background:'linear-gradient(180deg, rgba(20,24,30,.72), rgba(12,14,18,.64))',boxShadow:'0 8px 24px rgba(0,0,0,.28), 0 0 24px rgba(123,216,143,.12) inset',display:'grid',gridTemplateColumns:'auto 1fr',gap:10,alignItems:'center'}}>
-          <RiskGauge value={overallRisk} size={88} />
-          <div>
-            <div style={{opacity:.75,fontSize:12}}>Overall risk</div>
-            <div style={{fontSize:22,fontWeight:800,marginTop:4}}>{overallRisk}</div>
-            <div style={{opacity:.8,fontSize:12,marginTop:4}}>avg threat score (last 20)</div>
-          </div>
-        </div>
+        <div
+  title="Overall risk = average of the last 20 alert scores (0–100). Higher is riskier."
+  style={{
+    padding:14,
+    border:'1px solid rgba(123,216,143,.35)',
+    borderRadius:14,
+    background:'linear-gradient(180deg, rgba(20,24,30,.72), rgba(12,14,18,.64))',
+    boxShadow:'0 8px 24px rgba(0,0,0,.28), 0 0 24px rgba(123,216,143,.12) inset',
+    display:'grid',
+    gridTemplateColumns:'auto 1fr',
+    gap:10,
+    alignItems:'center'
+  }}
+>
+  <RiskGauge value={overallRisk} size={88} />
+  <div>
+    <div style={{opacity:.75,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+      Overall risk
+      <span
+        style={{fontSize:12,opacity:.8,border:'1px solid rgba(255,255,255,.25)',borderRadius:999,padding:'0 6px'}}
+        title="Average of last 20 alert scores"
+      >
+        ?
+      </span>
+    </div>
+    <div style={{fontSize:22,fontWeight:800,marginTop:4}}>{overallRisk}</div>
+    <div style={{opacity:.8,fontSize:12,marginTop:4}}>avg threat score (last 20)</div>
+    <div style={{marginTop:6}}>
+      <Link
+        to="/alerts?sort=score_desc"
+        style={{fontSize:12,textDecoration:'none',border:'1px solid rgba(255,255,255,.18)',padding:'4px 8px',borderRadius:8,color:'#e6e9ef'}}
+      >
+        View details →
+      </Link>
+    </div>
+  </div>
+</div> 
       </div>
 
       <div style={{position:'relative', zIndex:1, marginTop:10}}>
