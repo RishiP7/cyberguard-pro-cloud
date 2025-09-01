@@ -1171,11 +1171,88 @@ function Login(){
 }
 const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"inherit",marginBottom:10};
 
+// --- Futuristic Dashboard helpers ---
+function Sparkline({ points=[], width=120, height=36 }){
+  const h = height, w = width;
+  const max = Math.max(1, ...points);
+  const path = points.map((v,i)=>{
+    const x = (i/(points.length-1||1))*w;
+    const y = h - (v/max)*h;
+    return `${i===0?'M':'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg width={w} height={h} style={{display:'block'}}>
+      <defs>
+        <linearGradient id="glow" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#7bd88f"/>
+          <stop offset="100%" stopColor="#1f6feb"/>
+        </linearGradient>
+      </defs>
+      <path d={path} fill="none" stroke="url(#glow)" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function FuturisticStat({ title, value, sub, series }){
+  const cardS={
+    padding:14,
+    border:'1px solid rgba(123,216,143,.35)',
+    borderRadius:14,
+    background:'linear-gradient(180deg, rgba(20,24,30,.72), rgba(12,14,18,.64))',
+    boxShadow:'0 8px 24px rgba(0,0,0,.28), 0 0 24px rgba(123,216,143,.12) inset',
+    position:'relative',
+    overflow:'hidden'
+  };
+  const glowLine={position:'absolute',inset:0,background:'radial-gradient(120px 40px at 20% 0%, rgba(31,111,235,.18), transparent)',pointerEvents:'none'};
+  return (
+    <div style={cardS}>
+      <div style={glowLine}/>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div style={{opacity:.75,fontSize:12}}>{title}</div>
+        <div style={{width:120}}>{Array.isArray(series)&&series.length>1 ? <Sparkline points={series}/> : null}</div>
+      </div>
+      <div style={{fontSize:24,fontWeight:800,marginTop:4}}>{value}</div>
+      {sub && <div style={{opacity:.8,fontSize:12,marginTop:4}}>{sub}</div>}
+    </div>
+  );
+}
+
+function AIPulseHero({ stats }){
+  const today = stats?.alerts_24h ?? stats?.day_events ?? 0;
+  const api = stats?.api_calls_30d ?? stats?.month_events ?? 0;
+  const styleTag = `@keyframes gridMove{0%{background-position:0 0,0 0}100%{background-position:60px 30px,120px 60px}}@keyframes pulse{0%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}100%{opacity:.6;transform:scale(1)}}`;
+  const wrap={position:'relative',padding:16,border:'1px solid rgba(255,255,255,.12)',borderRadius:16,background:'linear-gradient(180deg, rgba(16,18,24,.85), rgba(10,12,16,.75))',overflow:'hidden'};
+  const grid={position:'absolute',inset:0,backgroundImage:'linear-gradient(transparent 96%, rgba(123,216,143,.12) 100%), linear-gradient(90deg, transparent 96%, rgba(123,216,143,.12) 100%)',backgroundSize:'60px 60px, 60px 60px',animation:'gridMove 18s linear infinite',opacity:.35};
+  const pulseDot={position:'absolute',right:16,top:16,width:10,height:10,borderRadius:999,background:'#7bd88f',boxShadow:'0 0 12px #7bd88f88',animation:'pulse 1.6s ease-in-out infinite'};
+  return (
+    <div style={wrap}>
+      <style dangerouslySetInnerHTML={{__html: styleTag}} />
+      <div style={grid}/>
+      <div style={pulseDot} title="AI online"/>
+      <div style={{position:'relative'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <div>
+            <div style={{opacity:.85,fontSize:12}}>CYBERGUARD AI — LIVE</div>
+            <div style={{fontSize:22,fontWeight:800,marginTop:4}}>Monitoring in real‑time</div>
+          </div>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+            <div style={{padding:'6px 10px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,background:'rgba(255,255,255,.05)'}}>Threats analyzed (24h): <b>{today}</b></div>
+            <div style={{padding:'6px 10px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,background:'rgba(255,255,255,.05)'}}>API events (30d): <b>{api}</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard(){
   const [me,setMe]=useState(null);
   const [stats,setStats]=useState(null);
   const [alerts,setAlerts]=useState([]);
   const [err,setErr]=useState(null);
+  const [askBusy, setAskBusy] = React.useState(false);
+  const [askQ, setAskQ] = React.useState("");
+  const [askMsg, setAskMsg] = React.useState("");
 
   useEffect(()=>{
     (async()=>{
@@ -1189,35 +1266,86 @@ function Dashboard(){
   if(err) return <div style={{padding:16}}>{err}</div>;
   if(!me) return <div style={{padding:16}}>Loading…</div>;
 
+  // Build small series arrays for sparklines (fallback to simple trending values)
+  const seriesAlerts = (()=>{
+    const n = Number(stats?.alerts_24h||0);
+    const base = Math.max(2, Math.round(n/6));
+    return [base, base+1, base-1, base+2, base, base+3, Math.max(0,n-base*5)];
+  })();
+  const seriesApi = (()=>{
+    const n = Number(stats?.api_calls_30d || stats?.month_events || 0);
+    const base = Math.max(4, Math.round(n/10));
+    return [base-2, base, base+1, base-1, base+2, base+3, base-1, base+2];
+  })();
+
+  async function quickAsk(e){
+    e?.preventDefault();
+    if(!askQ.trim()) return;
+    setAskBusy(true); setAskMsg("");
+    try{
+      const r = await API.post('/ai/ask', { question: askQ });
+      setAskMsg(r?.answer || 'No answer');
+      setAskQ('');
+    }catch(_e){ setAskMsg('Sorry — assistant failed.'); }
+    finally{ setAskBusy(false); }
+  }
+
   return (
     <div>
       <h1 style={{marginTop:0}}>Dashboard</h1>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4, minmax(180px,1fr))",gap:12}}>
-        <Stat title="Tenant" value={me.name}/>
-        <Stat title="Plan" value={me.plan}/>
-        <Stat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? "-"}/>
-        <Stat title="Alerts (24h)" value={stats?.alerts_24h ?? "-"}/>
+
+      {/* AI Pulse hero */}
+      <AIPulseHero stats={stats} />
+
+      {/* Futuristic stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4, minmax(200px,1fr))',gap:12, marginTop:12}}>
+        <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
+        <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
+        <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
+        <FuturisticStat title="Connectors" value={(me.connectors_ok ?? me.integrations_ok ?? '—')} sub="healthy" />
       </div>
 
-      <div style={{marginTop:16}}>
-        <div style={{fontWeight:700, marginBottom:8}}>Recent alerts</div>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>
-              <th style={th}>When</th><th style={th}>Type</th><th style={th}>Score</th><th style={th}>Status</th>
-            </tr></thead>
-            <tbody>
-              {(alerts||[]).slice(0,10).map(a=>(
-                <tr key={a.id}>
-                  <td style={td}>{new Date(Number(a.created_at)*1000).toLocaleString()}</td>
-                  <td style={td}>{a?.event?.type || "-"}</td>
-                  <td style={td}>{a?.score}</td>
-                  <td style={td}>{a?.status}</td>
-                </tr>
-              ))}
-              {(!alerts || alerts.length===0) && <tr><td style={td} colSpan={4}>No alerts yet.</td></tr>}
-            </tbody>
-          </table>
+      {/* Quick AI ask */}
+      <div style={{marginTop:12, display:'grid', gridTemplateColumns:'2fr 3fr', gap:12}}>
+        <div style={{...card}}>
+          <div style={{fontWeight:700, marginBottom:8}}>Ask AI</div>
+          <form onSubmit={quickAsk} style={{display:'grid', gap:8}}>
+            <input
+              value={askQ}
+              onChange={e=>setAskQ(e.target.value)}
+              placeholder="e.g., Why was the last email flagged?"
+              style={{padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.06)',color:'inherit'}}
+              disabled={askBusy}
+            />
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <button style={btn} disabled={askBusy}>{askBusy? 'Thinking…' : 'Ask'}</button>
+              <span style={{opacity:.85,fontSize:12}}>{askMsg}</span>
+            </div>
+          </form>
+        </div>
+
+        {/* Recent alerts modern list */}
+        <div style={{...card}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Recent alerts</div>
+            <Link to="/alerts" style={{textDecoration:'none', padding:'6px 10px', border:'1px solid rgba(255,255,255,.18)', borderRadius:8, color:'#e6e9ef'}}>View all</Link>
+          </div>
+          <div style={{marginTop:8, maxHeight:260, overflow:'auto'}}>
+            {(alerts||[]).slice(0,6).map((a)=>{
+              const n = Number(a?.score||0);
+              const sev = n>=80? '#ef4444' : n>=60? '#f59e0b' : n>=30? '#3b82f6' : '#22c55e';
+              return (
+                <div key={a.id} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'center',padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
+                  <div>
+                    <div style={{fontWeight:600}}>{a?.event?.type || a?.evt_type || 'alert'}</div>
+                    <div style={{opacity:.8,fontSize:12}}>{a?.subject || a?.preview || a?.summary || '—'}</div>
+                  </div>
+                  <span style={{padding:'2px 8px',border:`1px solid ${sev}88`,color:sev,borderRadius:999,fontSize:12}}>{n||0}</span>
+                </div>
+              );
+            })}
+            {(!alerts || alerts.length===0) && <div style={{opacity:.7}}>No alerts yet.</div>}
+          </div>
         </div>
       </div>
     </div>
