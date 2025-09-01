@@ -1716,6 +1716,40 @@ function AlertsPage(){
 
   const list = filtered();
 
+  // Helper for building alerts export URL
+  function buildAlertsUrl(days, limit, query, anomaliesOnly){
+    const origin = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+           ? "https://cyberguard-pro-cloud.onrender.com"
+           : "http://localhost:8080");
+    const params = new URLSearchParams();
+    params.set("days", String(days||7));
+    params.set("limit", String(limit||100));
+    if(query) params.set("q", query);
+    if(anomaliesOnly) params.set("anomaly", "1");
+    return `${origin}/alerts/export?${params.toString()}`;
+  }
+
+  // Export CSV helper
+  async function exportCsv(){
+    const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+    const url = buildAlertsUrl(days, 1000, q, onlyAnomaly) + "&format=csv";
+    try{
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `alerts_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=> URL.revokeObjectURL(a.href), 1500);
+    }catch(e){
+      setErr(e?.message || 'Export failed');
+    }
+  }
+
   return (
     <div style={s.wrap}>
       <h1 style={{marginTop:0}}>Alerts</h1>
@@ -1741,6 +1775,9 @@ function AlertsPage(){
         <div style={{display:'flex',gap:8}}>
           <button className="ghost" style={s.ghost} onClick={()=>loadAlerts(limit, days)} disabled={loading}>
             {loading? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button className="ghost" style={s.ghost} onClick={exportCsv} disabled={loading}>
+            Export CSV
           </button>
           <button className="btn" style={s.btn} onClick={()=>setLimit(l=>l+50)} disabled={loading}>
             Load more (+50)
@@ -2765,119 +2802,6 @@ function Integrations({ api }) {
       )}
     </div>
   );
-}
-// --- Alerts Page ---
-function Alerts(){
-  const [items, setItems] = React.useState([]);
-  const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
-  const [q, setQ] = React.useState("");
-  const [days, setDays] = React.useState(7);
-  const [onlyAnomalies, setOnlyAnomalies] = React.useState(false);
-  const [page, setPage] = React.useState(0);
-
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [selected, setSelected] = React.useState(null);
-
-  function openAlert(a){ setSelected(a); setDrawerOpen(true); }
-  function closeDrawer(){ setSelected(null); setDrawerOpen(false); }
-  function copyText(txt){ try{ navigator.clipboard.writeText(String(txt||"")); }catch{} }
-
-  function threatLabel(score){
-    const n = Number(score);
-    if (!isFinite(n)) return "—";
-    if (n <= -0.8) return "High";
-    if (n <= -0.4) return "Medium";
-    if (n <= -0.1) return "Low";
-    return "Info";
-  }
-
-  function buildAlertsUrl(days, limit, query, anomaliesOnly){
-    const origin = (import.meta?.env?.VITE_API_BASE)
-      || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
-           ? "https://cyberguard-pro-cloud.onrender.com"
-           : "http://localhost:8080");
-    const params = new URLSearchParams();
-    params.set("days", String(days||7));
-    params.set("limit", String(limit||100));
-    if(query) params.set("q", query);
-    if(anomaliesOnly) params.set("anomaly", "1");
-    return `${origin}/alerts/export?${params.toString()}`;
-  }
-
-  async function fetchAlerts(reset=false){
-    const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-    const url = buildAlertsUrl(days,100,q,onlyAnomalies);
-    setLoading(true); setErr("");
-    try{
-      const r = await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
-      const list = Array.isArray(j?.alerts)? j.alerts:[];
-      setItems(prev=>reset?list:[...prev,...list]);
-      setPage(p=>reset?1:p+1);
-    }catch(e){ setErr(e?.message||"Failed to load alerts"); }
-    finally{ setLoading(false); }
-  }
-
-  React.useEffect(()=>{ fetchAlerts(true); },[]);
-  React.useEffect(()=>{
-    const t=setTimeout(()=>fetchAlerts(true),300);
-    return ()=>clearTimeout(t);
-  },[q,days,onlyAnomalies]);
-
-  const s={
-    wrap:{padding:16},
-    row:{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,.08)"},
-    head:{fontSize:12,opacity:.7,padding:"6px 0"},
-    badge:(st)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:st==="new"?"rgba(59,130,246,.15)":"transparent"}),
-    src:(k)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:k==="Email"?"rgba(59,130,246,.18)":k==="DNS"?"rgba(99,102,241,.18)":k==="EDR"?"rgba(16,185,129,.18)":k==="Cloud"?"rgba(234,179,8,.18)":"transparent"}),
-    threat:(sc)=>({
-      fontSize:12,padding:"2px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.18)",
-      background:sc<=-0.8?"rgba(220,38,38,.2)":sc<=-0.4?"rgba(234,179,8,.2)":sc<=-0.1?"rgba(34,197,94,.2)":"rgba(156,163,175,.2)"
-    }),
-    input:{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit"}
-  };
-
-  function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch{ return "—"; } }
-  function sourceOf(a){ const v=String(a?.source||a?.evt_type||a?.type||a?.event?.type||"").toLowerCase(); if(v.includes("email")||a?.from) return "Email"; if(v.includes("dns")) return "DNS"; if(v.includes("edr")||v.includes("endpoint")) return "EDR"; if(v.includes("cloud")||v.includes("aws")||v.includes("azure")||v.includes("gcp")) return "Cloud"; return "—"; }
-
-  return (<div style={s.wrap}>
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"space-between",marginBottom:8}}>
-      <h1 style={{margin:0}}>Alerts</h1>
-      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...s.input,width:320}}/>
-        <div style={{display:"inline-flex",alignItems:"center",gap:6}}>
-          <span style={{fontSize:12,opacity:.8}}>Last</span>
-          <input type="number" min="1" max="90" value={days} onChange={e=>setDays(Number(e.target.value)||7)} style={{...s.input,width:70}}/>
-          <span style={{fontSize:12,opacity:.8}}>days</span>
-        </div>
-        <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13}}>
-          <input type="checkbox" checked={onlyAnomalies} onChange={e=>setOnlyAnomalies(e.target.checked)}/>Only anomalies
-        </label>
-        <button onClick={()=>fetchAlerts(true)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>{loading?"Loading…":"Refresh"}</button>
-        <button onClick={()=>fetchAlerts(false)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>Load more</button>
-      </div>
-    </div>
-    {loading && <div style={{opacity:.8}}>Loading…</div>}
-    {err && <div style={{border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:8,padding:10,margin:"8px 0"}}>Error: {err}</div>}
-    {!loading && !items.length && !err && <div style={{opacity:.7}}>No alerts.</div>}
-    {!!items.length && <div>
-      <div style={{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.12)"}}>
-        <div style={s.head}>When</div><div style={s.head}>Source</div><div style={s.head}>From</div><div style={s.head}>Subject</div><div style={s.head}>Preview</div><div style={s.head}>Status</div><div style={s.head}>Threat</div>
-      </div>
-      {items.map(a=><div key={a.id} style={{...s.row,cursor:"pointer"}} onClick={()=>openAlert(a)}>
-        <div style={{opacity:.85}}>{fmt(a.created_at||a.event?.when)}</div>
-        <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.from||a.from_addr||"—"}</div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.subject||"—"}</div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.preview||"—"}</div>
-        <div><span style={s.badge(a.status||"new")}>{a.status||"new"}</span></div>
-        <div>{a.score!=null?<span style={s.threat(a.score)}>{threatLabel(a.score)} • {a.score}</span>:"—"}</div>
-      </div>)}
-    </div>}
-    {drawerOpen && <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:1000}} onClick={closeDrawer}/><aside style={{position:"fixed",top:0,right:0,height:"100%",width:"min(560px,92vw)",background:"rgba(28,30,38,.96)",borderLeft:"1px solid rgba(255,255,255,.12)",zIndex:1001,display:"flex",flexDirection:"column"}}><div style={{display:"flex",justifyContent:"space-between",padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.08)"}}><div><div style={{fontWeight:700,fontSize:16}}>{selected?.subject||"(no subject)"}</div><div style={{fontSize:12,opacity:.8}}>From: {selected?.from||selected?.from_addr||"—"}</div></div><button onClick={closeDrawer} style={{padding:"6px 10px",borderRadius:8}}>Close</button></div><div style={{padding:16,overflow:"auto"}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div><b>Source</b><div>{sourceOf(selected)}</div></div><div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></div></div></div><pre style={{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"}}>{JSON.stringify(selected,null,2)}</pre></div></aside></>}
-  </div>);
 }
 function TestEvents({ api }){
   const [out, setOut] = React.useState("");
