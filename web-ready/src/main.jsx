@@ -1068,10 +1068,15 @@ function useNav(){
             }, delta);
           }
         } catch(e){ 
-  console.error(e);
-  setErr("Unable to load integration status.");
-}
-      finally{ if(mounted) setLoading(false); }
+          console.error(e);
+          setErr("Unable to load integration status.");
+        }
+      } catch(e) {
+        console.error(e);
+        setErr("Failed to load /me");
+      } finally {
+        if(mounted) setLoading(false);
+      }
     }
 
     fetchMe();
