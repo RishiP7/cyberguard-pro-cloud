@@ -3220,7 +3220,18 @@ function LiveStatusTicker(){
 
   React.useEffect(()=>{ refresh(); const t=setInterval(refresh, 30000); return ()=>clearInterval(t); },[]);
 
-  if (hidden || msgs.length===0) return null;
+  if (hidden) {
+    return (
+      <button
+        title="Show ticker"
+        onClick={()=>{ try{ localStorage.removeItem('ticker:hidden'); }catch{}; setHidden(false); }}
+        style={{position:'fixed',bottom:10,right:10,zIndex:1200,fontSize:12,opacity:.9,padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'rgba(8,10,14,.85)',color:'inherit',cursor:'pointer'}}
+      >
+        Show status ticker
+      </button>
+    );
+  }
+  if (msgs.length===0) return null;
 
   const css = `
     @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
@@ -3259,9 +3270,20 @@ function LiveStatusTicker(){
             {dup}
           </div>
         </div>
-        <button title="Hide ticker" onClick={()=>{ try{ localStorage.setItem('ticker:hidden','1'); }catch{}; setHidden(true); }}
-          style={{fontSize:12,opacity:.8,padding:'4px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'transparent',color:'inherit',cursor:'pointer'}}>
-          Hide
+        <button
+          title={hidden ? "Show ticker" : "Hide ticker"}
+          onClick={()=>{
+            if(hidden){
+              try{ localStorage.removeItem('ticker:hidden'); }catch{}
+              setHidden(false);
+            } else {
+              try{ localStorage.setItem('ticker:hidden','1'); }catch{}
+              setHidden(true);
+            }
+          }}
+          style={{fontSize:12,opacity:.8,padding:'4px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'transparent',color:'inherit',cursor:'pointer'}}
+        >
+          {hidden ? 'Show' : 'Hide'}
         </button>
       </div>
     </div>
