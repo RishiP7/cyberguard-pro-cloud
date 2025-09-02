@@ -3260,7 +3260,6 @@ function LiveStatusTicker(){
       </button>
     );
   }
-  if (msgs.length===0) return null;
 
   const css = `
     @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
@@ -3281,7 +3280,7 @@ function LiveStatusTicker(){
     background:'rgba(255,255,255,.04)', fontSize:12
   };
 
-  const content = msgs.length ? msgs.join(' • ') : '';
+  const content = msgs.length ? msgs.join(' • ') : 'Status: no data yet';
   // duplicate content so the marquee appears continuous
   const dup = `${content}  •  ${content}`;
 
