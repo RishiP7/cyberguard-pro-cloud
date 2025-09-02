@@ -1077,6 +1077,14 @@ function Layout({children}){
             })}
           </div>
         )}
+{Array.isArray(ribbonItems) && ribbonItems.length===0 && (
+  <EmptyStateFx
+    title="No integrations connected"
+    subtitle="Connect your email, EDR, DNS, or cloud to unlock full protection."
+    actionHref="/integrations"
+    actionLabel="Set up integrations"
+  />
+)}
         {children}
         <AIDock me={me} />
       </div>
@@ -1297,6 +1305,44 @@ function SkeletonCard(){
       <SkeletonLine width="90%" height={22} />
       <div style={{height:8}}/>
       <SkeletonLine width="80%" height={10} />
+    </div>
+  );
+}
+// --- Futuristic Empty State ---
+function EmptyStateFx({ title="No data", subtitle="", actionHref, actionLabel }) {
+  const styleTag = `
+    @keyframes fxPulse { 
+      0%{opacity:.4;transform:scale(1)}
+      50%{opacity:1;transform:scale(1.02)}
+      100%{opacity:.4;transform:scale(1)}
+    }
+    @keyframes fxGrid {
+      0%{background-position:0 0,0 0}
+      100%{background-position:60px 30px,120px 60px}
+    }
+  `;
+  return (
+    <div style={{
+      border:'1px dashed rgba(255,255,255,.25)',
+      borderRadius:12,
+      padding:24,
+      textAlign:'center',
+      position:'relative',
+      overflow:'hidden',
+      background:'rgba(255,255,255,.02)',
+    }}>
+      <style dangerouslySetInnerHTML={{__html:styleTag}}/>
+      <div style={{
+        position:'absolute', inset:0, opacity:.08,
+        backgroundImage:'linear-gradient(transparent 96%, rgba(123,216,143,.25) 100%), linear-gradient(90deg, transparent 96%, rgba(123,216,143,.25) 100%)',
+        backgroundSize:'60px 60px, 60px 60px',
+        animation:'fxGrid 22s linear infinite'
+      }}/>
+      <div style={{position:'relative'}}>
+        <div style={{fontWeight:700, fontSize:16, marginBottom:6}}>{title}</div>
+        {subtitle && <div style={{opacity:.8, fontSize:13, marginBottom:12}}>{subtitle}</div>}
+        {actionHref && <a href={actionHref} style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,.25)',background:'rgba(255,255,255,.05)',textDecoration:'none',color:'#e6e9ef'}}>{actionLabel||'Learn more'}</a>}
+      </div>
     </div>
   );
 }
@@ -1661,7 +1707,14 @@ const seriesRisk = (()=>{
                 </div>
               );
             })}
-            {(!alerts || alerts.length===0) && <div style={{opacity:.7}}>No alerts yet.</div>}
+            {(!alerts || alerts.length===0) && (
+  <EmptyStateFx
+    title="No alerts yet"
+    subtitle="Alerts will appear here once threats are detected."
+    actionHref="/test"
+    actionLabel="Send a sample alert"
+  />
+)}
           </div>
         </div>
       </div>
@@ -2339,12 +2392,12 @@ function AlertsPage(){
 
       <div style={s.card}>
         {!loading && list.length===0 ? (
-          <div style={{opacity:.75,padding:12}}>
-            No alerts{q? ' match your search' : ''}.
-            <div style={{marginTop:8}}>
-              <Link to="/test" style={{fontSize:12}}>Try sending a sample alert →</Link>
-            </div>
-          </div>
+          <EmptyStateFx
+  title={`No alerts${q? ' match your search' : ''}`}
+  subtitle={onlyAnomaly ? 'Try turning off “Only anomalies” or broaden your date range.' : 'Try broadening your date range or clearing the search.'}
+  actionHref="/test"
+  actionLabel="Send a sample alert"
+/>
         ) : (
           list.map(a=>{
             const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
