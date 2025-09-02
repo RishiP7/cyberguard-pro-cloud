@@ -887,25 +887,25 @@ function Layout({children}){
   const [meNav, setMeNav] = React.useState(null);
   React.useEffect(()=>{ apiGet('/me').then(setMeNav).catch(()=>{}); },[]);
   const capsNav = planCapabilities(meNav?.plan_actual || meNav?.plan || 'trial', meNav);
-// Autonomy pending (proposed) actions count for navbar badge
-const [autoCount, setAutoCount] = React.useState(0);
-React.useEffect(()=>{
-  let timer = null;
-  async function load(){
-    try{
-      if(!capsNav.ai){ setAutoCount(0); return; }
-      const j = await apiGet('/ai/actions');
-      const n = Array.isArray(j?.items)
-        ? j.items.filter(a => String(a.status||'').toLowerCase()==='proposed').length
-        : 0;
-      setAutoCount(n);
-    }catch(_e){ /* ignore */ }
-  }
-  load();
-  // refresh every 60s
-  timer = setInterval(load, 60000);
-  return ()=>{ try{ if(timer) clearInterval(timer); }catch(_e){} };
-}, [capsNav.ai]);
+  // Autonomy pending (proposed) actions count for navbar badge
+  const [autoCount, setAutoCount] = React.useState(0);
+  React.useEffect(()=>{
+    let timer = null;
+    async function load(){
+      try{
+        if(!capsNav.ai){ setAutoCount(0); return; }
+        const j = await apiGet('/ai/actions');
+        const n = Array.isArray(j?.items)
+          ? j.items.filter(a => String(a.status||'').toLowerCase()==='proposed').length
+          : 0;
+        setAutoCount(n);
+      }catch(_e){ /* ignore */ }
+    }
+    load();
+    // refresh every 60s
+    timer = setInterval(load, 60000);
+    return ()=>{ try{ if(timer) clearInterval(timer); }catch(_e){} };
+  }, [capsNav.ai]);
 
   // Keyboard shortcuts: g a Alerts, g i Integrations, g u Autonomy, / focus Alerts search
   React.useEffect(()=>{
@@ -938,11 +938,37 @@ React.useEffect(()=>{
     async function load(){ try{ const j = await apiGet('/integrations/status'); setRibbonItems(Array.isArray(j?.items)? j.items : []); }catch{} }
     load(); const t=setInterval(load, 60000); return ()=>clearInterval(t);
   },[]);
-const nav = useNav();
+  const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
   return (
     <div>
+      {/* Global neo theme + ambient background */}
+      <style>{`
+        :root {
+          --neo-fg:#e6e9ef;
+          --neo-card:rgba(255,255,255,.04);
+          --neo-border:rgba(255,255,255,.12);
+          --neo-ghost:rgba(255,255,255,.2);
+          --neo-glow-1:#1f6feb;
+          --neo-glow-2:#7bd88f;
+        }
+        body { color: var(--neo-fg); }
+        @keyframes nebula2 { 0%{ transform:translate3d(0,0,0) scale(1);} 50%{ transform:translate3d(0px,6px,0) scale(1.02);} 100%{ transform:translate3d(0,0,0) scale(1);} }
+        /* Buttons get tasteful glow on hover */
+        .btn:hover { box-shadow: 0 0 16px rgba(31,111,235,.35), inset 0 1px 0 rgba(255,255,255,.08); transform: translateY(-1px); transition: box-shadow .2s ease, transform .2s ease; }
+        .ghost:hover { box-shadow: 0 0 10px rgba(255,255,255,.12), inset 0 1px 0 rgba(255,255,255,.06); transform: translateY(-1px); transition: box-shadow .2s ease, transform .2s ease; }
+        a:hover { filter: brightness(1.06); }
+        /* Smooth content entrance */
+        .fade-in { opacity: 0; animation: fadeIn .35s ease forwards; }
+        @keyframes fadeIn { to { opacity: 1; } }
+      `}</style>
+      <div aria-hidden="true" style={{
+        position:'fixed', inset:0, zIndex:0, pointerEvents:'none', opacity:.18,
+        backgroundImage:
+          'radial-gradient(800px 340px at 15% -4%, rgba(31,111,235,.28), transparent 60%), ' +
+          'radial-gradient(640px 300px at 92% 12%, rgba(123,216,143,.22), transparent 60%)'
+      }} />
       <div style={bar}>
         <div style={left}>
           <img src="/logo-cgp.png" alt="Logo" style={{height: 60, marginRight: 10}}/>
@@ -952,23 +978,29 @@ const nav = useNav();
           <N to="/alerts">Alerts</N>
           <N to="/integrations">Integrations</N>
           {capsNav.ai && (
-  <N to="/autonomy">
-    Autonomy{autoCount>0 && (
-      <span
-        style={{
-          marginLeft:6,
-          fontSize:11,
-          padding:'1px 6px',
-          border:'1px solid rgba(255,255,255,.25)',
-          borderRadius:999,
-          opacity:.9
-        }}
-      >
-        {autoCount}
-      </span>
-    )}
-  </N>
-)}
+            <>
+              <N to="/autonomy">
+                Autonomy{autoCount>0 && (
+                  <span
+                    style={{
+                      marginLeft:6,
+                      fontSize:11,
+                      padding:'1px 6px',
+                      border:'1px solid rgba(255,255,255,.25)',
+                      borderRadius:999,
+                      opacity:.9
+                    }}
+                  >
+                    {autoCount}
+                  </span>
+                )}
+              </N>
+              <span title="CyberGuard AI is online" style={{ marginLeft:12, display:'inline-flex', alignItems:'center', gap:6, opacity:.9 }}>
+                <span style={{ width:9,height:9,borderRadius:999, background:'#7bd88f', boxShadow:'0 0 10px #7bd88f99' }}/>
+                <span style={{fontSize:12,opacity:.8}}>AI</span>
+              </span>
+            </>
+          )}
           <N to="/policy">Policy</N>
           <N to="/pricing">Pricing</N>
           <N to="/account">Account</N>
@@ -1338,12 +1370,23 @@ function IntegrationHealthStrip({ items=[] }){
   );
 }
 
-function AIPulseHero({ stats }){
+function AIPulseHero({ stats }) {
   const today = stats?.alerts_24h ?? stats?.day_events ?? 0;
   const api = stats?.api_calls_30d ?? stats?.month_events ?? 0;
   const styleTag = `@keyframes gridMove{0%{background-position:0 0,0 0}100%{background-position:60px 30px,120px 60px}}@keyframes pulse{0%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}100%{opacity:.6;transform:scale(1)}}`;
-  const wrap={position:'relative',padding:16,border:'1px solid rgba(255,255,255,.12)',borderRadius:16,background:'linear-gradient(180deg, rgba(16,18,24,.85), rgba(10,12,16,.75))',overflow:'hidden'};
-  const grid={position:'absolute',inset:0,backgroundImage:'linear-gradient(transparent 96%, rgba(123,216,143,.12) 100%), linear-gradient(90deg, transparent 96%, rgba(123,216,143,.12) 100%)',backgroundSize:'60px 60px, 60px 60px',animation:'gridMove 18s linear infinite',opacity:.35};
+  const wrap={
+    position:'relative', padding:16,
+    border:'1px solid rgba(255,255,255,.14)', borderRadius:16,
+    background:'linear-gradient(180deg, rgba(14,16,22,.82), rgba(10,12,16,.76))',
+    boxShadow:'0 16px 40px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06)',
+    overflow:'hidden'
+  };
+  const grid={
+    position:'absolute', inset:0,
+    backgroundImage:'linear-gradient(transparent 96%, rgba(123,216,143,.12) 100%), linear-gradient(90deg, transparent 96%, rgba(123,216,143,.12) 100%)',
+    backgroundSize:'60px 60px, 60px 60px',
+    animation:'gridMove 18s linear infinite', opacity:.28
+  };
   const pulseDot={position:'absolute',right:16,top:16,width:10,height:10,borderRadius:999,background:'#7bd88f',boxShadow:'0 0 12px #7bd88f88',animation:'pulse 1.6s ease-in-out infinite'};
   return (
     <div style={wrap}>
@@ -1457,10 +1500,10 @@ const seriesRisk = (()=>{
 />
 
       {/* AI Pulse hero */}
-      <div style={{position:'relative', zIndex:1}}><AIPulseHero stats={stats} /></div>
+      <div className="fade-in" style={{position:'relative', zIndex:1}}><AIPulseHero stats={stats} /></div>
 
       {/* Futuristic stats */}
-      <div style={{position:'relative', zIndex:1, display:'grid',gridTemplateColumns:'repeat(4, minmax(200px,1fr))',gap:12, marginTop:12}}>
+      <div className="fade-in" style={{position:'relative', zIndex:1, display:'grid',gridTemplateColumns:'repeat(4, minmax(200px,1fr))',gap:12, marginTop:12}}>
         <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
         <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
         <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
