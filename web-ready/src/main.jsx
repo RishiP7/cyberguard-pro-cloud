@@ -3157,6 +3157,117 @@ function RequireAuth({ children }){
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
+function LiveStatusTicker(){
+  const [msgs, setMsgs] = React.useState([]);
+  const [hidden, setHidden] = React.useState(()=> (typeof localStorage!=='undefined' && localStorage.getItem('ticker:hidden')==='1'));
+
+  const API_ORIGIN = (import.meta?.env?.VITE_API_BASE)
+    || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function api(path){
+    const token = (typeof localStorage!=='undefined' && localStorage.getItem('token')) || '';
+    const url = `${API_ORIGIN}${path.startsWith('/')?path:'/'+path}`;
+    const r = await fetch(url, { headers:{ Authorization:`Bearer ${token}` }});
+    const t = await r.text();
+    try { return JSON.parse(t); } catch { return { ok:false, error:t }; }
+  }
+
+  async function refresh(){
+    try{
+      const [alerts, integ, actions] = await Promise.all([
+        api('/alerts/export?days=1&limit=50'),
+        api('/integrations/status'),
+        api('/ai/actions').catch(()=>({items:[]}))
+      ]);
+
+      // Alerts summary
+      let aMsgs = [];
+      if (alerts && Array.isArray(alerts.alerts)){
+        const list = alerts.alerts;
+        const today = list.length;
+        const high = list.filter(a=> Number(a?.score||0) >= 60 && Number(a?.score||0) < 80).length;
+        const crit = list.filter(a=> Number(a?.score||0) >= 80).length;
+        aMsgs.push(`Today: ${today} alerts` + (high||crit? ` (${high} high, ${crit} critical)` : ''));
+      }
+
+      // Integrations summary
+      let iMsgs = [];
+      const items = Array.isArray(integ?.items) ? integ.items : [];
+      if (items.length){
+        const ok = items.filter(x=> x.status==='connected' || x.status==='ok').length;
+        const pend = items.filter(x=> x.status==='pending').length;
+        const err = items.filter(x=> x.status==='error' || (x.last_error && String(x.last_error).trim())).length;
+        iMsgs.push(`Integrations: ${ok} ok` + (pend? `, ${pend} pending`:'') + (err? `, ${err} error`:''));
+      } else {
+        iMsgs.push('No integrations connected — set up Email, DNS, EDR');
+      }
+
+      // AI actions summary (best-effort)
+      let aiMsgs = [];
+      const acts = Array.isArray(actions?.items) ? actions.items : [];
+      if (acts.length){
+        const proposed = acts.filter(a=> String(a.status||'').toLowerCase()==='proposed').length;
+        const approved = acts.filter(a=> String(a.status||'').toLowerCase()==='approved').length;
+        const executed = acts.filter(a=> String(a.status||'').toLowerCase()==='executed').length;
+        aiMsgs.push(`AI: ${proposed} proposed, ${approved} approved, ${executed} executed`);
+      }
+
+      setMsgs([ ...aMsgs, ...iMsgs, ...aiMsgs ]);
+    }catch(_e){ /* ignore */ }
+  }
+
+  React.useEffect(()=>{ refresh(); const t=setInterval(refresh, 30000); return ()=>clearInterval(t); },[]);
+
+  if (hidden || msgs.length===0) return null;
+
+  const css = `
+    @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @media (prefers-reduced-motion: reduce) { .ticker-track { animation: none !important; } }
+  `;
+
+  const bar = {
+    position:'fixed', left:0, right:0, bottom:0, zIndex: 1200,
+    background:'rgba(8,10,14,.9)',
+    borderTop:'1px solid rgba(255,255,255,.12)',
+    backdropFilter:'blur(6px)',
+    padding:'6px 10px',
+  };
+  const chip = {
+    display:'inline-flex', alignItems:'center', gap:6,
+    border:'1px solid rgba(255,255,255,.18)', borderRadius:999,
+    padding:'2px 8px', marginRight:10,
+    background:'rgba(255,255,255,.04)', fontSize:12
+  };
+
+  const content = msgs.length ? msgs.join(' • ') : '';
+  // duplicate content so the marquee appears continuous
+  const dup = `${content}  •  ${content}`;
+
+  return (
+    <div role="region" aria-label="Live status ticker" style={bar}>
+      <style>{css}</style>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <span style={{...chip, fontWeight:700}}>Status</span>
+        <div style={{position:'relative', overflow:'hidden', flex:1, height:22}}>
+          <div className="ticker-track" style={{
+            whiteSpace:'nowrap', display:'inline-block',
+            willChange:'transform',
+            animation:'tickerScroll 40s linear infinite'
+          }}>
+            {dup}
+          </div>
+        </div>
+        <button title="Hide ticker" onClick={()=>{ try{ localStorage.setItem('ticker:hidden','1'); }catch{}; setHidden(true); }}
+          style={{fontSize:12,opacity:.8,padding:'4px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'transparent',color:'inherit',cursor:'pointer'}}>
+          Hide
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
@@ -3164,27 +3275,30 @@ function App(){
   return (
     <ErrorBoundary>
       <Layout>
-        <Routes>
-          <Route path="/login" element={<AuthLogin/>}/>
-          <Route path="/register" element={<Register/>}/>
+        <>
+          <Routes>
+            <Route path="/login" element={<AuthLogin/>}/>
+            <Route path="/register" element={<Register/>}/>
 
-          <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
-          <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
-          <Route path="/policy" element={protect(<Policy api={API}/>)} />
-          <Route path="/pricing" element={protect(<Pricing/>)} />
-          <Route path="/account" element={protect(<Account api={API}/>)} />
-          <Route path="/alerts" element={protect(<AlertsPage/>)} />
-          <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
-          <Route path="/admin" element={protect(<Admin api={API}/>)} />
+            <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
+            <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
+            <Route path="/policy" element={protect(<Policy api={API}/>)} />
+            <Route path="/pricing" element={protect(<Pricing/>)} />
+            <Route path="/account" element={protect(<Account api={API}/>)} />
+            <Route path="/alerts" element={protect(<AlertsPage/>)} />
+            <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
+            <Route path="/admin" element={protect(<Admin api={API}/>)} />
 
-          <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
-          <Route path="/admin/console/trial" element={protect(<AdminConsolePage page="trial" />)} />
-          <Route path="/admin/console/retention" element={protect(<AdminConsolePage page="retention" />)} />
-          <Route path="/admin/console/audit" element={protect(<AdminConsolePage page="audit" />)} />
-          <Route path="/test" element={protect(<TestEvents api={API}/>)} />
+            <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
+            <Route path="/admin/console/trial" element={protect(<AdminConsolePage page="trial" />)} />
+            <Route path="/admin/console/retention" element={protect(<AdminConsolePage page="retention" />)} />
+            <Route path="/admin/console/audit" element={protect(<AdminConsolePage page="audit" />)} />
+            <Route path="/test" element={protect(<TestEvents api={API}/>)} />
 
-          <Route path="*" element={<Navigate to="/" replace />}/>
-        </Routes>
+            <Route path="*" element={<Navigate to="/" replace />}/>
+          </Routes>
+          <LiveStatusTicker/>
+        </>
       </Layout>
     </ErrorBoundary>
   );
