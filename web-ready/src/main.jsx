@@ -938,11 +938,20 @@ function Layout({children}){
     async function load(){ try{ const j = await apiGet('/integrations/status'); setRibbonItems(Array.isArray(j?.items)? j.items : []); }catch{} }
     load(); const t=setInterval(load, 60000); return ()=>clearInterval(t);
   },[]);
+  // Reduced motion preference
+  const [reduceMotion, setReduceMotion] = React.useState(() => (typeof localStorage !== 'undefined' && localStorage.getItem('reduce_motion')==='1'));
+  React.useEffect(()=>{
+    function onStorage(e){ if(e.key==='reduce_motion'){ setReduceMotion(e.newValue==='1'); } }
+    function onPrefs(){ setReduceMotion((typeof localStorage!=='undefined' && localStorage.getItem('reduce_motion')==='1')); }
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('prefs-changed', onPrefs);
+    return ()=>{ window.removeEventListener('storage', onStorage); window.removeEventListener('prefs-changed', onPrefs); };
+  },[]);
   const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
   return (
-    <div>
+    <div className={reduceMotion ? 'no-anim' : ''}>
       {/* Global neo theme + ambient background */}
       <style>{`
         :root {
@@ -962,13 +971,29 @@ function Layout({children}){
         /* Smooth content entrance */
         .fade-in { opacity: 0; animation: fadeIn .35s ease forwards; }
         @keyframes fadeIn { to { opacity: 1; } }
+        /* Micro-effects */
+        .fx-tilt { transition: transform .18s ease, box-shadow .22s ease; will-change: transform; }
+        .fx-tilt:hover { transform: translateY(-2px) scale(1.01); box-shadow: 0 10px 26px rgba(0,0,0,.35), 0 0 18px rgba(123,216,143,.12) !important; }
+        .fx-row { transition: background .18s ease, transform .12s ease; }
+        .fx-row:hover { background: rgba(255,255,255,.05); transform: translateX(1px); }
+
+        /* Neon section titles */
+        .neon-title { position: relative; display:inline-block; }
+        .neon-title::after { content:''; position:absolute; left:0; right:0; bottom:-4px; height:2px; border-radius:2px; background: linear-gradient(90deg, #1f6feb, #7bd88f); box-shadow: 0 0 8px rgba(123,216,143,.35); }
+        .neon-title-sm { position: relative; display:inline-block; }
+        .neon-title-sm::after { content:''; position:absolute; left:0; right:0; bottom:-3px; height:2px; border-radius:2px; background: linear-gradient(90deg, #1f6feb, #7bd88f); opacity:.8; }
+
+        /* Active nav glow (applied inline via style merge) */
+        .no-anim * { animation: none !important; transition: none !important; }
       `}</style>
-      <div aria-hidden="true" style={{
-        position:'fixed', inset:0, zIndex:0, pointerEvents:'none', opacity:.18,
-        backgroundImage:
-          'radial-gradient(800px 340px at 15% -4%, rgba(31,111,235,.28), transparent 60%), ' +
-          'radial-gradient(640px 300px at 92% 12%, rgba(123,216,143,.22), transparent 60%)'
-      }} />
+      {!reduceMotion && (
+        <div aria-hidden="true" style={{
+          position:'fixed', inset:0, zIndex:0, pointerEvents:'none', opacity:.18,
+          backgroundImage:
+            'radial-gradient(800px 340px at 15% -4%, rgba(31,111,235,.28), transparent 60%), ' +
+            'radial-gradient(640px 300px at 92% 12%, rgba(123,216,143,.22), transparent 60%)'
+        }} />
+      )}
       <div style={bar}>
         <div style={left}>
           <img src="/logo-cgp.png" alt="Logo" style={{height: 60, marginRight: 10}}/>
@@ -1058,7 +1083,11 @@ function Layout({children}){
     </div>
   );
 }
-function N({to,children}){ return <Link to={to} style={navItem}>{children}</Link>; }
+function N({to,children}){
+  const loc = useLocation();
+  const active = loc?.pathname === to || (to !== '/' && loc?.pathname?.startsWith(to));
+  return <Link to={to} style={{...navItem, ...(active ? navItemActive : null)}}>{children}</Link>;
+}
 const bar   ={
   display:"grid",
   gridTemplateColumns:"220px 1fr auto",
@@ -1080,6 +1109,10 @@ const navItem={
   color:"#e6e9ef",
   background:"linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))",
   boxShadow:"inset 0 1px 0 rgba(255,255,255,.06)"
+};
+const navItemActive={
+  border:'1px solid #7bd88f66',
+  boxShadow:'0 0 16px rgba(123,216,143,.22), inset 0 1px 0 rgba(255,255,255,.08)'
 };
 const btnGhost={
   padding:"8px 12px",
@@ -1310,7 +1343,7 @@ function FuturisticStat({ title, value, sub, series }){
   };
   const glowLine={position:'absolute',inset:0,background:'radial-gradient(120px 40px at 20% 0%, rgba(31,111,235,.18), transparent)',pointerEvents:'none'};
   return (
-    <div style={cardS}>
+    <div className="fx-tilt" style={cardS}>
       <div style={glowLine}/>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <div style={{opacity:.75,fontSize:12}}>{title}</div>
@@ -1471,7 +1504,7 @@ const seriesRisk = (()=>{
 
   return (
   <div style={{position:'relative'}}>
-    <h1 style={{marginTop:0}}>Dashboard</h1>
+    <h1 className="neon-title" style={{marginTop:0}}>Dashboard</h1>
 {/* Futuristic ambient background */}
 <style>{`
   @keyframes nebula { 
@@ -1504,7 +1537,7 @@ const seriesRisk = (()=>{
         <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
         <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
         <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
-        <div
+        <div className="fx-tilt"
   title="Overall risk = average of the last 20 alert scores (0–100). Higher is riskier."
   style={{
     padding:14,
@@ -1570,7 +1603,7 @@ const seriesRisk = (()=>{
         {/* Recent alerts modern list */}
         <div style={{...card}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{fontWeight:700}}>Recent alerts</div>
+            <div className="neon-title-sm" style={{fontWeight:700}}>Recent alerts</div>
             <Link to="/alerts" style={{textDecoration:'none', padding:'6px 10px', border:'1px solid rgba(255,255,255,.18)', borderRadius:8, color:'#e6e9ef'}}>View all</Link>
           </div>
           <div style={{marginTop:8, maxHeight:260, overflow:'auto'}}>
@@ -1578,7 +1611,7 @@ const seriesRisk = (()=>{
               const n = Number(a?.score||0);
               const sev = n>=80? '#ef4444' : n>=60? '#f59e0b' : n>=30? '#3b82f6' : '#22c55e';
               return (
-                <div key={a.id} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'center',padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
+                <div key={a.id} className="fx-row" style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'center',padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
                   <div>
                     <div style={{fontWeight:600}}>{a?.event?.type || a?.evt_type || 'alert'}</div>
                     <div style={{opacity:.8,fontSize:12}}>{a?.subject || a?.preview || a?.summary || '—'}</div>
@@ -1693,7 +1726,7 @@ function Account(){
   return (
     <div>
       <h1 style={{marginTop:0}}>Account</h1>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(280px,1fr))",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12}}>
         <div style={card}>
           <div style={{marginBottom:8}}><b>Current plan</b>: {me.plan}</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1724,6 +1757,22 @@ function Account(){
               <button style={btn} onClick={createAccountKey}>Create API Key</button>
             </>
           )}
+        </div>
+        <div style={card}>
+          <div style={{marginBottom:8}}><b>Appearance</b></div>
+          <label style={{display:'flex',alignItems:'center',gap:8}}>
+            <input
+              type="checkbox"
+              defaultChecked={typeof localStorage!=='undefined' && localStorage.getItem('reduce_motion')==='1'}
+              onChange={e=>{
+                if (e.target.checked) localStorage.setItem('reduce_motion','1');
+                else localStorage.removeItem('reduce_motion');
+                window.dispatchEvent(new Event('prefs-changed'));
+              }}
+            />
+            <span>Reduce motion & visual effects</span>
+          </label>
+          <div style={{opacity:.8,fontSize:12,marginTop:6}}>Disables ambient background and most animations.</div>
         </div>
       </div>
       {/* API Keys card */}
