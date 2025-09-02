@@ -3052,7 +3052,16 @@ function LiveEmailScan(){
             </div>
           );
         })}
-        {(!loading && items.length===0) && <div style={{padding:'8px 0',opacity:.75}}>No messages scanned yet.</div>}
+        {(!loading && items.length===0) && (
+          <div style={{padding:'8px 0'}}>
+            <EmptyStateFx
+              title="No messages scanned yet"
+              subtitle="Connect email and give it a moment—new messages will appear as they arrive."
+              actionHref="/integrations"
+              actionLabel="Connect email"
+            />
+          </div>
+        )}
       </div>
 
       <div style={{marginTop:10}}>
