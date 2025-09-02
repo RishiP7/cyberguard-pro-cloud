@@ -905,7 +905,39 @@ React.useEffect(()=>{
   // refresh every 60s
   timer = setInterval(load, 60000);
   return ()=>{ try{ if(timer) clearInterval(timer); }catch(_e){} };
-}, [capsNav.ai]);  
+}, [capsNav.ai]);
+
+  // Keyboard shortcuts: g a Alerts, g i Integrations, g u Autonomy, / focus Alerts search
+  React.useEffect(()=>{
+    let awaiting = false; let timer=null;
+    function onKey(e){
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = (e.key||'').toLowerCase();
+      if(key==='/'){
+        e.preventDefault();
+        if (window.location.pathname.startsWith('/alerts')){
+          const el = document.querySelector('input[placeholder^="Search subject"]');
+          if (el) { el.focus(); el.select(); }
+        } else {
+          window.location.href = '/alerts';
+        }
+        return;
+      }
+      if(!awaiting){ if(key==='g'){ awaiting=true; timer=setTimeout(()=>awaiting=false, 1200); } return; }
+      awaiting=false; if(timer){ clearTimeout(timer); timer=null; }
+      if(key==='a'){ window.location.href='/alerts'; }
+      if(key==='i'){ window.location.href='/integrations'; }
+      if(key==='u'){ window.location.href='/autonomy'; }
+    }
+    window.addEventListener('keydown', onKey);
+    return ()=>{ window.removeEventListener('keydown', onKey); if(timer) clearTimeout(timer); };
+  },[]);
+
+  const [ribbonItems, setRibbonItems] = React.useState([]);
+  React.useEffect(()=>{
+    async function load(){ try{ const j = await apiGet('/integrations/status'); setRibbonItems(Array.isArray(j?.items)? j.items : []); }catch{} }
+    load(); const t=setInterval(load, 60000); return ()=>clearInterval(t);
+  },[]);
 const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
@@ -974,6 +1006,21 @@ const nav = useNav();
               onClick={()=>{ const b=localStorage.getItem('admin_token_backup'); if(b){ localStorage.setItem('token', b); localStorage.removeItem('admin_token_backup'); location.reload(); } }}
               style={{padding:'6px 10px',borderRadius:8,border:'1px solid #2b6dff55',background:'#2b6dff',color:'#fff',cursor:'pointer'}}
             >Exit impersonation</button>
+          </div>
+        )}
+        {Array.isArray(ribbonItems) && ribbonItems.length>0 && (
+          <div style={{margin:'8px 0 12px',padding:'6px 10px',border:'1px solid rgba(255,255,255,.12)',borderRadius:8,background:'rgba(255,255,255,.03)',display:'flex',gap:8,flexWrap:'wrap'}}>
+            {ribbonItems.slice(0,8).map((c,i)=>{
+              const ok = c.status==='connected' || c.status==='ok';
+              return (
+                <Link key={i} to="/integrations" style={{textDecoration:'none'}}>
+                  <span style={{display:'inline-flex',alignItems:'center',gap:6,padding:'2px 8px',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,background:'rgba(255,255,255,.04)'}}>
+                    <span style={{display:'inline-block',width:8,height:8,borderRadius:999,background: ok? '#22c55e' : '#f59e0b', boxShadow: ok? '0 0 10px #22c55e88':'0 0 10px #f59e0b88'}}/>
+                    <span style={{fontSize:12,opacity:.85}}>{String(c.type||'').toUpperCase()}</span>
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         )}
         {children}
@@ -1170,9 +1217,37 @@ function Login(){
   );
 }
 const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"inherit",marginBottom:10};
-
+// --- UI: Loading skeletons ---
+function SkeletonLine({ width='100%', height=12, radius=8 }){
+  const css = `@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}`;
+  return (
+    <div style={{position:'relative',overflow:'hidden',width,height,borderRadius:radius,background:'rgba(255,255,255,.06)'}}>
+      <style dangerouslySetInnerHTML={{__html: css}} />
+      <div style={{position:'absolute',inset:0,background:'linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.12), rgba(255,255,255,0))',backgroundSize:'200px 100%',animation:'shimmer 1.2s linear infinite'}}/>
+    </div>
+  );
+}
+function SkeletonCard(){
+  return (
+    <div style={{padding:14,border:'1px solid rgba(255,255,255,.12)',borderRadius:12,background:'rgba(255,255,255,.04)'}}>
+      <SkeletonLine width="60%" height={10} />
+      <div style={{height:8}}/>
+      <SkeletonLine width="90%" height={22} />
+      <div style={{height:8}}/>
+      <SkeletonLine width="80%" height={10} />
+    </div>
+  );
+}
 // --- Futuristic Dashboard helpers ---
 function Sparkline({ points=[], width=120, height=36 }){
+function MiniTrend({ points=[], label='7d trend' }){
+  return (
+    <div style={{marginTop:4}}>
+      <div style={{opacity:.7,fontSize:11,marginBottom:2}}>{label}</div>
+      <Sparkline points={points} width={140} height={28} />
+    </div>
+  );
+}
   const h = height, w = width;
   const max = Math.max(1, ...points);
   const path = points.map((v,i)=>{
@@ -1324,7 +1399,15 @@ function Dashboard(){
     const base = Math.max(4, Math.round(n/10));
     return [base-2, base, base+1, base-1, base+2, base+3, base-1, base+2];
   })();
-
+const seriesRisk = (()=>{
+  const arr = (alerts||[]).slice(0,32).map(a=>Number(a?.score||0)).filter(n=>isFinite(n));
+  if(arr.length<4) return seriesAlerts;
+  const step = Math.ceil(arr.length/8);
+  const pts=[]; for(let i=0;i<arr.length;i+=step){
+    pts.push(Math.round(arr.slice(i,i+step).reduce((s,n)=>s+n,0)/Math.max(1,Math.min(step,arr.length-i))));
+  }
+  return pts.slice(-8);
+})();
   // Compute overall risk from recent alerts (avg score of last 20 alerts)
   const overallRisk = (function(){
     const arr = (alerts||[]).slice(0,20).map(a=>Number(a?.score||0)).filter(n=>isFinite(n)&&n>=0);
@@ -1407,9 +1490,10 @@ function Dashboard(){
     </div>
     <div style={{fontSize:22,fontWeight:800,marginTop:4}}>{overallRisk}</div>
     <div style={{opacity:.8,fontSize:12,marginTop:4}}>avg threat score (last 20)</div>
-    <div style={{marginTop:6}}>
-      <Link
-        to="/alerts?sort=score_desc"
+<MiniTrend points={seriesRisk} label="7d risk trend" />
+<div style={{marginTop:6}}>
+  <Link
+    to="/alerts?sort=score_desc"
         style={{fontSize:12,textDecoration:'none',border:'1px solid rgba(255,255,255,.18)',padding:'4px 8px',borderRadius:8,color:'#e6e9ef'}}
       >
         View details →
@@ -1961,6 +2045,22 @@ function AlertsPage(){
   const [toast, setToast] = React.useState("");
   const [selected, setSelected] = React.useState(null);
 
+  async function markReviewed(id){
+    try{
+      await api.post('/alerts/mark_reviewed', { id });
+      setToast('Marked reviewed'); setTimeout(()=>setToast(''), 1200);
+      loadAlerts(limit, days);
+    }catch(e){ setErr(e?.error||'Failed to mark'); }
+  }
+  async function ignoreDomain(dom){
+    if(!dom) return;
+    try{
+      await api.post('/policy/ignore_domain', { domain: dom });
+      setToast('Domain ignored'); setTimeout(()=>setToast(''), 1200);
+    }catch(e){ setErr(e?.error||'Failed to ignore'); }
+  }
+  function openInAutonomy(a){ window.location.href = '/autonomy'; }
+
   async function loadAlerts(nextLimit = limit, nextDays = days){
     setLoading(true); setErr("");
     try{
@@ -2108,7 +2208,12 @@ function AlertsPage(){
 
       <div style={s.card}>
         {!loading && list.length===0 ? (
-          <div style={{opacity:.75,padding:12}}>No alerts{q? ' match your search' : ''}.</div>
+          <div style={{opacity:.75,padding:12}}>
+            No alerts{q? ' match your search' : ''}.
+            <div style={{marginTop:8}}>
+              <Link to="/test" style={{fontSize:12}}>Try sending a sample alert →</Link>
+            </div>
+          </div>
         ) : (
           list.map(a=>{
             const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
@@ -2138,12 +2243,27 @@ function AlertsPage(){
                         );
                       })()
                     : null}
+                  <button className="ghost" style={{padding:'2px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)'}} onClick={(e)=>{e.stopPropagation(); markReviewed(a.id);}}>Reviewed</button>
+                  {(a.from_addr||'').includes('@') && (
+                    <button className="ghost" style={{padding:'2px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)'}} onClick={(e)=>{e.stopPropagation(); ignoreDomain(String(a.from_addr).split('@')[1]);}}>Ignore domain</button>
+                  )}
+                  <button className="ghost" style={{padding:'2px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)'}} onClick={(e)=>{e.stopPropagation(); openInAutonomy(a);}}>Open in Autonomy</button>
                 </div>
               </div>
             );
           })
         )}
-        {loading && <div style={{opacity:.75,padding:12}}>Loading…</div>}
+        {loading && (
+          <div style={{display:'grid',gap:8,padding:12}}>
+            {Array.from({length:6}).map((_,i)=> (
+              <div key={i} style={{display:'grid',gridTemplateColumns:'220px 1fr 260px',gap:10,alignItems:'center'}}>
+                <SkeletonLine width="80%" />
+                <SkeletonLine width="95%" />
+                <SkeletonLine width="60%" />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Details Drawer / Modal */}
