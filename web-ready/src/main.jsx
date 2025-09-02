@@ -1240,14 +1240,6 @@ function SkeletonCard(){
 }
 // --- Futuristic Dashboard helpers ---
 function Sparkline({ points=[], width=120, height=36 }){
-function MiniTrend({ points=[], label='7d trend' }){
-  return (
-    <div style={{marginTop:4}}>
-      <div style={{opacity:.7,fontSize:11,marginBottom:2}}>{label}</div>
-      <Sparkline points={points} width={140} height={28} />
-    </div>
-  );
-}
   const h = height, w = width;
   const max = Math.max(1, ...points);
   const path = points.map((v,i)=>{
@@ -1265,6 +1257,15 @@ function MiniTrend({ points=[], label='7d trend' }){
       </defs>
       <path d={path} fill="none" stroke="url(#glow)" strokeWidth="2" />
     </svg>
+  );
+}
+
+function MiniTrend({ points=[], label='7d trend' }){
+  return (
+    <div style={{marginTop:4}}>
+      <div style={{opacity:.7,fontSize:11,marginBottom:2}}>{label}</div>
+      <Sparkline points={points} width={140} height={28} />
+    </div>
   );
 }
 
