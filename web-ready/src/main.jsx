@@ -1615,13 +1615,23 @@ const seriesRisk = (()=>{
             <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:2}}>
               {aiSuggestions.map((q,i)=> (
                 <button
-                  key={i}
-                  type="button"
-                  className="ghost"
-                  style={{padding:'4px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.04)',fontSize:12,cursor:'pointer'}}
-                  onClick={()=>askSuggestion(q)}
-                  disabled={askBusy}
-                >{q}</button>
+  key={i}
+  type="button"
+  className="ghost"
+  style={{
+    padding:'4px 8px',
+    borderRadius:999,
+    border:'1px solid rgba(255,255,255,.2)',
+    background:'rgba(255,255,255,.04)',
+    color:'#e6e9ef',
+    fontSize:12,
+    cursor:'pointer'
+  }}
+  onClick={()=>askSuggestion(q)}
+  disabled={askBusy}
+>
+  {q}
+</button>
               ))}
             </div>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
