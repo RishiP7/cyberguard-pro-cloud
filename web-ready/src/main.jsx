@@ -3254,7 +3254,7 @@ function LiveStatusTicker(){
       <button
         title="Show ticker"
         onClick={()=>{ try{ localStorage.removeItem('ticker:hidden'); }catch{}; setHidden(false); }}
-        style={{position:'fixed',bottom:offset,right:10,zIndex:1200,fontSize:12,opacity:.9,padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'rgba(8,10,14,.85)',color:'inherit',cursor:'pointer'}}
+        style={{position:'fixed',bottom:offset+40,right:10,zIndex:2000,fontSize:12,opacity:.9,padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'rgba(8,10,14,.85)',color:'inherit',cursor:'pointer'}}
       >
         Show status ticker
       </button>
