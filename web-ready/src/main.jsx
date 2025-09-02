@@ -1084,8 +1084,8 @@ function Layout({children}){
   );
 }
 function N({to,children}){
-  const loc = useLocation();
-  const active = loc?.pathname === to || (to !== '/' && loc?.pathname?.startsWith(to));
+  const path = (typeof window!=='undefined' && window.location && window.location.pathname) || '/';
+  const active = path === to || (to !== '/' && path.startsWith(to));
   return <Link to={to} style={{...navItem, ...(active ? navItemActive : null)}}>{children}</Link>;
 }
 const bar   ={
