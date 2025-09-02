@@ -1502,6 +1502,24 @@ const seriesRisk = (()=>{
     finally{ setAskBusy(false); }
   }
 
+  // Quick AI suggested questions (dynamic)
+  function askSuggestion(q){
+    if(!q) return; setAskQ(q); setTimeout(()=>quickAsk(), 0);
+  }
+  const aiSuggestions = (function(){
+    const arr = [];
+    const recent = (alerts||[]).slice(0,5);
+    const recentTop = recent.filter(a=>Number(a?.score||0)>=60).length;
+    const riskDir = (seriesRisk?.[seriesRisk.length-1]||0) - (seriesRisk?.[0]||0);
+    if(recentTop>0) arr.push(`Explain the top ${Math.min(3,recentTop)} high‑risk alerts in the last day.`);
+    if(riskDir>0) arr.push('Why is risk trending up this week?'); else arr.push('What drove the drop in risk this week?');
+    arr.push('Which users or domains are most targeted by phishing right now?');
+    if((conn||[]).length) arr.push('Any integrations failing or missing configuration?');
+    else arr.push('What integrations should I connect first to improve coverage?');
+    arr.push('Recommend specific policy changes to reduce risk by 20%.');
+    return arr.slice(0,4);
+  })();
+
   return (
   <div style={{position:'relative'}}>
     <h1 className="neon-title" style={{marginTop:0}}>Dashboard</h1>
@@ -1593,6 +1611,19 @@ const seriesRisk = (()=>{
               style={{padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.06)',color:'inherit'}}
               disabled={askBusy}
             />
+            {/* Suggested AI questions */}
+            <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:2}}>
+              {aiSuggestions.map((q,i)=> (
+                <button
+                  key={i}
+                  type="button"
+                  className="ghost"
+                  style={{padding:'4px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.04)',fontSize:12,cursor:'pointer'}}
+                  onClick={()=>askSuggestion(q)}
+                  disabled={askBusy}
+                >{q}</button>
+              ))}
+            </div>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
               <button style={btn} disabled={askBusy}>{askBusy? 'Thinking…' : 'Ask'}</button>
               <span style={{opacity:.85,fontSize:12}}>{askMsg}</span>
