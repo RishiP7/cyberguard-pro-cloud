@@ -995,10 +995,7 @@ function Layout({children}){
                   </span>
                 )}
               </N>
-              <span title="CyberGuard AI is online" style={{ marginLeft:12, display:'inline-flex', alignItems:'center', gap:6, opacity:.9 }}>
-                <span style={{ width:9,height:9,borderRadius:999, background:'#7bd88f', boxShadow:'0 0 10px #7bd88f99' }}/>
-                <span style={{fontSize:12,opacity:.8}}>AI</span>
-              </span>
+         
             </>
           )}
           <N to="/policy">Policy</N>
