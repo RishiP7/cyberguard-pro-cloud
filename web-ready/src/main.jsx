@@ -3160,6 +3160,35 @@ function RequireAuth({ children }){
 function LiveStatusTicker(){
   const [msgs, setMsgs] = React.useState([]);
   const [hidden, setHidden] = React.useState(()=> (typeof localStorage!=='undefined' && localStorage.getItem('ticker:hidden')==='1'));
+  const [offset, setOffset] = React.useState(60);
+  React.useEffect(()=>{
+    function calc(){
+      let base = 60;
+      try{
+        const candidates = Array.from(document.querySelectorAll('[aria-label="AI Assistant"], [title="AI Assistant"], .ai-assistant, .ai-assistant-button, .chat-widget-button, .intercom-launcher, .crisp-client .cc-cnds, .zEWidget-launcher, button, a, div'));
+        let btn = null;
+        for (const el of candidates){
+          const txt = (el.textContent||'').trim().toLowerCase();
+          if (txt === 'ai assistant' || txt.includes('assistant')) { btn = el; break; }
+        }
+        if(btn){
+          const r = btn.getBoundingClientRect();
+          if(r.width>0 && r.height>0){
+            // if the button is in the bottom-right quadrant, lift the ticker toggle above it
+            const nearBottom = r.bottom > window.innerHeight - 180;
+            const nearRight  = r.right  > window.innerWidth  - 220;
+            if(nearBottom && nearRight){ base = Math.max(60, (window.innerHeight - r.top) + 16); }
+          }
+        }
+      }catch(_e){}
+      setOffset(base);
+    }
+    calc();
+    window.addEventListener('resize', calc);
+    const mo = new MutationObserver(calc);
+    try{ mo.observe(document.body, { subtree:true, childList:true, attributes:true }); }catch(_e){}
+    return ()=>{ window.removeEventListener('resize', calc); try{ mo.disconnect(); }catch(_e){} };
+  },[]);
 
   const API_ORIGIN = (import.meta?.env?.VITE_API_BASE)
     || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com')
@@ -3225,7 +3254,7 @@ function LiveStatusTicker(){
       <button
         title="Show ticker"
         onClick={()=>{ try{ localStorage.removeItem('ticker:hidden'); }catch{}; setHidden(false); }}
-        style={{position:'fixed',bottom:10,right:10,zIndex:1200,fontSize:12,opacity:.9,padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'rgba(8,10,14,.85)',color:'inherit',cursor:'pointer'}}
+        style={{position:'fixed',bottom:offset,right:10,zIndex:1200,fontSize:12,opacity:.9,padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'rgba(8,10,14,.85)',color:'inherit',cursor:'pointer'}}
       >
         Show status ticker
       </button>
