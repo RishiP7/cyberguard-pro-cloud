@@ -3425,7 +3425,6 @@ function Integrations({ api }) {
               <LockedTile title="AI Security Assistant" reason="Available on Pro+ (trial preview unlocks it temporarily)." />
             )}
           </div>
-          {/* AI status indicator was here and has been removed */}
         </div>
       </div>
 
