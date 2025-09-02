@@ -1508,7 +1508,33 @@ function Dashboard(){
   if(err) return <div style={{padding:16}}>{err}</div>;
   if(!me) return <div style={{padding:16}}>Loading…</div>;
 
-  // Build small series arrays for sparklines (fallback to simple trending values)
+// --- Small UI helpers ---
+function EmptyStateFx({ title, subtitle, actionHref, actionLabel }) {
+  return (
+    <div style={{
+      padding:20,
+      border:'1px dashed rgba(255,255,255,.15)',
+      borderRadius:12,
+      background:'rgba(255,255,255,.02)',
+      textAlign:'center'
+    }}>
+      <div style={{fontWeight:600, marginBottom:4}}>{title}</div>
+      {subtitle && <div style={{opacity:.75, fontSize:13, marginBottom:8}}>{subtitle}</div>}
+      {actionHref && (
+        <a href={actionHref} style={{
+          fontSize:12,
+          border:'1px solid rgba(255,255,255,.2)',
+          borderRadius:8,
+          padding:'6px 10px',
+          textDecoration:'none',
+          color:'#e6e9ef'
+        }}>{actionLabel||'Learn more'}</a>
+      )}
+    </div>
+  );
+}
+
+// Build small series arrays for sparklines (fallback to simple trending values)
   const seriesAlerts = (()=>{
     const n = Number(stats?.alerts_24h||0);
     const base = Math.max(2, Math.round(n/6));
@@ -1643,6 +1669,16 @@ const seriesRisk = (()=>{
 
       <div style={{position:'relative', zIndex:1, marginTop:10}}>
         <IntegrationHealthStrip items={conn} />
+        {Array.isArray(conn) && conn.length===0 && (
+          <div style={{margin:'8px 0 12px'}}>
+            <EmptyStateFx
+              title="No integrations connected"
+              subtitle="Connect your email, EDR, DNS or cloud to unlock full protection."
+              actionHref="/integrations"
+              actionLabel="Connect integrations"
+            />
+          </div>
+        )}
       </div>
 
       {/* Quick AI ask */}
@@ -2393,11 +2429,11 @@ function AlertsPage(){
       <div style={s.card}>
         {!loading && list.length===0 ? (
           <EmptyStateFx
-  title={`No alerts${q? ' match your search' : ''}`}
-  subtitle={onlyAnomaly ? 'Try turning off “Only anomalies” or broaden your date range.' : 'Try broadening your date range or clearing the search.'}
-  actionHref="/test"
-  actionLabel="Send a sample alert"
-/>
+            title={`No alerts${q? ' match your search' : ''}`}
+            subtitle={onlyAnomaly ? 'Try turning off “Only anomalies” or broaden your date range.' : 'Try broadening your date range or clearing the search.'}
+            actionHref="/test"
+            actionLabel="Send a sample alert"
+          />
         ) : (
           list.map(a=>{
             const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
