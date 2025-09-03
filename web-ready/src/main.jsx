@@ -3109,6 +3109,8 @@ function DashboardWithOnboarding(props){
         <OnboardingChecklist/>
       </CollapsibleSection>
 
+      <LiveStatusTicker inline />
+
       {/* Render existing Dashboard next */}
       <Dashboard {...props} />
 
@@ -3157,38 +3159,8 @@ function RequireAuth({ children }){
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
-function LiveStatusTicker(){
+function LiveStatusTicker({ inline=false }){
   const [msgs, setMsgs] = React.useState([]);
-  const [hidden, setHidden] = React.useState(()=> (typeof localStorage!=='undefined' && localStorage.getItem('ticker:hidden')==='1'));
-  const [offset, setOffset] = React.useState(60);
-  React.useEffect(()=>{
-    function calc(){
-      let base = 60;
-      try{
-        const candidates = Array.from(document.querySelectorAll('[aria-label="AI Assistant"], [title="AI Assistant"], .ai-assistant, .ai-assistant-button, .chat-widget-button, .intercom-launcher, .crisp-client .cc-cnds, .zEWidget-launcher, button, a, div'));
-        let btn = null;
-        for (const el of candidates){
-          const txt = (el.textContent||'').trim().toLowerCase();
-          if (txt === 'ai assistant' || txt.includes('assistant')) { btn = el; break; }
-        }
-        if(btn){
-          const r = btn.getBoundingClientRect();
-          if(r.width>0 && r.height>0){
-            // if the button is in the bottom-right quadrant, lift the ticker toggle above it
-            const nearBottom = r.bottom > window.innerHeight - 180;
-            const nearRight  = r.right  > window.innerWidth  - 220;
-            if(nearBottom && nearRight){ base = Math.max(60, (window.innerHeight - r.top) + 16); }
-          }
-        }
-      }catch(_e){}
-      setOffset(base);
-    }
-    calc();
-    window.addEventListener('resize', calc);
-    const mo = new MutationObserver(calc);
-    try{ mo.observe(document.body, { subtree:true, childList:true, attributes:true }); }catch(_e){}
-    return ()=>{ window.removeEventListener('resize', calc); try{ mo.disconnect(); }catch(_e){} };
-  },[]);
 
   const API_ORIGIN = (import.meta?.env?.VITE_API_BASE)
     || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com')
@@ -3243,36 +3215,32 @@ function LiveStatusTicker(){
         aiMsgs.push(`AI: ${proposed} proposed, ${approved} approved, ${executed} executed`);
       }
 
-      setMsgs([ ...aMsgs, ...iMsgs, ...aiMsgs ]);
-    }catch(_e){ /* ignore */ }
+      const next = [ ...aMsgs, ...iMsgs, ...aiMsgs ];
+      setMsgs(next.length ? next : ['Status: no data yet']);
+    }catch(_e){ setMsgs(['Status: no data yet']); }
   }
 
   React.useEffect(()=>{ refresh(); const t=setInterval(refresh, 30000); return ()=>clearInterval(t); },[]);
-
-  if (hidden) {
-    return (
-      <button
-        title="Show ticker"
-        onClick={()=>{ try{ localStorage.removeItem('ticker:hidden'); }catch{}; setHidden(false); }}
-        style={{position:'fixed',bottom:offset+40,right:10,zIndex:2000,fontSize:12,opacity:.9,padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'rgba(8,10,14,.85)',color:'inherit',cursor:'pointer'}}
-      >
-        Show status ticker
-      </button>
-    );
-  }
 
   const css = `
     @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
     @media (prefers-reduced-motion: reduce) { .ticker-track { animation: none !important; } }
   `;
 
-  const bar = {
+  const bar = inline ? {
+    position:'relative', margin:'8px 0 12px', zIndex: 1,
+    background:'rgba(8,10,14,.9)',
+    border:'1px solid rgba(255,255,255,.12)',
+    borderRadius:8,
+    padding:'6px 10px',
+  } : {
     position:'fixed', left:0, right:0, bottom:0, zIndex: 1200,
     background:'rgba(8,10,14,.9)',
     borderTop:'1px solid rgba(255,255,255,.12)',
     backdropFilter:'blur(6px)',
     padding:'6px 10px',
   };
+
   const chip = {
     display:'inline-flex', alignItems:'center', gap:6,
     border:'1px solid rgba(255,255,255,.18)', borderRadius:999,
@@ -3280,8 +3248,7 @@ function LiveStatusTicker(){
     background:'rgba(255,255,255,.04)', fontSize:12
   };
 
-  const content = msgs.length ? msgs.join(' • ') : 'Status: no data yet';
-  // duplicate content so the marquee appears continuous
+  const content = msgs.join(' • ');
   const dup = `${content}  •  ${content}`;
 
   return (
@@ -3298,21 +3265,6 @@ function LiveStatusTicker(){
             {dup}
           </div>
         </div>
-        <button
-          title={hidden ? "Show ticker" : "Hide ticker"}
-          onClick={()=>{
-            if(hidden){
-              try{ localStorage.removeItem('ticker:hidden'); }catch{}
-              setHidden(false);
-            } else {
-              try{ localStorage.setItem('ticker:hidden','1'); }catch{}
-              setHidden(true);
-            }
-          }}
-          style={{fontSize:12,opacity:.8,padding:'4px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.18)',background:'transparent',color:'inherit',cursor:'pointer'}}
-        >
-          {hidden ? 'Show' : 'Hide'}
-        </button>
       </div>
     </div>
   );
@@ -3347,7 +3299,6 @@ function App(){
 
             <Route path="*" element={<Navigate to="/" replace />}/>
           </Routes>
-          <LiveStatusTicker/>
         </>
       </Layout>
     </ErrorBoundary>
