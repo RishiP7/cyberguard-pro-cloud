@@ -452,7 +452,7 @@ function AdminOpsRetention(){
   // --- Usage Counts Exact API Example ---
   // Example usage for /admin/ops/usage/counts endpoint (see backend route)
   // To use: call apiGet('/admin/ops/usage/counts')
-  React.useEffect(()=>{ load(); },[]);
+  React.useEffect(()=>{ load(); },[days]);
 
   async function preview(){
     setErr(""); setMsg(""); setLoading(true);
@@ -538,6 +538,7 @@ function AdminOpsAudit(){
     setErr(""); setLoading(true);
     try{
       const qs = new URLSearchParams();
+      qs.set('days', String(typeof days !== 'undefined' && days != null ? days : 7));
       if (type) qs.set('type', type);
       if (limit) qs.set('limit', String(limit));
       if (showBadSig) qs.set('show_bad_sig', '1'); // include bad-sig rows when toggled on
@@ -2374,6 +2375,19 @@ function AlertsPage(){
       setErr(e?.message || 'Export failed');
     }
   }
+  function buildExportHref(q, onlyAnomaly, days){
+    const d = (typeof days !== 'undefined' && days != null) ? days : 7;
+    const parts = [
+      `format=csv`,
+      `days=${encodeURIComponent(String(d))}`,
+      `limit=1000`
+    ];
+    if (q) parts.push(`q=${encodeURIComponent(q)}`);
+    if (onlyAnomaly) parts.push(`only_anomaly=1`);
+    return `/alerts/export?` + parts.join('&');
+  }
+
+
 
   return (
     <div style={s.wrap}>
