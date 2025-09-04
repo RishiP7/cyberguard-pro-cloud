@@ -2318,24 +2318,29 @@ function Admin(){
 function AlertsPage(){
   const [items, setItems] = React.useState([]);
   const [limit, setLimit] = React.useState(50);
-  const [days, setDays]   = React.useState(()=>{ try{ const v=(typeof localStorage!=="undefined"&&localStorage.getItem('alerts:days'))||""; return v? Number(v)||7 : 7; }catch{ return 7; } });
-  const [loading, setLoading] = React.useState(false);
+  const [days, setDays] = React.useState(() => {
+  try {
+    const v = (typeof localStorage !== "undefined" && localStorage.getItem('alerts:days')) || "";
+    return v ? Number(v) || 7 : 7;
+  } catch {
+    return 7;
+  }
+});
+const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
-  const [q, setQ] = React.useState(()=>{ try{ return (typeof localStorage!=="undefined"&&localStorage.getItem('alerts:q'))||""; }catch{ return ""; } });
-  const [onlyAnomaly, setOnlyAnomaly] = React.useState(()=>{ try{ return (typeof localStorage!=="undefined"&&localStorage.getItem('alerts:onlyAnomaly'))==="1";
-
+  const [q, setQ] = React.useState(...);
+  const [onlyAnomaly, setOnlyAnomaly] = React.useState(...);
   // --- Alerts query helpers (sanitize/normalize) ---
-  function normDays(x){
+  function normDays(x) {
     const n = parseInt(x, 10);
     return (Number.isFinite(n) && n > 0) ? String(n) : '7';
   }
-  function cleanQ(s){
+  function cleanQ(s) {
     if (!s) return '';
     const t = String(s).trim();
-    // Avoid backend pattern errors from single-character queries
     return t.length >= 2 ? t : '';
   }
-  function buildAlertsQS({ q, days, onlyAnomaly, levels, limit, offset }){
+  function buildAlertsQS({ q, days, onlyAnomaly, levels, limit, offset }) {
     const qs = new URLSearchParams();
     qs.set('days', normDays(days));
     const cq = cleanQ(q);
@@ -2345,12 +2350,7 @@ function AlertsPage(){
     if (limit) qs.set('limit', String(limit));
     if (offset) qs.set('offset', String(offset));
     return qs.toString();
-  }
- }catch{ return false; } });
-  // Persist filters
-  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('alerts:days', String(days)); } }catch{} },[days]);
-  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('alerts:q', String(q||'')); } }catch{} },[q]);
-  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('alerts:onlyAnomaly', onlyAnomaly? '1':'0'); } }catch{} },[onlyAnomaly]);
+  }	
 
   // Toast state for CSV export
   const [toast, setToast] = React.useState("");
