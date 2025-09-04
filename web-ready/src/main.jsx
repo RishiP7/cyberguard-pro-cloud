@@ -2587,7 +2587,7 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
         {loading && (
           <div style={{display:'grid',gap:8,padding:12}}>
             {Array.from({length:6}).map((_,i)=> (
-              <div key={i} style={{display:'grid',gridTemplateColumns:'220px 1fr 260px',gap:10,alignItems:'center'}}>
+              <div key={i} style={{display:'grid',gridTemplateColumns:'220px 1fr 140px',gap:10,alignItems:'center',minWidth:0,overflow:'hidden'}}>
                 <SkeletonLine width="80%" />
                 <SkeletonLine width="95%" />
                 <SkeletonLine width="60%" />
@@ -3141,7 +3141,7 @@ function LiveEmailScan(){
 
       {err && <div style={{padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8,marginBottom:8}}>Error: {err}</div>}
 
-      <div style={{borderTop:'1px solid rgba(255,255,255,.08)'}}>
+      <div style={{borderTop:'1px solid rgba(255,255,255,.08)',maxWidth:'1120px',margin:'0 auto',overflowX:'hidden'}}>
         <div style={{...s.grid, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,.08)', fontSize:12, opacity:.75}}>
           <div>When</div><div>Source</div><div>Subject / From</div><div>Threat</div>
         </div>
@@ -3153,7 +3153,7 @@ function LiveEmailScan(){
             <div key={a.id} style={s.grid} onClick={()=>setSelected(a)} title="Open details">
               <div style={{opacity:.85}}>{when}</div>
               <div>{src(a)}</div>
-              <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+              <div style={{minWidth:0,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                 <b>{a.subject || '(no subject)'}</b>
                 <span style={{opacity:.7}}> — {a.from || a.from_addr || '—'}</span>
               </div>
