@@ -1,6 +1,6 @@
 import ReactDOM from "react-dom/client";
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
