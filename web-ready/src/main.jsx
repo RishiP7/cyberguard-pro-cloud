@@ -524,10 +524,8 @@ function AdminOpsRetention(){
 }
 // ---- Admin Ops: Audit (runs viewer) ----
 function AdminOpsAudit(){
-  const [me, setMe] = React.useState(null);
   const [runs, setRuns] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
   const [type, setType] = React.useState(""); // optional filter
   const [limit, setLimit] = React.useState(25);
   const [showBadSig, setShowBadSig] = React.useState(false);
@@ -630,10 +628,7 @@ function AdminOpsAudit(){
 }
 // ---- Admin Trial Control ----
 function AdminTrialControl(){
-  const [me, setMe] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
-  const [msg, setMsg] = React.useState("");
-  const [err, setErr] = React.useState("");
 
   React.useEffect(()=>{ apiGet('/me').then(m=>setMe({...m, trial: trialInfo(m)})).catch(()=>setMe(null)); },[]);
 
@@ -710,7 +705,6 @@ function AdminTrialControl(){
 
 // ---- Admin Console (sidebar wrapper) ----
 function AdminConsolePage({ page }){
-  const [me, setMe] = React.useState(null);
   React.useEffect(()=>{ apiGet('/me').then(setMe).catch(()=>setMe(null)); },[]);
   if(!me) return <div style={{padding:16}}>Loading…</div>;
   if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
@@ -1992,10 +1986,6 @@ function Pricing(){
     }
   }
 
-  const [me, setMe] = React.useState(null);
-  const [msg, setMsg] = React.useState("");
-  const [err, setErr] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
   const [coupon, setCoupon] = React.useState(localStorage.getItem("promo_code") || "");
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
@@ -2332,7 +2322,6 @@ function AlertsPage(){
   const [limit, setLimit] = React.useState(50);
   const [days, setDays]   = React.useState(()=>{ try{ const v=(typeof localStorage!=="undefined"&&localStorage.getItem('alerts:days'))||""; return v? Number(v)||7 : 7; }catch{ return 7; } });
   const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
   const [q, setQ] = React.useState(()=>{ try{ return (typeof localStorage!=="undefined"&&localStorage.getItem('alerts:q'))||""; }catch{ return ""; } });
   const [onlyAnomaly, setOnlyAnomaly] = React.useState(()=>{ try{ return (typeof localStorage!=="undefined"&&localStorage.getItem('alerts:onlyAnomaly'))==="1"; }catch{ return false; } });
   // Persist filters
@@ -2631,7 +2620,6 @@ function AlertsPage(){
 
 // --- Onboarding Checklist for Dashboard ---
 function OnboardingChecklist(){
-  const [me, setMe] = React.useState(null);
   const [conn, setConn] = React.useState([]);
   const [hasAlert, setHasAlert] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
@@ -2724,12 +2712,9 @@ function OnboardingTips() {
 
 // --- Autonomy (Pro+) ---
 function AutonomyPage(){
-  const [me, setMe] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
   const [policy, setPolicy] = React.useState(null);
   const [actions, setActions] = React.useState([]);
-  const [busy, setBusy] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState('all'); // all | proposed | approved | executed | failed
   const [toast, setToast] = React.useState("");
   const canApprove = !!(me?.is_super || (String(me?.role||'').toLowerCase()==='owner') || (String(me?.role||'').toLowerCase()==='admin'));
@@ -2990,7 +2975,6 @@ function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
 function LiveEmailScan(){
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
   const [selected, setSelected] = React.useState(null);
 
   async function load(){
@@ -3444,11 +3428,9 @@ function Integrations({ api }) {
     }
   }
 
-  const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState({ items: [] });
   const [emailProvider, setEmailProvider] = React.useState('imap');
   const [out, setOut] = React.useState("");
-  const [err, setErr] = React.useState("");
   const [toast, setToast] = React.useState("");
   const [edrToken, setEdrToken] = React.useState("");
   const [dnsInfo, setDnsInfo] = React.useState(null);
@@ -3930,8 +3912,6 @@ function Integrations({ api }) {
 }
 function TestEvents({ api }){
   const [out, setOut] = React.useState("");
-  const [err, setErr] = React.useState("");
-  const [me, setMe] = React.useState(null);
   const apiKey = (typeof localStorage !== "undefined" && localStorage.getItem("api_key")) || "";
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
