@@ -2404,6 +2404,7 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
       setLoading(false);
     }
 
+}
   React.useEffect(()=>{ loadAlerts(limit, days); },[]);
   React.useEffect(()=>{ loadAlerts(limit, days); },[days, limit]);
 
