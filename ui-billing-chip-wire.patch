@@ -1,0 +1,10 @@
+*** Begin Patch
+*** Update File: web-ready/src/main.jsx
+@@
+-          {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
+-          <TrialCountdownBadge me={me} />
++          {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
++          <TrialCountdownBadge me={me} />
++          <BillingStatusChip me={me} />
+           {authed ? (
+*** End Patch

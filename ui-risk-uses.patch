@@ -1,0 +1,10 @@
+*** Begin Patch
+*** Update File: web-ready/src/main.jsx
+@@
+-              {(alerts||[]).slice(0,6).map((a)=>{
+-              const n = Number(a?.score||0);
++              {(alerts||[]).slice(0,6).map((a)=>{
++              const n = normalizeRisk(a?.score);
+               const sev = n>=80? '#ef4444' : n>=60? '#f59e0b' : n>=30? '#3b82f6' : '#22c55e';
+               return (
+*** End Patch

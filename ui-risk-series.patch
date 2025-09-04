@@ -1,0 +1,20 @@
+*** Begin Patch
+*** Update File: web-ready/src/main.jsx
+@@
+-const seriesRisk = (()=>{
+-  const arr = (alerts||[]).slice(0,32).map(a=>Number(a?.score||0)).filter(n=>isFinite(n));
++const seriesRisk = (()=>{
++  const arr = (alerts||[]).slice(0,32).map(a=>normalizeRisk(a?.score)).filter(n=>isFinite(n));
+   if(arr.length<4) return seriesAlerts;
+   const step = Math.ceil(arr.length/8);
+   const pts=[]; for(let i=0;i<arr.length;i+=step){
+@@
+-  const overallRisk = (function(){
+-    const arr = (alerts||[]).slice(0,20).map(a=>Number(a?.score||0)).filter(n=>isFinite(n)&&n>=0);
++  const overallRisk = (function(){
++    const arr = (alerts||[]).slice(0,20).map(a=>normalizeRisk(a?.score)).filter(n=>isFinite(n)&&n>=0);
+     if(!arr.length) return 0;
+     const avg = arr.reduce((s,n)=>s+n,0)/arr.length;
+     return Math.max(0, Math.min(100, Math.round(avg)));
+   })();
+*** End Patch

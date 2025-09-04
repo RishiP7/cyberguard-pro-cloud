@@ -1,0 +1,17 @@
+*** Update File: web-ready/src/main.jsx
+@@
+-        <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
++        <FuturisticStat
++          title="Tenant"
++          value={me.name||'-'}
++          sub={
++            <span>
++              Plan: {me.plan || '-'}
++              {me?.billing_status ? (
++                <span style={{marginLeft:6, verticalAlign:'middle'}}>
++                  <BillingStatusChip me={me} />
++                </span>
++              ) : null}
++            </span>
++          }
++        />

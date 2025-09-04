@@ -1,0 +1,38 @@
+*** Update File: web-ready/src/main.jsx
+@@
+-function Pricing(
++function Pricing(
++  /* add Manage billing helper */
++  async function openPortal(){
++    try{
++      const j = await apiGet('/billing/portal');
++      const url = j?.url;
++      if (url) window.open(url, '_blank', 'noopener');
++    }catch(_e){
++      alert('Unable to open billing portal right now.');
++    }
++  }
+ ) {
+@@
+-  return (
++  return (
+     <div
+@@
+-      <h1
++      <h1
+         style={{
+           marginTop: 0
+         }}
+       >
+         Pricing
+       </h1>
++      {/* Manage billing CTA (Stripe portal) */}
++      <div style={{margin:'8px 0 12px'}}>
++        <button
++          style={{padding:'8px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'transparent', color:'#e6e9ef', cursor:'pointer'}}
++          onClick={openPortal}
++        >
++          Manage billing
++        </button>
++      </div>
+*** End Patch
