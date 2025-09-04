@@ -1979,7 +1979,17 @@ function Account(){
   );
 }
 
-function Pricing(){
+
+  async function openPortal(){
+    try{
+      const j = await apiGet('/billing/portal');
+      const url = j?.url;
+      if (url) window.open(url, '_blank', 'noopener');
+    }catch(_e){
+      alert('Unable to open billing portal right now.');
+    }
+  }
+
   const [me, setMe] = React.useState(null);
   const [msg, setMsg] = React.useState("");
   const [err, setErr] = React.useState("");
