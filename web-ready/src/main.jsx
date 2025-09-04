@@ -2382,9 +2382,15 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
     setLoading(true); setErr("");
     try{
       const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-      const r = await fetch(`/alerts/export?days=${encodeURIComponent(nextDays)}&limit=${encodeURIComponent(nextLimit)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const origin =
+        (import.meta?.env?.VITE_API_BASE)
+        || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+              ? "https://cyberguard-pro-cloud.onrender.com"
+              : "http://localhost:8080");
+
+      const qs = buildAlertsQS({ q, days: nextDays, onlyAnomaly, levels: undefined, limit: nextLimit });
+      const url = `${origin}/alerts?${qs}`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const j = await r.json();
       if(!r.ok) throw new Error(j?.error || "fetch failed");
       const list = Array.isArray(j.alerts) ? j.alerts : [];
@@ -2442,18 +2448,14 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
       || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
            ? "https://cyberguard-pro-cloud.onrender.com"
            : "http://localhost:8080");
-    const params = new URLSearchParams();
-    params.set("days", String(days||7));
-    params.set("limit", String(limit||100));
-    if(query) params.set("q", query);
-    if(anomaliesOnly) params.set("anomaly", "1");
-    return `${origin}/alerts/export?${params.toString()}`;
+    const qs = buildAlertsQS({ q: query, days, onlyAnomaly: anomaliesOnly, levels: undefined, limit });
+    return `${origin}/alerts/export?format=csv&${qs}`;
   }
 
   // Export CSV helper
   async function exportCsv(){
     const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-    const url = buildAlertsUrl(days, 1000, q, onlyAnomaly) + "&format=csv";
+    const url = buildAlertsUrl(days, 1000, q, onlyAnomaly);
     try{
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if(!r.ok) throw new Error(`HTTP ${r.status}`);
