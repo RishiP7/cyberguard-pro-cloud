@@ -7,12 +7,9 @@ for (let i=0;i<s.length;i++){
   const c=s[i], prev=s[i-1];
   if (c==='`' && prev!=='\\') inTick=!inTick;
   if (inTick) continue;
-  if (c==='{') braces++;
-  else if (c==='}') braces--;
-  else if (c==='(') parens++;
-  else if (c===')') parens--;
-  else if (c==='[') brackets++;
-  else if (c===']') brackets--;
+  if (c==='{') braces++; else if (c==='}') braces--;
+  else if (c==='(') parens++; else if (c===')') parens--;
+  else if (c==='[') brackets++; else if (c===']') brackets--;
 }
 let fix = '';
 if (inTick) fix += '`';
