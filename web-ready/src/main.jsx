@@ -2328,8 +2328,14 @@ function AlertsPage(){
 });
 const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
-  const [q, setQ] = React.useState(...);
-  const [onlyAnomaly, setOnlyAnomaly] = React.useState(...);
+  const [q, setQ] = React.useState(() => {
+  try { return (typeof localStorage !== "undefined" && localStorage.getItem('alerts:q')) || ""; }
+  catch { return ""; }
+});
+const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
+  try { return (typeof localStorage !== "undefined" && localStorage.getItem('alerts:onlyAnomaly')) === "1"; }
+  catch { return false; }
+});
   // --- Alerts query helpers (sanitize/normalize) ---
   function normDays(x) {
     const n = parseInt(x, 10);
