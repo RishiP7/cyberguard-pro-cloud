@@ -452,7 +452,7 @@ function AdminOpsRetention(){
   // --- Usage Counts Exact API Example ---
   // Example usage for /admin/ops/usage/counts endpoint (see backend route)
   // To use: call apiGet('/admin/ops/usage/counts')
-  React.useEffect(()=>{ load(); },[days]);
+  React.useEffect(()=>{ load(); },[]);
 
   async function preview(){
     setErr(""); setMsg(""); setLoading(true);
@@ -538,7 +538,6 @@ function AdminOpsAudit(){
     setErr(""); setLoading(true);
     try{
       const qs = new URLSearchParams();
-      qs.set('days', String(typeof days !== 'undefined' && days != null ? days : 7));
       if (type) qs.set('type', type);
       if (limit) qs.set('limit', String(limit));
       if (showBadSig) qs.set('show_bad_sig', '1'); // include bad-sig rows when toggled on
@@ -1136,7 +1135,19 @@ const btnGhost={
 };
 const th    ={textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8};
 const td    ={padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"};
-
+// ---- Risk normalization (unify labels) ----
+function normalizeRisk(raw){
+  const n = Number(raw);
+  if (!isFinite(n)) return 0;
+  // Already 0–100
+  if (n >= 0 && n <= 100) return Math.round(n);
+  // 0–1 → 0–100
+  if (n > 0 && n < 1) return Math.round(n * 100);
+  // -1..0 → 0–100
+  if (n <= 0 && n >= -1) return Math.round(Math.abs(n) * 100);
+  // Clamp/magnitude
+  return Math.max(0, Math.min(100, Math.round(Math.abs(n))));
+}
 
 function LockedTile({ title, reason }) {
   return (
@@ -1547,7 +1558,7 @@ function EmptyStateFx({ title, subtitle, actionHref, actionLabel }) {
     return [base-2, base, base+1, base-1, base+2, base+3, base-1, base+2];
   })();
 const seriesRisk = (()=>{
-  const arr = (alerts||[]).slice(0,32).map(a=>Number(a?.score||0)).filter(n=>isFinite(n));
+  const arr = (alerts||[]).slice(0,32).map(a=>normalizeRisk(a?.score)).filter(n=>isFinite(n));
   if(arr.length<4) return seriesAlerts;
   const step = Math.ceil(arr.length/8);
   const pts=[]; for(let i=0;i<arr.length;i+=step){
@@ -1557,7 +1568,7 @@ const seriesRisk = (()=>{
 })();
   // Compute overall risk from recent alerts (avg score of last 20 alerts)
   const overallRisk = (function(){
-    const arr = (alerts||[]).slice(0,20).map(a=>Number(a?.score||0)).filter(n=>isFinite(n)&&n>=0);
+    const arr = (alerts||[]).slice(0,20).map(a=>normalizeRisk(a?.score)).filter(n=>isFinite(n)&&n>=0);
     if(!arr.length) return 0;
     const avg = arr.reduce((s,n)=>s+n,0)/arr.length;
     return Math.max(0, Math.min(100, Math.round(avg)));
@@ -1732,7 +1743,7 @@ const seriesRisk = (()=>{
           </div>
           <div style={{marginTop:8, maxHeight:260, overflow:'auto'}}>
             {(alerts||[]).slice(0,6).map((a)=>{
-              const n = Number(a?.score||0);
+              const n = normalizeRisk(a?.score);
               const sev = n>=80? '#ef4444' : n>=60? '#f59e0b' : n>=30? '#3b82f6' : '#22c55e';
               return (
                 <div key={a.id} className="fx-row" style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'center',padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
@@ -2375,19 +2386,6 @@ function AlertsPage(){
       setErr(e?.message || 'Export failed');
     }
   }
-  function buildExportHref(q, onlyAnomaly, days){
-    const d = (typeof days !== 'undefined' && days != null) ? days : 7;
-    const parts = [
-      `format=csv`,
-      `days=${encodeURIComponent(String(d))}`,
-      `limit=1000`
-    ];
-    if (q) parts.push(`q=${encodeURIComponent(q)}`);
-    if (onlyAnomaly) parts.push(`only_anomaly=1`);
-    return `/alerts/export?` + parts.join('&');
-  }
-
-
 
   return (
     <div style={s.wrap}>
