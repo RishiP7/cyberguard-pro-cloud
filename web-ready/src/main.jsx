@@ -1032,8 +1032,9 @@ function Layout({children}){
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
-          <TrialCountdownBadge me={me} />
-          {authed ? (
+<TrialCountdownBadge me={me} />
+<BillingStatusChip me={me} />
+{authed ? (
             <button
               style={btnGhost}
               onClick={()=>{
@@ -1192,7 +1193,30 @@ function TrialBanner({ me }) {
 
   return null;
 }
-
+function BillingStatusChip({ me }){
+  try{
+    const status = String(me?.billing_status||'').toLowerCase();
+    if(!status) return null;
+    const map = { active:'#22c55e', trialing:'#7bd88f', past_due:'#f59e0b', payment_failed:'#ef4444', canceled:'#64748b' };
+    const color = map[status] || 'rgba(255,255,255,.6)';
+    return (
+      <span
+        title={`Billing: ${status}`}
+        style={{
+          marginRight:8,
+          padding:'4px 10px',
+          border:`1px solid ${color}66`,
+          background:'rgba(255,255,255,.04)',
+          borderRadius:999,
+          fontSize:12,
+          boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'
+        }}
+      >
+        {status.replace('_',' ')}
+      </span>
+    );
+  }catch(_e){ return null; }
+}
 // ---------- Auth helpers ----------
 function useAuthFlag(){
   const [authed, setAuthed] = React.useState(!!localStorage.getItem("token"));
