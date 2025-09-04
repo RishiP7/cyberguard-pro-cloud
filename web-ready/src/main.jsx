@@ -4,16 +4,16 @@ import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
-  const [keys, setKeys] = useState([]);
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [justCreated, setJustCreated] = useState(null);
-  const [copied, setCopied] = useState(null);
-  const [toast, setToast] = useState("");
+  const [keys, setKeys] = React.useState([]);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [justCreated, setJustCreated] = React.useState(null);
+  const [copied, setCopied] = React.useState(null);
+  const [toast, setToast] = React.useState("");
   // Success box style for green success messages
   const successBox = {marginTop:8,padding:'8px 10px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:8};
-  useEffect(() => {
+  React.useEffect(() => {
     setLoading(true);
     apiGet("/apikeys")
       .then((j) => setKeys(j?.keys || []))
@@ -123,12 +123,12 @@ function KeysCard() {
 
 // ===== AdminTenantKeys component =====
 function AdminTenantKeys({ selected }) {
-  const [keys, setKeys] = useState([]);
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(null);
-  useEffect(() => {
+  const [keys, setKeys] = React.useState([]);
+  const [msg, setMsg] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [copied, setCopied] = React.useState(null);
+  React.useEffect(() => {
     if (!selected) return;
     setLoading(true);
     apiGet(`/admin/tenant/${encodeURIComponent(selected)}/keys`)
@@ -337,7 +337,7 @@ function TrialNotice({ me }){
 }
 
 function ErrorBoundary({children}){
-  const [err,setErr] = useState(null);
+  const [err,setErr] = React.useState(null);
   return err
     ? <div style={{padding:16}}><h2>Something went wrong</h2><pre style={pre}>{String(err)}</pre></div>
     : <ErrorCatcher onError={setErr}>{children}</ErrorCatcher>;
@@ -1233,12 +1233,12 @@ function useAuthFlag(){
   return authed;
 }
 function useNav(){
-  const [me,setMe]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const [err,setErr]=useState(null);
+  const [me,setMe]=React.useState(null);
+  const [loading,setLoading]=React.useState(true);
+  const [err,setErr]=React.useState(null);
   // Ref for scheduling a one-shot refresh at trial end
   const trialTimerRef = React.useRef(null);
-  useEffect(()=>{
+  React.useEffect(()=>{
     let mounted = true;
 
     async function fetchMe(){
@@ -1290,9 +1290,9 @@ function useNav(){
 
 // ---------- Pages ----------
 function Login(){
-  const [email,setEmail]=useState("hello@freshprintslondon.com");
-  const [password,setPassword]=useState("test123");
-  const [msg,setMsg]=useState("");
+  const [email,setEmail]=React.useState("hello@freshprintslondon.com");
+  const [password,setPassword]=React.useState("test123");
+  const [msg,setMsg]=React.useState("");
   const nav=useNavigate();
   async function submit(e){
     e.preventDefault();
@@ -1522,16 +1522,16 @@ function AIPulseHero({ stats }) {
 }
 
 function Dashboard(){
-  const [me,setMe]=useState(null);
-  const [stats,setStats]=useState(null);
-  const [alerts,setAlerts]=useState([]);
-  const [conn, setConn] = useState([]);
-  const [err,setErr]=useState(null);
+  const [me,setMe]=React.useState(null);
+  const [stats,setStats]=React.useState(null);
+  const [alerts,setAlerts]=React.useState([]);
+  const [conn, setConn] = React.useState([]);
+  const [err,setErr]=React.useState(null);
   const [askBusy, setAskBusy] = React.useState(false);
   const [askQ, setAskQ] = React.useState("");
   const [askMsg, setAskMsg] = React.useState("");
 
-  useEffect(()=>{
+  React.useEffect(()=>{
     (async()=>{
       try{
         const m = await apiGet("/me"); setMe(m);
@@ -1820,10 +1820,10 @@ function Block({title,children,disabled}){
 function Code({children}){ return <pre style={pre}>{children}</pre>; }
 
 function Policy(){
-  const [p,setP]=useState(null);
-  const [msg,setMsg]=useState("");
-  const [err,setErr]=useState("");
-  useEffect(()=>{ apiGet("/policy").then(setP).catch(e=>setErr(e.error||"API error")); },[]);
+  const [p,setP]=React.useState(null);
+  const [msg,setMsg]=React.useState("");
+  const [err,setErr]=React.useState("");
+  React.useEffect(()=>{ apiGet("/policy").then(setP).catch(e=>setErr(e.error||"API error")); },[]);
   async function save(){
     try{
       const r = await apiPost("/policy", p);
@@ -1855,11 +1855,11 @@ function Policy(){
 }
 
 function Account(){
-  const [me,setMe]=useState(null);
-  const [msg,setMsg]=useState("");
-  const [promo, setPromo] = useState(localStorage.getItem("promo_code") || "");
+  const [me,setMe]=React.useState(null);
+  const [msg,setMsg]=React.useState("");
+  const [promo, setPromo] = React.useState(localStorage.getItem("promo_code") || "");
 
-  useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
+  React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
   if(!me) return <div>Loading…</div>;
 
   const paid = me.plan !== "trial";
@@ -2139,15 +2139,15 @@ function Pricing(){
 }
 
 function Admin(){
-  const [me, setMe] = useState(null);
-  const [tenants, setTenants] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-  const [selected, setSelected] = useState(null);
-  const [keys, setKeys] = useState([]);
-  const [chat, setChat] = useState([]);
+  const [me, setMe] = React.useState(null);
+  const [tenants, setTenants] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [selected, setSelected] = React.useState(null);
+  const [keys, setKeys] = React.useState([]);
+  const [chat, setChat] = React.useState([]);
 
-  useEffect(()=>{ apiGet('/me').then(m=>setMe(m)).catch(()=>setMe(null)); },[]);
+  React.useEffect(()=>{ apiGet('/me').then(m=>setMe(m)).catch(()=>setMe(null)); },[]);
 
   async function loadTenants(){
     setErr(""); setLoading(true);
@@ -2198,7 +2198,7 @@ function Admin(){
     await viewTenant(tid);
   }
 
-  useEffect(()=>{ loadTenants(); },[]);
+  React.useEffect(()=>{ loadTenants(); },[]);
 
   if(!me) return <div style={{padding:16}}>Loading…</div>;
   if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
@@ -4125,9 +4125,9 @@ function planCapabilities(plan, me){
 // --- BillingPanel: self-serve subscriptions (Basic/Pro/Pro+) + Portal ---
 
 function BillingPanel() {
-  const [me, setMe] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [me, setMe] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
 
   const API_ORIGIN =
     (import.meta?.env?.VITE_API_BASE)
@@ -4154,7 +4154,7 @@ function BillingPanel() {
     return json;
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     (async () => {
       try {
         const j = await api("/me");
@@ -4303,6 +4303,14 @@ function PlanCard({ name, price, features, onChoose, loading, highlight }) {
     </div>
   );
 }
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <App/>
+    </BrowserRouter>
+  </React.StrictMode>
+);
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
