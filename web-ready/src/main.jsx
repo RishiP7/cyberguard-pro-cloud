@@ -1636,7 +1636,20 @@ const seriesRisk = (()=>{
 
       {/* Futuristic stats */}
       <div className="fade-in" style={{position:'relative', zIndex:1, display:'grid',gridTemplateColumns:'repeat(4, minmax(200px,1fr))',gap:12, marginTop:12}}>
-        <FuturisticStat title="Tenant" value={me.name||'-'} sub={me.plan?`Plan: ${me.plan}`:''} />
+        <FuturisticStat
+  title="Tenant"
+  value={me.name||'-'}
+  sub={
+    <span>
+      Plan: {me.plan || '-'}
+      {me?.billing_status ? (
+        <span style={{marginLeft:6, verticalAlign:'middle'}}>
+          <BillingStatusChip me={me} />
+        </span>
+      ) : null}
+    </span>
+  }
+/>
         <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
         <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
         <div className="fx-tilt"
