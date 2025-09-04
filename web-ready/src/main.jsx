@@ -2146,8 +2146,6 @@ function Account(){
       )}
     </div>
   );
-}
-
 function Admin(){
   const [me, setMe] = useState(null);
   const [tenants, setTenants] = useState(null);
