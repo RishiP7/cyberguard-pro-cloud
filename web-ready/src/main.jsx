@@ -3352,7 +3352,7 @@ function App(){
             <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
             <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
             <Route path="/policy" element={protect(<Policy api={API}/>)} />
-            <Route path="/pricing" element={protect(<Pricing/>)} />
+            <Route path="/pricing" element={protect(<PricingPage/>)} />
             <Route path="/account" element={protect(<Account api={API}/>)} />
             <Route path="/alerts" element={protect(<AlertsPage/>)} />
             <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
@@ -4233,7 +4233,7 @@ function BillingPanel() {
   );
 }
 // Route shim: keep /pricing working by rendering BillingPanel
-function Pricing(){
+function PricingPage(){
   return <BillingPanel/>;
 }
 function PlanCard({ name, price, features, onChoose, loading, highlight }) {
