@@ -1861,6 +1861,8 @@ function Account(){
 
   useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
   if(!me) return <div>Loading…</div>;
+function Pricing(){
+
 
   const paid = me.plan !== "trial";
 
@@ -2146,6 +2148,8 @@ function Account(){
       )}
     </div>
   );
+}
+
 function Admin(){
   const [me, setMe] = useState(null);
   const [tenants, setTenants] = useState(null);
