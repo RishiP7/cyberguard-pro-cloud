@@ -3153,7 +3153,7 @@ function LiveEmailScan(){
             <div key={a.id} style={s.grid} onClick={()=>setSelected(a)} title="Open details">
               <div style={{opacity:.85}}>{when}</div>
               <div>{src(a)}</div>
-              <div style={{minWidth:0,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+              <div style={{minWidth:0,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',overflowWrap:'anywhere'}}>
                 <b>{a.subject || '(no subject)'}</b>
                 <span style={{opacity:.7}}> — {a.from || a.from_addr || '—'}</span>
               </div>
@@ -4309,4 +4309,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <App/>
     </BrowserRouter>
   </React.StrictMode>
-  );
+);
