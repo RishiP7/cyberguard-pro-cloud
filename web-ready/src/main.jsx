@@ -4,16 +4,16 @@ import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
-  const [keys, setKeys] = React.useState([]);
-  const [msg, setMsg] = React.useState("");
-  const [err, setErr] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-  const [justCreated, setJustCreated] = React.useState(null);
-  const [copied, setCopied] = React.useState(null);
-  const [toast, setToast] = React.useState("");
+  const [keys, setKeys] = useState([]);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [justCreated, setJustCreated] = useState(null);
+  const [copied, setCopied] = useState(null);
+  const [toast, setToast] = useState("");
   // Success box style for green success messages
   const successBox = {marginTop:8,padding:'8px 10px',border:'1px solid #7bd88f55',background:'#7bd88f22',borderRadius:8};
-  React.useEffect(() => {
+  useEffect(() => {
     setLoading(true);
     apiGet("/apikeys")
       .then((j) => setKeys(j?.keys || []))
@@ -123,12 +123,12 @@ function KeysCard() {
 
 // ===== AdminTenantKeys component =====
 function AdminTenantKeys({ selected }) {
-  const [keys, setKeys] = React.useState([]);
-  const [msg, setMsg] = React.useState("");
-  const [err, setErr] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-  const [copied, setCopied] = React.useState(null);
-  React.useEffect(() => {
+  const [keys, setKeys] = useState([]);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(null);
+  useEffect(() => {
     if (!selected) return;
     setLoading(true);
     apiGet(`/admin/tenant/${encodeURIComponent(selected)}/keys`)
@@ -337,7 +337,7 @@ function TrialNotice({ me }){
 }
 
 function ErrorBoundary({children}){
-  const [err,setErr] = React.useState(null);
+  const [err,setErr] = useState(null);
   return err
     ? <div style={{padding:16}}><h2>Something went wrong</h2><pre style={pre}>{String(err)}</pre></div>
     : <ErrorCatcher onError={setErr}>{children}</ErrorCatcher>;
@@ -1233,12 +1233,12 @@ function useAuthFlag(){
   return authed;
 }
 function useNav(){
-  const [me,setMe]=React.useState(null);
-  const [loading,setLoading]=React.useState(true);
-  const [err,setErr]=React.useState(null);
+  const [me,setMe]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [err,setErr]=useState(null);
   // Ref for scheduling a one-shot refresh at trial end
   const trialTimerRef = React.useRef(null);
-  React.useEffect(()=>{
+  useEffect(()=>{
     let mounted = true;
 
     async function fetchMe(){
@@ -1290,9 +1290,9 @@ function useNav(){
 
 // ---------- Pages ----------
 function Login(){
-  const [email,setEmail]=React.useState("hello@freshprintslondon.com");
-  const [password,setPassword]=React.useState("test123");
-  const [msg,setMsg]=React.useState("");
+  const [email,setEmail]=useState("hello@freshprintslondon.com");
+  const [password,setPassword]=useState("test123");
+  const [msg,setMsg]=useState("");
   const nav=useNavigate();
   async function submit(e){
     e.preventDefault();
@@ -1522,16 +1522,16 @@ function AIPulseHero({ stats }) {
 }
 
 function Dashboard(){
-  const [me,setMe]=React.useState(null);
-  const [stats,setStats]=React.useState(null);
-  const [alerts,setAlerts]=React.useState([]);
-  const [conn, setConn] = React.useState([]);
-  const [err,setErr]=React.useState(null);
+  const [me,setMe]=useState(null);
+  const [stats,setStats]=useState(null);
+  const [alerts,setAlerts]=useState([]);
+  const [conn, setConn] = useState([]);
+  const [err,setErr]=useState(null);
   const [askBusy, setAskBusy] = React.useState(false);
   const [askQ, setAskQ] = React.useState("");
   const [askMsg, setAskMsg] = React.useState("");
 
-  React.useEffect(()=>{
+  useEffect(()=>{
     (async()=>{
       try{
         const m = await apiGet("/me"); setMe(m);
@@ -1820,10 +1820,10 @@ function Block({title,children,disabled}){
 function Code({children}){ return <pre style={pre}>{children}</pre>; }
 
 function Policy(){
-  const [p,setP]=React.useState(null);
-  const [msg,setMsg]=React.useState("");
-  const [err,setErr]=React.useState("");
-  React.useEffect(()=>{ apiGet("/policy").then(setP).catch(e=>setErr(e.error||"API error")); },[]);
+  const [p,setP]=useState(null);
+  const [msg,setMsg]=useState("");
+  const [err,setErr]=useState("");
+  useEffect(()=>{ apiGet("/policy").then(setP).catch(e=>setErr(e.error||"API error")); },[]);
   async function save(){
     try{
       const r = await apiPost("/policy", p);
@@ -1855,11 +1855,11 @@ function Policy(){
 }
 
 function Account(){
-  const [me,setMe]=React.useState(null);
-  const [msg,setMsg]=React.useState("");
-  const [promo, setPromo] = React.useState(localStorage.getItem("promo_code") || "");
+  const [me,setMe]=useState(null);
+  const [msg,setMsg]=useState("");
+  const [promo, setPromo] = useState(localStorage.getItem("promo_code") || "");
 
-  React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
+  useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
   if(!me) return <div>Loading…</div>;
 
   const paid = me.plan !== "trial";
@@ -2139,15 +2139,15 @@ function Pricing(){
 }
 
 function Admin(){
-  const [me, setMe] = React.useState(null);
-  const [tenants, setTenants] = React.useState(null);
-  const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
-  const [selected, setSelected] = React.useState(null);
-  const [keys, setKeys] = React.useState([]);
-  const [chat, setChat] = React.useState([]);
+  const [me, setMe] = useState(null);
+  const [tenants, setTenants] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [keys, setKeys] = useState([]);
+  const [chat, setChat] = useState([]);
 
-  React.useEffect(()=>{ apiGet('/me').then(m=>setMe(m)).catch(()=>setMe(null)); },[]);
+  useEffect(()=>{ apiGet('/me').then(m=>setMe(m)).catch(()=>setMe(null)); },[]);
 
   async function loadTenants(){
     setErr(""); setLoading(true);
@@ -2198,7 +2198,7 @@ function Admin(){
     await viewTenant(tid);
   }
 
-  React.useEffect(()=>{ loadTenants(); },[]);
+  useEffect(()=>{ loadTenants(); },[]);
 
   if(!me) return <div style={{padding:16}}>Loading…</div>;
   if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
@@ -3153,7 +3153,7 @@ function LiveEmailScan(){
             <div key={a.id} style={s.grid} onClick={()=>setSelected(a)} title="Open details">
               <div style={{opacity:.85}}>{when}</div>
               <div>{src(a)}</div>
-              <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',overflowWrap:'anywhere',wordBreak:'break-word',maxWidth:'100%'}}>
+              <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                 <b>{a.subject || '(no subject)'}</b>
                 <span style={{opacity:.7}}> — {a.from || a.from_addr || '—'}</span>
               </div>
@@ -4125,9 +4125,9 @@ function planCapabilities(plan, me){
 // --- BillingPanel: self-serve subscriptions (Basic/Pro/Pro+) + Portal ---
 
 function BillingPanel() {
-  const [me, setMe] = React.useState(null);
-  const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
+  const [me, setMe] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
 
   const API_ORIGIN =
     (import.meta?.env?.VITE_API_BASE)
@@ -4154,7 +4154,7 @@ function BillingPanel() {
     return json;
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     (async () => {
       try {
         const j = await api("/me");
@@ -4303,12 +4303,44 @@ function PlanCard({ name, price, features, onChoose, loading, highlight }) {
     </div>
   );
 }
+// ---- DEBUG OVERLAY (temporary, to diagnose blank screen) ----
+function DebugOverlay(){
+  const loc = useLocation ? useLocation() : { pathname: '(no-router)' };
+  const [visible, setVisible] = React.useState(()=>{
+    try{ return localStorage.getItem('debug:overlay') === '1'; }catch{ return true; }
+  });
+  React.useEffect(()=>{
+    // Ensure page is visibly styled even if app styles fail
+    try{
+      document.body.style.background = document.body.style.background || '#0b0c0d';
+      document.body.style.color = document.body.style.color || '#e6e9ef';
+    }catch(_e){}
+  },[]);
+  React.useEffect(()=>{ try{ localStorage.setItem('debug:overlay', visible? '1':'0'); }catch{} },[visible]);
+  if(!visible) return null;
+  return (
+    <div style={{position:'fixed',top:8,left:8,right:8,zIndex:99999,pointerEvents:'none'}}>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <span style={{pointerEvents:'auto',padding:'4px 8px',border:'1px solid #2b6dff66',background:'rgba(37,99,235,.15)',borderRadius:8,fontSize:12}}>DEBUG: mounted</span>
+        <span style={{pointerEvents:'auto',padding:'4px 8px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.08)',borderRadius:8,fontSize:12}}>path: {String(loc?.pathname||'/?')}</span>
+        <span style={{pointerEvents:'auto',padding:'4px 8px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.08)',borderRadius:8,fontSize:12}}>token: { (typeof localStorage!=='undefined' && localStorage.getItem('token')) ? 'present' : 'missing' }</span>
+        <button onClick={()=>setVisible(false)} style={{pointerEvents:'auto',padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.25)',background:'transparent',color:'inherit',cursor:'pointer'}}>hide</button>
+      </div>
+    </div>
+  );
+}
+
+// Global error taps to surface any silent runtime errors
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e)=>{ try{ console.error('[global error]', e.message, e.error); }catch{} });
+  window.addEventListener('unhandledrejection', (e)=>{ try{ console.error('[unhandled rejection]', e.reason); }catch{} });
+}
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
+      <DebugOverlay/>
       <App/>
     </BrowserRouter>
   </React.StrictMode>
 );
-
-}
