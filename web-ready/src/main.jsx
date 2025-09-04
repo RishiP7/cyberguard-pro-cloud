@@ -1864,6 +1864,16 @@ function Account(){
 
   const paid = me.plan !== "trial";
 
+  async function openPortal(){
+    try{
+      const j = await apiGet('/billing/portal');
+      const url = j?.url;
+      if (url) window.open(url, '_blank', 'noopener');
+    }catch(_e){
+      alert('Unable to open billing portal right now.');
+    }
+  }
+
   async function createAccountKey(){
     setMsg("");
     try{
@@ -1912,6 +1922,14 @@ function Account(){
             <button style={btn} onClick={()=>activate("basic")}>Choose Basic</button>
             <button style={btn} onClick={()=>activate("pro")}>Choose Pro</button>
             <button style={btn} onClick={()=>activate("pro_plus")}>Choose Pro+</button>
+          </div>
+          <div style={{marginTop:8, display:'flex', alignItems:'center', gap:8}}>
+            <button style={btn} onClick={openPortal}>Manage billing</button>
+            {me?.billing_status && (
+              <span style={{marginLeft:2}}>
+                <BillingStatusChip me={me} />
+              </span>
+            )}
           </div>
           <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center"}}>
             <input
