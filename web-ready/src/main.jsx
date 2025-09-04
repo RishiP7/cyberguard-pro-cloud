@@ -1,6 +1,5 @@
 import ReactDOM from "react-dom/client";
 import React, { useEffect, useState } from "react";
-import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
@@ -4345,3 +4344,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+}
