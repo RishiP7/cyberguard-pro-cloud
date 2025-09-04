@@ -2379,7 +2379,7 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
   function openInAutonomy(a){ window.location.href = '/autonomy'; }
 
   async function loadAlerts(nextLimit = limit, nextDays = days){
-    setLoading(true); setErr("");
+        setLoading(true); setErr("");
     try{
       const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
       const origin =
@@ -2389,18 +2389,20 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
               : "http://localhost:8080");
 
       const qs = buildAlertsQS({ q, days: nextDays, onlyAnomaly, levels: undefined, limit: nextLimit });
-      const url = `${origin}/alerts?${qs}`;
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      const j = await r.json();
-      if(!r.ok) throw new Error(j?.error || "fetch failed");
+      const url = `${origin}/alerts/export?${qs}`;
+      const r = await fetch(url, { headers:{ Authorization:`Bearer ${token}` }});
+      const text = await r.text();
+      let j; try { j = JSON.parse(text); } catch { j = { ok:false, error:text }; }
+      if (!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
+
       const list = Array.isArray(j.alerts) ? j.alerts : [];
       setItems(list);
     }catch(e){
       setErr(e?.message || String(e));
+      setItems([]);
     }finally{
       setLoading(false);
     }
-  }
 
   React.useEffect(()=>{ loadAlerts(limit, days); },[]);
   React.useEffect(()=>{ loadAlerts(limit, days); },[days, limit]);
