@@ -2404,7 +2404,6 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
       setLoading(false);
     }
 
-}
   React.useEffect(()=>{ loadAlerts(limit, days); },[]);
   React.useEffect(()=>{ loadAlerts(limit, days); },[days, limit]);
 
@@ -2537,40 +2536,50 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
             actionLabel="Send a sample alert"
           />
         ) : (
-          list.map(a=>{
-            const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
+          list.map(a => {
+            const created = a?.created_at ? new Date(Number(a.created_at) * 1000).toLocaleString() : '—';
             return (
-              <div key={a.id} style={s.row} onClick={()=>setSelected(a)} title="View details">
-                <div>
-                  <div style={{fontWeight:600}}>{a.from || a.from_addr || '—'}</div>
-                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
-                </div>
-                <div>
-                  <div style={{fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {a.subject || '—'}
+              <div
+                key={a.id}
+                onClick={() => setSelected(a)}
+                title="View details"
+                style={{
+                  padding: '10px 12px',
+                  borderBottom: '1px solid rgba(255,255,255,.08)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {a.subject || '(no subject)'}
                   </div>
-                  <div style={{opacity:.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:4}}>
-                    {a.preview || '—'}
+                  <div style={{ opacity: .7, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {a.from || a.from_addr || '—'}
                   </div>
                 </div>
-                <div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
-                  {a.evt_type && <span style={s.tag}>{a.evt_type}</span>}
-                  {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
-                  {(a.score!=null)
-                    ? (()=>{ const risk = riskFromScore(a.score);
-                        return (
-                          <span style={{...s.tag, borderColor:risk.color, background:risk.bg, color:risk.color}}>
-                            {risk.label} • {a.score}
-                          </span>
-                        );
-                      })()
-                    : null}
-                  <button className="ghost" style={{padding:'2px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)'}} onClick={(e)=>{e.stopPropagation(); markReviewed(a.id);}}>Reviewed</button>
-                  {(a.from_addr||'').includes('@') && (
-                    <button className="ghost" style={{padding:'2px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)'}} onClick={(e)=>{e.stopPropagation(); ignoreDomain(String(a.from_addr).split('@')[1]);}}>Ignore domain</button>
-                  )}
-                  <button className="ghost" style={{padding:'2px 8px',borderRadius:999,border:'1px solid rgba(255,255,255,.2)'}} onClick={(e)=>{e.stopPropagation(); openInAutonomy(a);}}>Open in Autonomy</button>
-                </div>
+                <div style={{ fontSize: 12, opacity: .7, whiteSpace: 'nowrap' }}>{created}</div>
+                {a.score != null && (() => {
+                  const risk = riskFromScore(a.score);
+                  return (
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        border: `1px solid ${risk.color}`,
+                        background: risk.bg,
+                        color: risk.color,
+                        fontSize: 12,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {risk.label} • {a.score}
+                    </span>
+                  );
+                })()}
               </div>
             );
           })
