@@ -1773,7 +1773,7 @@ const seriesRisk = (()=>{
         )}
       </div>
 
-      {/* Quick AI ask */}
+        {/* Quick AI ask */}
       <div style={{position:'relative', zIndex:1, marginTop:12, display:'grid', gridTemplateColumns:'2fr 3fr', gap:12}}>
         <div style={{...card}}>
           <div style={{fontWeight:700, marginBottom:8}}>Ask AI</div>
