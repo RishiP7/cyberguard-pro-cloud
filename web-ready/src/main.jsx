@@ -1,6 +1,6 @@
 import ReactDOM from "react-dom/client";
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
@@ -1749,6 +1749,7 @@ const seriesRisk = (()=>{
               </div>
             ))}
           </div>
+  
         ) : connErr ? (
           <div style={{display:'flex',alignItems:'center',gap:8, margin:'6px 0 12px', padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:10}}>
             <span>{connErr}</span>
@@ -1756,6 +1757,8 @@ const seriesRisk = (()=>{
           </div>
         ) : (
           <>
+      {/* Integration health strip */}
+      <div style={{position:'relative', zIndex:1, marginTop:10}}>
             <IntegrationHealthStrip items={conn} />
             {Array.isArray(conn) && conn.length===0 && (
               <div style={{margin:'8px 0 12px'}}>
@@ -1772,48 +1775,6 @@ const seriesRisk = (()=>{
       </div>
         )}
       </div>
-
-      {/* Quick AI ask */}
-      <div style={{position:'relative', zIndex:1, marginTop:12, display:'grid', gridTemplateColumns:'2fr 3fr', gap:12}}>
-        <div style={{...card}}>
-          <div style={{fontWeight:700, marginBottom:8}}>Ask AI</div>
-          <form onSubmit={quickAsk} style={{display:'grid', gap:8}}>
-            <input
-              value={askQ}
-              onChange={e=>setAskQ(e.target.value)}
-              placeholder="e.g., Why was the last email flagged?"
-              style={{padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.06)',color:'inherit'}}
-              disabled={askBusy}
-            />
-            {/* Suggested AI questions */}
-            <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:2}}>
-              {aiSuggestions.map((q,i)=> (
-                <button
-  key={i}
-  type="button"
-  className="ghost"
-  style={{
-    padding:'4px 8px',
-    borderRadius:999,
-    border:'1px solid rgba(255,255,255,.2)',
-    background:'rgba(255,255,255,.04)',
-    color:'#e6e9ef',
-    fontSize:12,
-    cursor:'pointer'
-  }}
-  onClick={()=>askSuggestion(q)}
-  disabled={askBusy}
->
-  {q}
-</button>
-              ))}
-            </div>
-            <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <button style={btn} disabled={askBusy}>{askBusy? 'Thinking…' : 'Ask'}</button>
-              <span style={{opacity:.85,fontSize:12}}>{askMsg}</span>
-            </div>
-          </form>
-        </div>
 
         {/* Recent alerts modern list */}
         <div style={{...card}}>
@@ -2492,9 +2453,7 @@ const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
     }finally{
       setLoading(false);
     }
-}
 
-  
   React.useEffect(()=>{ loadAlerts(limit, days); },[]);
   React.useEffect(()=>{ loadAlerts(limit, days); },[days, limit]);
 

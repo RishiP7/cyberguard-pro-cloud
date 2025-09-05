@@ -5,7 +5,14 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+<<<<<<< HEAD
+    "prebuild": "npm --prefix web-ready run prebuild",
+    "build": "npm --prefix web-ready run build",
+    "preview": "npm --prefix web-ready run preview",
+    "dev": "npm --prefix web-ready run dev"
+=======
     "prebuild": "node -e \"const fs=require('fs');const p='web-ready/src/main.jsx';const s=fs.readFileSync(p,'utf8');const n=(s.match(/ReactDOM\\\\.createRoot\\(/g)||[]).length;if(n!==1){console.error('[prebuild] Expected exactly one ReactDOM.createRoot, found',n);process.exit(1);}if(s.includes('<user__selection>')){console.error('[prebuild] Found stray <user__selection> markers');process.exit(1);}console.log('[prebuild] OK');\""
+>>>>>>> origin/main
   },
   "engines": {
     "node": ">=20"
