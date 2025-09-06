@@ -18,3 +18,6 @@ app/.DS_Store
 web-ready/.DS_Store
 web-ready/src/main.jsx.bak_*
 web-ready/dist/
+
+app/src/index.js.bak
+app/src/index.js.prev
