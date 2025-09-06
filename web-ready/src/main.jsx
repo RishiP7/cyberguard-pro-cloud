@@ -1,6 +1,6 @@
 import ReactDOM from "react-dom/client";
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
@@ -336,12 +336,23 @@ function TrialNotice({ me }){
   );
 }
 
-function ErrorBoundary({children}){
-  const [err,setErr] = useState(null);
-  return err
-    ? <div style={{padding:16}}><h2>Something went wrong</h2><pre style={pre}>{String(err)}</pre></div>
-    : <ErrorCatcher onError={setErr}>{children}</ErrorCatcher>;
+
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error){ return { error }; }
+  componentDidCatch(error, info){ console.error("App error boundary caught:", error, info); }
+  render(){
+    if(this.state.error){
+      return (
+        <pre style={{ padding:12, background:"#220", color:"#fdd", whiteSpace:"pre-wrap", borderRadius:8 }}>
+{ `App error:\n${String(this.state.error?.message || this.state.error)}\n(see console for details)` }
+        </pre>
+      );
+    }
+    return this.props.children;
+  }
 }
+
 class ErrorCatcher extends React.Component{
   constructor(p){ super(p); this.state={}; }
   componentDidCatch(e,info){ console.error("ErrorBoundary", e, info); this.props.onError(e); }
