@@ -959,7 +959,7 @@ function Layout({ children }) {
     </div>
   );
 }
-){
+function NavRail(){
   // Fetch /me so we can gate Autonomy nav by plan
   const [meNav, setMeNav] = React.useState(null);
   React.useEffect(()=>{ apiGet('/me').then(setMeNav).catch(()=>{}); },[]);
