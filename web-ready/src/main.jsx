@@ -1,5 +1,41 @@
 // build: bump
 import ReactDOM from "react-dom/client";
+
+// --- BrandLogo: tries overrides + common paths, falls back to text ---
+function BrandLogo(){
+  const override = (typeof window!=='undefined' && (window.LOGO_URL || (typeof localStorage!=='undefined' && localStorage.getItem('logo_url')))) || '';
+  const candidates = [
+    override,
+    '/brand/logo.svg',
+    '/logo.svg',
+    '/logo.png',
+    '/logo192.png',
+    '/assets/logo.svg',
+    '/assets/logo.png'
+  ].filter(Boolean);
+
+  const [srcIdx, setSrcIdx] = React.useState(0);
+  const src = candidates[srcIdx] || '';
+
+  if (!src) {
+    // nothing to try; render text only
+    return <div style={{display:'flex',alignItems:'center',gap:10}}>
+    <BrandLogo/>
+    <h2 style={{margin:0,fontSize:18}}>Cyber Guard Pro</h2>
+  </div>;
+  }
+  return (
+    <img
+      src={src}
+      alt="Cyber Guard Pro"
+      style={{height:22, width:'auto', display:'block'}}
+      onError={()=>{
+        // try next candidate
+        if (srcIdx < candidates.length - 1) setSrcIdx(srcIdx+1);
+      }}
+    />
+  );
+}
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Register from "./pages/Register.jsx";
