@@ -3362,42 +3362,74 @@ function DashboardWithOnboarding(props){
 }
 
 function AuthLogin(){
-  const [email,setEmail]=React.useState('');
-  const [password,setPassword]=React.useState('');
-  const [err,setErr]=React.useState('');
-  const API_ORIGIN = (import.meta?.env?.VITE_API_BASE) || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com') ? 'https://cyberguard-pro-cloud.onrender.com' : 'http://localhost:8080');
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [err, setErr] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  const API_BASE =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
 
   async function onSubmit(e){
-    e.preventDefault(); setErr('');
+    e.preventDefault();
+    setErr(''); setLoading(true);
     try{
-      const r = await fetch(`${API_ORIGIN}/auth/login`, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      const t = await r.text(); let j; try{ j=JSON.parse(t);}catch{ j={ok:false,error:t};}
-      if(!r.ok || !j?.ok || !j?.token) throw new Error(j?.error||'login failed');
-      localStorage.setItem('token', j.token);
+      const t = await r.text();
+      let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+      if (!r.ok || !j.ok || !j.token) throw new Error(j.error || 'login failed');
+      if (typeof localStorage !== 'undefined') localStorage.setItem('token', j.token);
       window.location.href = '/';
-    }catch(e){ setErr(String(e.message||e)); }
+    } catch(e){
+      setErr(e?.message || 'login failed');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div style={{maxWidth:420, margin:'80px auto', padding:20}}>
       <h1>Sign in</h1>
-      <p style={{opacity:.8}}>Use your email and password.</p>
+      <p style={{opacity:.8}}>Use your admin email and password.</p>
       <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
-        <input placeholder="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)}
-          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}/>
-        <input placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)}
-          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}/>
-        <button type="submit" style={{padding:'10px 12px', borderRadius:8}}>Sign in</button>
-        {err && <div style={{color:'#f88', fontSize:12}}>Error: {err}</div>}
+        <input
+          placeholder="Email"
+          type="email"
+          value={email}
+          onChange={e=>setEmail(e.target.value)}
+          required
+          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
+        />
+        <input
+          placeholder="Password"
+          type="password"
+          value={password}
+          onChange={e=>setPassword(e.target.value)}
+          required
+          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
+        />
+        <button type="submit" disabled={loading} style={{padding:'10px 12px', borderRadius:8}}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </button>
+        {err && <div style={{color:'#f99'}}>Error: {err}</div>}
       </form>
     </div>
   );
 }
 function RequireAuth({ children }){
+  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+  if (!token) return <Navigate to="/login" replace />;
+  return children;
+}
+({ children }){
   const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
   if (!token) return <Navigate to="/login" replace />;
   return children;
