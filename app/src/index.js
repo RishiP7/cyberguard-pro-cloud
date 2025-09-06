@@ -87,7 +87,7 @@ app.use(cors({
 }));
 
 // Preflight
-app.options('/*', cors({
+app.options('*', cors({
   origin: corsOrigin,
   credentials: true,
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
