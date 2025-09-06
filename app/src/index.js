@@ -36,6 +36,7 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
+app.use(express.json());
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
