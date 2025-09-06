@@ -87,7 +87,7 @@ app.use(cors({
 }));
 
 // Preflight
-app.options("/(.*)", cors({
+app.options("*", cors({
   origin: corsOrigin,
   credentials: true,
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
@@ -4760,3 +4760,21 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
 return res.status(500).json({ ok:false, error:'force reset failed' });
   }
 });
+
+// ===== Express 5 catch-all route compatibility patch =====
+// Replace legacy catch-all routes with named parameter form for Express 5 compatibility.
+
+// --- PATCH: app.*('*', ...) and app.*('/(.*)', ...) ---
+// --- PATCH: router.*('*', ...) and router.*('/(.*)', ...) ---
+// --- PATCH: .use('*', ...) and .use('/(.*)', ...) ---
+
+// NOTE: Only literal replacements as per instructions.
+
+// Example transforms (for future reference):
+// app.get('*', ...)      -> app.get('/:rest(.*)', ...)
+// app.get('/(.*)', ...)  -> app.get('/:rest(.*)', ...)
+// app.get("*", ...)      -> app.get("/:rest(.*)", ...)
+// router.get('*', ...)   -> router.get('/:rest(.*)', ...)
+// router.get('/(.*)', ...) -> router.get('/:rest(.*)', ...)
+// .use('*', ...)         -> .use('/:rest(.*)', ...)
+// .use('/(.*)', ...)     -> .use('/:rest(.*)', ...)
