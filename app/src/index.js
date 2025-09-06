@@ -4835,3 +4835,9 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // router.all("*", ...)   -> router.all("/:rest(.*)", ...)
 // .use('*', ...)         -> .use('/:rest(.*)', ...)
 // .use("*", ...)         -> .use("/:rest(.*)", ...)
+
+// Lightweight whoami for debugging JWT logins
+app.get('/auth/whoami', (req,res)=>{
+  if (req.isJwtAuthed) return res.json({ ok:true, me:{ email:req.jwt?.email||'unknown' }});
+  return res.status(401).json({ ok:false, error:'not authed' });
+});
