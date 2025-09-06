@@ -1,6 +1,6 @@
 import ReactDOM from "react-dom/client";
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom"
+import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
@@ -3426,8 +3426,7 @@ function AuthLogin(){
 }
 function RequireAuth({ children }){
   const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-  if (!token) return <Navigate to="/login" replace />;
-  return children;
+  return token ? children : <Navigate to="/login" replace />;
 }
 ({ children }){
   const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
