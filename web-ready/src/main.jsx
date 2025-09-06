@@ -3426,13 +3426,10 @@ function AuthLogin(){
 }
 function RequireAuth({ children }){
   const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-  return token ? children : <Navigate to="/login" replace />;
-}
-({ children }){
-  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
+
 function LiveStatusTicker({ inline=false }){
   const [msgs, setMsgs] = React.useState([]);
 
