@@ -1,6 +1,6 @@
 import ReactDOM from "react-dom/client";
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
@@ -3408,7 +3408,7 @@ function App(){
             <Route path="/admin/console/retention" element={protect(<AdminConsolePage page="retention" />)} />
             <Route path="/admin/console/audit" element={protect(<AdminConsolePage page="audit" />)} />
             <Route path="/test" element={protect(<TestEvents api={API}/>)} />
-
+            <Route path="/support" element={protect(<Support/>)} /> 
             <Route path="*" element={<Navigate to="/" replace />}/>
           </Routes>
         </>
@@ -4301,6 +4301,76 @@ function PlanCard({ name, price, features, onChoose, loading, highlight }) {
       >
         {loading ? "Please wait…" : `Choose ${name}`}
       </button>
+    </div>
+  );
+}
+// --- Support Page ---
+function Support(){
+  const [name, setName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [hp, setHp] = React.useState(""); // honeypot
+  const [sent, setSent] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function submit(e){
+    e.preventDefault();
+    setErr("");
+    try{
+      if (hp) { setSent(true); return; } // bot trap
+      const r = await fetch(`${API_ORIGIN}/support/send`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ name, email, message, hp })
+      });
+      const t = await r.text();
+      let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+      if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      setSent(true);
+    } catch(e){
+      setErr(e?.message || "send failed");
+    }
+  }
+
+  const s = {
+    wrap:{maxWidth:600, margin:"40px auto", padding:16},
+    input:{padding:"10px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,.2)", background:"rgba(255,255,255,.06)", color:"inherit"},
+    btn  :{padding:"10px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,.2)", background:"#1f6feb", color:"#fff", cursor:"pointer"}
+  };
+
+  return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Support</h1>
+      <p style={{opacity:.8}}>Questions or issues? Send us a message and we’ll get back to you.</p>
+      {sent ? (
+        <div style={{padding:"10px 12px", border:"1px solid #7bd88f55", background:"#7bd88f22", borderRadius:10}}>
+          ✅ Thanks! Your message was sent.
+        </div>
+      ) : (
+        <form onSubmit={submit} style={{display:"grid", gap:10}}>
+          <label>Name</label>
+          <input style={s.input} value={name} onChange={e=>setName(e.target.value)} required />
+          <label>Email</label>
+          <input style={s.input} type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
+          {/* honeypot */}
+          <div style={{position:"absolute", left:"-5000px"}}>
+            <input value={hp} onChange={e=>setHp(e.target.value)} tabIndex="-1" autoComplete="off" />
+          </div>
+          <label>Message</label>
+          <textarea style={s.input} value={message} onChange={e=>setMessage(e.target.value)} rows={6} required />
+          <button type="submit" style={s.btn}>Send</button>
+          {err && <div style={{padding:"8px 10px", border:"1px solid #ff7a7a88", background:"#ff7a7a22", borderRadius:8}}>Error: {err}</div>}
+        </form>
+      )}
+      <p style={{marginTop:12, opacity:.85}}>
+        Or email <a href="mailto:support@cyberguardpro.com">support@cyberguardpro.com</a>
+      </p>
     </div>
   );
 }
