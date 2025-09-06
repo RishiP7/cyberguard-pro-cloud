@@ -1,23 +1,35 @@
-import React from "react";
-export default function Support(){
-  const [msg,setMsg] = React.useState("");
-  const [email,setEmail] = React.useState("");
-  const [sent,setSent] = React.useState(false);
-  async function submit(e){
+import React, { useState } from "react";
+
+export default function Support() {
+  const [msg, setMsg] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const handleSubmit = (e) => {
     e.preventDefault();
-    // Placeholder: wire to email/webhook later
+    // TODO: wire up to backend (Mailgun/Sendgrid or GitHub Issues webhook)
+    console.log("Support request:", msg);
     setSent(true);
-  }
+  };
+
   return (
-    <section>
-      <h1 style={{marginTop:0}}>Support</h1>
-      {sent ? <div>Thanks — we’ll be in touch.</div> : (
-        <form onSubmit={submit} style={{display:"grid", gap:10, maxWidth:520}}>
-          <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" />
-          <textarea value={msg} onChange={e=>setMsg(e.target.value)} placeholder="How can we help?" rows={6}/>
-          <button type="submit" style={{border:"1px solid #1f6feb", padding:"8px 12px", borderRadius:8}}>Send</button>
+    <section style={{padding:"40px 20px", maxWidth:640, margin:"0 auto"}}>
+      <h1>Support</h1>
+      <p>If you have an issue or question, fill the form below. Our team will respond quickly.</p>
+      {sent ? (
+        <p style={{color:"lightgreen"}}>✅ Request sent! We'll be in touch.</p>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <textarea
+            value={msg}
+            onChange={e=>setMsg(e.target.value)}
+            placeholder="Describe your issue..."
+            required
+            style={{width:"100%",height:120,margin:"12px 0"}}
+          />
+          <button type="submit">Send</button>
         </form>
       )}
+      <p>Or email us directly: <a href="mailto:support@cyberguardpro.com">support@cyberguardpro.com</a></p>
     </section>
   );
 }
