@@ -37,6 +37,27 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .map(s => s.toLowerCase());
 const app = express();
 app.use(express.json());
+
+app.post('/auth/admin-login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@cyberguardpro.com';
+    const adminPass  = process.env.ADMIN_PASSWORD || 'ChangeMeNow!';
+    if (email === adminEmail && password === adminPass) {
+      const token = (await import('jsonwebtoken')).default.sign(
+        { sub: email, role: 'owner', plan: 'pro_plus' },
+        process.env.JWT_SECRET || 'dev-secret',
+        { expiresIn: '12h' }
+      );
+      return res.json({ ok: true, token });
+    }
+    return res.status(401).json({ ok:false, error: 'invalid credentials' });
+  } catch (e) {
+    console.error('auth/admin-login error', e);
+    return res.status(500).json({ ok:false, error: 'server error' });
+  }
+});
+
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
