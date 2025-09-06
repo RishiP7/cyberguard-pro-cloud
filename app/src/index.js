@@ -87,7 +87,7 @@ app.use(cors({
 }));
 
 // Preflight
-app.options('/:rest(.*)', cors({
+app.options('/:rest(*)', cors({
   origin: corsOrigin,
   credentials: true,
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
@@ -4781,7 +4781,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // app.patch("*", ...)    -> app.patch("/:rest(.*)", ...)
 // app.delete('*', ...)   -> app.delete('/:rest(.*)', ...)
 // app.delete("*", ...)   -> app.delete("/:rest(.*)", ...)
-// app.options('*', ...)  -> app.options('/:rest(.*)', ...)
+// app.options('*', ...)  -> app.options('/:rest(*)', ...)
 // app.options("*", ...)  -> app.options("/:rest(.*)", ...)
 // app.all('*', ...)      -> app.all('/:rest(.*)', ...)
 // app.all("*", ...)      -> app.all("/:rest(.*)", ...)
