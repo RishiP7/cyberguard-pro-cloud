@@ -1,3 +1,6 @@
+import sgMail from "@sendgrid/mail";
+import xss from "xss";
+sgMail.setApiKey(process.env.SENDGRID_API_KEY || "");
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
