@@ -893,6 +893,50 @@ function AIDock({ me }) {
     </>
   );
 }
+
+// --- Top-right badges (role / status / trial / logout) ---
+function TopBadges(){
+  const [me, setMe] = React.useState(null);
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  React.useEffect(()=>{
+    (async()=>{
+      try{
+        const token = (typeof localStorage!=='undefined' && localStorage.getItem('token')) || '';
+        const r = await fetch(`${API_ORIGIN}/me`, { headers:{ Authorization:`Bearer ${token}` } });
+        const t = await r.text(); let j; try{ j=JSON.parse(t);}catch{j=null;}
+        if (j && typeof j === 'object') setMe(j);
+      }catch(_e){}
+    })();
+  },[]);
+
+  const chip = { display:'inline-flex', alignItems:'center', gap:6, border:'1px solid rgba(255,255,255,.18)', borderRadius:999, padding:'4px 10px', background:'rgba(255,255,255,.04)', fontSize:12, marginLeft:8 };
+
+  function logout(){
+    try { localStorage.removeItem('token'); } catch(_e){}
+    window.location.href = '/login';
+  }
+
+  const role = me?.is_super ? 'Super Admin' : (me?.role ? String(me.role) : '');
+  const billing = me?.billing_status ? String(me.billing_status) : '';
+  const trial = me?.trial?.active ? `${me.trial.days_left ?? ''} day${(me.trial.days_left===1)?'':'s'} left` : '';
+
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+      {role ? <span style={chip}>{role}</span> : null}
+      {billing ? <span style={chip}>{billing}</span> : null}
+      {me?.trial?.active ? <span style={{...chip, borderColor:'#c69026', background:'#c6902615'}}>trial — {trial}</span> : null}
+      <button onClick={logout} style={{...chip, cursor:'pointer'}}>Logout</button>
+    </div>
+  );
+}
+
+
 function Layout({ children }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#090b10', color: '#e6e9ef' }}>
@@ -953,7 +997,10 @@ function Layout({ children }) {
       </div>
 
       {/* Main content */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div style={{ position: 'relative',  flex: 1, overflow: 'auto'  }}>
+    <div style={{position:'sticky', top:0, zIndex:5, display:'flex', justifyContent:'flex-end', padding:'10px 12px'}}>
+      <TopBadges/>
+    </div>
         {children}
       </div>
     </div>
