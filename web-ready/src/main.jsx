@@ -3362,30 +3362,37 @@ function DashboardWithOnboarding(props){
 }
 
 function AuthLogin(){
-  const [token, setToken] = React.useState(
-    typeof localStorage !== 'undefined' ? (localStorage.getItem('token') || '') : ''
-  );
+  const [email,setEmail]=React.useState('');
+  const [password,setPassword]=React.useState('');
+  const [err,setErr]=React.useState('');
+  const API_ORIGIN = (import.meta?.env?.VITE_API_BASE) || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com') ? 'https://cyberguard-pro-cloud.onrender.com' : 'http://localhost:8080');
 
-  function onSubmit(e){
-    e.preventDefault();
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem('token', token.trim());
+  async function onSubmit(e){
+    e.preventDefault(); setErr('');
+    try{
+      const r = await fetch(`${API_ORIGIN}/auth/login`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const t = await r.text(); let j; try{ j=JSON.parse(t);}catch{ j={ok:false,error:t};}
+      if(!r.ok || !j?.ok || !j?.token) throw new Error(j?.error||'login failed');
+      localStorage.setItem('token', j.token);
       window.location.href = '/';
-    } catch(_) {}
+    }catch(e){ setErr(String(e.message||e)); }
   }
 
   return (
     <div style={{maxWidth:420, margin:'80px auto', padding:20}}>
       <h1>Sign in</h1>
-      <p style={{opacity:.8}}>Paste the API token you received after signup.</p>
+      <p style={{opacity:.8}}>Use your email and password.</p>
       <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
-        <input
-          placeholder="Bearer token"
-          value={token}
-          onChange={e=>setToken(e.target.value)}
-          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
-        />
-        <button type="submit" style={{padding:'10px 12px', borderRadius:8}}>Save & Continue</button>
+        <input placeholder="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)}
+          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}/>
+        <input placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)}
+          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}/>
+        <button type="submit" style={{padding:'10px 12px', borderRadius:8}}>Sign in</button>
+        {err && <div style={{color:'#f88', fontSize:12}}>Error: {err}</div>}
       </form>
     </div>
   );
