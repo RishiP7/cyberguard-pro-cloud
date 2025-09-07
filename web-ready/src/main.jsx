@@ -1020,13 +1020,23 @@ function Layout({ children }) {
           }
         `}</style>
 
-        <div style={{marginTop:10, opacity:.9}}>
-          New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
-        </div>
+        <nav style={{display:'grid', gap:8, marginTop:8}}>
+          <Link className="side-link" to="/">Dashboard</Link>
+          <Link className="side-link" to="/alerts">Alerts</Link>
+          <Link className="side-link" to="/integrations">Integrations</Link>
+          <Link className="side-link" to="/policy">Policy</Link>
+          <Link className="side-link" to="/account">Account</Link>
+          {typeof localStorage !== 'undefined' && localStorage.getItem('token') ? (
+            <Link className="side-link" to="/admin">Admin</Link>
+          ) : null}
+        </nav>
       </div>
 
       {/* Main content */}
       <div style={{ flex: 1, padding: 16 }}>
+        <div style={{display:'flex', justifyContent:'flex-end', marginBottom:8}}>
+          <TopBadges />
+        </div>
         {(typeof localStorage!=='undefined' && localStorage.getItem('token')) ? children : <AuthLogin/>}
       </div>
     </div>
