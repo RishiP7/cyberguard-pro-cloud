@@ -1,9 +1,7 @@
-import sgMail from "@sendgrid/mail";
-import xss from "xss";
-sgMail.setApiKey(process.env.SENDGRID_API_KEY || "");
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
+// morgan import moved up
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
@@ -36,28 +34,6 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
-app.use(express.json());
-
-app.post('/auth/admin-login', async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@cyberguardpro.com';
-    const adminPass  = process.env.ADMIN_PASSWORD || 'ChangeMeNow!';
-    if (email === adminEmail && password === adminPass) {
-      const token = (await import('jsonwebtoken')).default.sign(
-        { sub: email, role: 'owner', plan: 'pro_plus' },
-        process.env.JWT_SECRET || 'dev-secret',
-        { expiresIn: '12h' }
-      );
-      return res.json({ ok: true, token });
-    }
-    return res.status(401).json({ ok:false, error: 'invalid credentials' });
-  } catch (e) {
-    console.error('auth/admin-login error', e);
-    return res.status(500).json({ ok:false, error: 'server error' });
-  }
-});
-
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
@@ -109,11 +85,22 @@ app.use(cors({
   exposedHeaders: [
     "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
   ]
-,
-  optionsSuccessStatus: 204
 }));
 
-
+// Preflight
+app.options('*', cors({
+  origin: corsOrigin,
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: [
+    "Origin","X-Requested-With","Content-Type","Accept","Authorization",
+    "x-api-key","x-admin-key","x-plan-preview","x-admin-override"
+  ],
+  exposedHeaders: [
+    "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
+  ],
+  optionsSuccessStatus: 204
+}));
 app.use(helmet());
 
 // redacted request logging
@@ -4676,48 +4663,6 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
-/**
- * Support form endpoint
- * POST /support/send  { name, email, message }
- */
-app.post('/support/send', async (req, res) => {
-  try {
-    const name = String(req.body?.name || '').slice(0, 200);
-    const email = String(req.body?.email || '').slice(0, 320);
-    const message = String(req.body?.message || '').slice(0, 5000);
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ ok:false, error:'invalid email' });
-    }
-
-    const safeName = xss(name);
-    const safeMsg  = xss(message);
-
-    const to   = process.env.SUPPORT_TO   || 'cyberguardpro@outlook.com';
-    const from = process.env.SUPPORT_FROM || 'cyberguardpro@outlook.com';
-    const subject = `Support: ${safeName || email} (${new Date().toISOString().slice(0,10)})`;
-
-    if (!process.env.SENDGRID_API_KEY) {
-      return res.status(500).json({ ok:false, error: 'SENDGRID_API_KEY not set' });
-    }
-
-    await sgMail.send({
-      to,
-      from,
-      subject,
-      text: `From: ${safeName} <${email}>
-
-${safeMsg}`,
-      replyTo: email
-    });
-
-    return res.json({ ok:true });
-  } catch (e) {
-    console.error('support/send failed', e);
-    return res.status(500).json({ ok:false, error:'send failed' });
-  }
-});
-
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
 // ---------- Super Admin DB diagnostics ----------
@@ -4837,7 +4782,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // app.patch("*", ...)    -> app.patch("/:rest(.*)", ...)
 // app.delete('*', ...)   -> app.delete('/:rest(.*)', ...)
 // app.delete("*", ...)   -> app.delete("/:rest(.*)", ...)
-// app.options('*', ...)  -> app.options('/:rest(*)', ...)
+// app.options('*', ...)  -> app.options('/:rest(.*)', ...)
 // app.options("*", ...)  -> app.options("/:rest(.*)", ...)
 // app.all('*', ...)      -> app.all('/:rest(.*)', ...)
 // app.all("*", ...)      -> app.all("/:rest(.*)", ...)
@@ -4857,9 +4802,3 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // router.all("*", ...)   -> router.all("/:rest(.*)", ...)
 // .use('*', ...)         -> .use('/:rest(.*)', ...)
 // .use("*", ...)         -> .use("/:rest(.*)", ...)
-
-// Lightweight whoami for debugging JWT logins
-app.get('/auth/whoami', (req,res)=>{
-  if (req.isJwtAuthed) return res.json({ ok:true, me:{ email:req.jwt?.email||'unknown' }});
-  return res.status(401).json({ ok:false, error:'not authed' });
-});

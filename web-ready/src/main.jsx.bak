@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route, Link, NavLink, Navigate } from "react-router-dom";
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
@@ -336,12 +336,23 @@ function TrialNotice({ me }){
   );
 }
 
-function ErrorBoundary({children}){
-  const [err,setErr] = useState(null);
-  return err
-    ? <div style={{padding:16}}><h2>Something went wrong</h2><pre style={pre}>{String(err)}</pre></div>
-    : <ErrorCatcher onError={setErr}>{children}</ErrorCatcher>;
+
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error){ return { error }; }
+  componentDidCatch(error, info){ console.error("App error boundary caught:", error, info); }
+  render(){
+    if(this.state.error){
+      return (
+        <pre style={{ padding:12, background:"#220", color:"#fdd", whiteSpace:"pre-wrap", borderRadius:8 }}>
+{ `App error:\n${String(this.state.error?.message || this.state.error)}\n(see console for details)` }
+        </pre>
+      );
+    }
+    return this.props.children;
+  }
 }
+
 class ErrorCatcher extends React.Component{
   constructor(p){ super(p); this.state={}; }
   componentDidCatch(e,info){ console.error("ErrorBoundary", e, info); this.props.onError(e); }
@@ -515,7 +526,7 @@ function AdminOpsRetention(){
             <button style={ghost} onClick={runPurge} disabled={loading}>Run purge</button>
             <button style={ghost} onClick={seed} disabled={loading}>Seed 2k @200d</button>
           </div>
-          {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</div>}
+            {msg && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #7bd88f66', background:'#7bd88f22', borderRadius:8}}>{msg}</div>}
           {err && <div style={{marginTop:8, padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8}}>{String(err)}</div>}
         </div>
       </div>
@@ -882,12 +893,184 @@ function AIDock({ me }) {
     </>
   );
 }
-function Layout({children}){
+function Layout({ children }) {
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#090b10', color: '#e6e9ef' }}>
+      {/* Sidebar */}
+      <div
+        style={{
+          width: 232,
+          background: 'rgba(8,10,14,0.95)',
+          borderRight: '1px solid rgba(255,255,255,.12)',
+          padding: '16px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          position: 'sticky',
+          top: 0,
+          height: '100vh'
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: 18 }}>
+          Cyber <span style={{ color: '#7bd88f' }}>Guard</span> Pro
+        </h2>
+
+        <style>{`
+          .side-link {
+            display: inline-block;
+            padding: 8px 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,.12);
+            text-decoration: none;
+            color: #e6e9ef;
+            background: rgba(255,255,255,.03);
+            transition: all .18s ease;
+          }
+          .side-link:hover {
+            box-shadow: 0 0 18px rgba(47,161,255,.35), inset 0 0 10px rgba(123,216,143,.12);
+            border-color: rgba(123,216,143,.45);
+            transform: translateX(2px);
+          }
+          .side-link.active {
+            background: linear-gradient(90deg, rgba(37,161,255,.18), rgba(123,216,143,.18));
+            border-color: rgba(37,161,255,.55);
+          }
+        `}</style>
+
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <NavLink to="/"              className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Dashboard</NavLink>
+          <NavLink to="/alerts"        className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Alerts</NavLink>
+          <NavLink to="/integrations"  className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Integrations</NavLink>
+          <NavLink to="/autonomy"      className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Autonomy</NavLink>
+          <NavLink to="/policy"        className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Policy</NavLink>
+          <NavLink to="/pricing"       className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Pricing</NavLink>
+          <NavLink to="/account"       className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Account</NavLink>
+          <NavLink to="/admin"         className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Admin</NavLink>
+          <NavLink to="/admin/console" className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Admin Console</NavLink>
+          <NavLink to="/support"       className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Support</NavLink>
+          <NavLink to="/test"          className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Test</NavLink>
+        </nav>
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+function NavRail(){
+  // Fetch /me so we can gate Autonomy nav by plan
+  const [meNav, setMeNav] = React.useState(null);
+  React.useEffect(()=>{ apiGet('/me').then(setMeNav).catch(()=>{}); },[]);
+  const capsNav = planCapabilities(meNav?.plan_actual || meNav?.plan || 'trial', meNav);
+  // Autonomy pending (proposed) actions count for navbar badge
+  const [autoCount, setAutoCount] = React.useState(0);
+  React.useEffect(()=>{
+    let timer = null;
+    async function load(){
+      try{
+        if(!capsNav.ai){ setAutoCount(0); return; }
+        const j = await apiGet('/ai/actions');
+        const n = Array.isArray(j?.items)
+          ? j.items.filter(a => String(a.status||'').toLowerCase()==='proposed').length
+          : 0;
+        setAutoCount(n);
+      }catch(_e){ /* ignore */ }
+    }
+    load();
+    // refresh every 60s
+    timer = setInterval(load, 60000);
+    return ()=>{ try{ if(timer) clearInterval(timer); }catch(_e){} };
+  }, [capsNav.ai]);
+
+  // Keyboard shortcuts: g a Alerts, g i Integrations, g u Autonomy, / focus Alerts search
+  React.useEffect(()=>{
+    let awaiting = false; let timer=null;
+    function onKey(e){
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = (e.key||'').toLowerCase();
+      if(key==='/'){
+        e.preventDefault();
+        if (window.location.pathname.startsWith('/alerts')){
+          const el = document.querySelector('input[placeholder^="Search subject"]');
+          if (el) { el.focus(); el.select(); }
+        } else {
+          window.location.href = '/alerts';
+        }
+        return;
+      }
+      if(!awaiting){ if(key==='g'){ awaiting=true; timer=setTimeout(()=>awaiting=false, 1200); } return; }
+      awaiting=false; if(timer){ clearTimeout(timer); timer=null; }
+      if(key==='a'){ window.location.href='/alerts'; }
+      if(key==='i'){ window.location.href='/integrations'; }
+      if(key==='u'){ window.location.href='/autonomy'; }
+    }
+    window.addEventListener('keydown', onKey);
+    return ()=>{ window.removeEventListener('keydown', onKey); if(timer) clearTimeout(timer); };
+  },[]);
+
+  const [ribbonItems, setRibbonItems] = React.useState([]);
+  React.useEffect(()=>{
+    async function load(){ try{ const j = await apiGet('/integrations/status'); setRibbonItems(Array.isArray(j?.items)? j.items : []); }catch{} }
+    load(); const t=setInterval(load, 60000); return ()=>clearInterval(t);
+  },[]);
+  // Reduced motion preference
+  const [reduceMotion, setReduceMotion] = React.useState(() => (typeof localStorage !== 'undefined' && localStorage.getItem('reduce_motion')==='1'));
+  React.useEffect(()=>{
+    function onStorage(e){ if(e.key==='reduce_motion'){ setReduceMotion(e.newValue==='1'); } }
+    function onPrefs(){ setReduceMotion((typeof localStorage!=='undefined' && localStorage.getItem('reduce_motion')==='1')); }
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('prefs-changed', onPrefs);
+    return ()=>{ window.removeEventListener('storage', onStorage); window.removeEventListener('prefs-changed', onPrefs); };
+  },[]);
   const nav = useNav();
   const me = nav.me;
   const authed = useAuthFlag();
   return (
-    <div>
+    <div className={reduceMotion ? 'no-anim' : ''}>
+      {/* Global neo theme + ambient background */}
+      <style>{`
+        :root {
+          --neo-fg:#e6e9ef;
+          --neo-card:rgba(255,255,255,.04);
+          --neo-border:rgba(255,255,255,.12);
+          --neo-ghost:rgba(255,255,255,.2);
+          --neo-glow-1:#1f6feb;
+          --neo-glow-2:#7bd88f;
+        }
+        body { color: var(--neo-fg); }
+        @keyframes nebula2 { 0%{ transform:translate3d(0,0,0) scale(1);} 50%{ transform:translate3d(0px,6px,0) scale(1.02);} 100%{ transform:translate3d(0,0,0) scale(1);} }
+        /* Buttons get tasteful glow on hover */
+        .btn:hover { box-shadow: 0 0 16px rgba(31,111,235,.35), inset 0 1px 0 rgba(255,255,255,.08); transform: translateY(-1px); transition: box-shadow .2s ease, transform .2s ease; }
+        .ghost:hover { box-shadow: 0 0 10px rgba(255,255,255,.12), inset 0 1px 0 rgba(255,255,255,.06); transform: translateY(-1px); transition: box-shadow .2s ease, transform .2s ease; }
+        a:hover { filter: brightness(1.06); }
+        /* Smooth content entrance */
+        .fade-in { opacity: 0; animation: fadeIn .35s ease forwards; }
+        @keyframes fadeIn { to { opacity: 1; } }
+        /* Micro-effects */
+        .fx-tilt { transition: transform .18s ease, box-shadow .22s ease; will-change: transform; }
+        .fx-tilt:hover { transform: translateY(-2px) scale(1.01); box-shadow: 0 10px 26px rgba(0,0,0,.35), 0 0 18px rgba(123,216,143,.12) !important; }
+        .fx-row { transition: background .18s ease, transform .12s ease; }
+        .fx-row:hover { background: rgba(255,255,255,.05); transform: translateX(1px); }
+
+        /* Neon section titles */
+        .neon-title { position: relative; display:inline-block; }
+        .neon-title::after { content:''; position:absolute; left:0; right:0; bottom:-4px; height:2px; border-radius:2px; background: linear-gradient(90deg, #1f6feb, #7bd88f); box-shadow: 0 0 8px rgba(123,216,143,.35); }
+        .neon-title-sm { position: relative; display:inline-block; }
+        .neon-title-sm::after { content:''; position:absolute; left:0; right:0; bottom:-3px; height:2px; border-radius:2px; background: linear-gradient(90deg, #1f6feb, #7bd88f); opacity:.8; }
+
+        /* Active nav glow (applied inline via style merge) */
+        .no-anim * { animation: none !important; transition: none !important; }
+      `}</style>
+      {!reduceMotion && (
+        <div aria-hidden="true" style={{
+          position:'fixed', inset:0, zIndex:0, pointerEvents:'none', opacity:.18,
+          backgroundImage:
+            'radial-gradient(800px 340px at 15% -4%, rgba(31,111,235,.28), transparent 60%), ' +
+            'radial-gradient(640px 300px at 92% 12%, rgba(123,216,143,.22), transparent 60%)'
+        }} />
+      )}
       <div style={bar}>
         <div style={left}>
           <img src="/logo-cgp.png" alt="Logo" style={{height: 60, marginRight: 10}}/>
@@ -896,6 +1079,27 @@ function Layout({children}){
           <N to="/">Dashboard</N>
           <N to="/alerts">Alerts</N>
           <N to="/integrations">Integrations</N>
+          {capsNav.ai && (
+            <>
+              <N to="/autonomy">
+                Autonomy{autoCount>0 && (
+                  <span
+                    style={{
+                      marginLeft:6,
+                      fontSize:11,
+                      padding:'1px 6px',
+                      border:'1px solid rgba(255,255,255,.25)',
+                      borderRadius:999,
+                      opacity:.9
+                    }}
+                  >
+                    {autoCount}
+                  </span>
+                )}
+              </N>
+         
+            </>
+          )}
           <N to="/policy">Policy</N>
           <N to="/pricing">Pricing</N>
           <N to="/account">Account</N>
@@ -905,8 +1109,9 @@ function Layout({children}){
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           {me?.is_super && (<span style={badgeSA}>Super Admin</span>)}
-          <TrialCountdownBadge me={me} />
-          {authed ? (
+<TrialCountdownBadge me={me} />
+<BillingStatusChip me={me} />
+{authed ? (
             <button
               style={btnGhost}
               onClick={()=>{
@@ -935,13 +1140,40 @@ function Layout({children}){
             >Exit impersonation</button>
           </div>
         )}
+        {Array.isArray(ribbonItems) && ribbonItems.length>0 && (
+          <div style={{margin:'8px 0 12px',padding:'6px 10px',border:'1px solid rgba(255,255,255,.12)',borderRadius:8,background:'rgba(255,255,255,.03)',display:'flex',gap:8,flexWrap:'wrap'}}>
+            {ribbonItems.slice(0,8).map((c,i)=>{
+              const ok = c.status==='connected' || c.status==='ok';
+              return (
+                <Link key={i} to="/integrations" style={{textDecoration:'none'}}>
+                  <span style={{display:'inline-flex',alignItems:'center',gap:6,padding:'2px 8px',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,background:'rgba(255,255,255,.04)'}}>
+                    <span style={{display:'inline-block',width:8,height:8,borderRadius:999,background: ok? '#22c55e' : '#f59e0b', boxShadow: ok? '0 0 10px #22c55e88':'0 0 10px #f59e0b88'}}/>
+                    <span style={{fontSize:12,opacity:.85}}>{String(c.type||'').toUpperCase()}</span>
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+{Array.isArray(ribbonItems) && ribbonItems.length===0 && (
+  <EmptyStateFx
+    title="No integrations connected"
+    subtitle="Connect your email, EDR, DNS, or cloud to unlock full protection."
+    actionHref="/integrations"
+    actionLabel="Set up integrations"
+  />
+)}
         {children}
         <AIDock me={me} />
       </div>
     </div>
   );
 }
-function N({to,children}){ return <Link to={to} style={navItem}>{children}</Link>; }
+function N({to,children}){
+  const path = (typeof window!=='undefined' && window.location && window.location.pathname) || '/';
+  const active = path === to || (to !== '/' && path.startsWith(to));
+  return <Link to={to} style={{...navItem, ...(active ? navItemActive : null)}}>{children}</Link>;
+}
 const bar   ={
   display:"grid",
   gridTemplateColumns:"220px 1fr auto",
@@ -964,6 +1196,10 @@ const navItem={
   background:"linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))",
   boxShadow:"inset 0 1px 0 rgba(255,255,255,.06)"
 };
+const navItemActive={
+  border:'1px solid #7bd88f66',
+  boxShadow:'0 0 16px rgba(123,216,143,.22), inset 0 1px 0 rgba(255,255,255,.08)'
+};
 const btnGhost={
   padding:"8px 12px",
   borderRadius:10,
@@ -977,7 +1213,19 @@ const btnGhost={
 };
 const th    ={textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8};
 const td    ={padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"};
-
+// ---- Risk normalization (unify labels) ----
+function normalizeRisk(raw){
+  const n = Number(raw);
+  if (!isFinite(n)) return 0;
+  // Already 0–100
+  if (n >= 0 && n <= 100) return Math.round(n);
+  // 0–1 → 0–100
+  if (n > 0 && n < 1) return Math.round(n * 100);
+  // -1..0 → 0–100
+  if (n <= 0 && n >= -1) return Math.round(Math.abs(n) * 100);
+  // Clamp/magnitude
+  return Math.max(0, Math.min(100, Math.round(Math.abs(n))));
+}
 
 function LockedTile({ title, reason }) {
   return (
@@ -1022,7 +1270,30 @@ function TrialBanner({ me }) {
 
   return null;
 }
-
+function BillingStatusChip({ me }){
+  try{
+    const status = String(me?.billing_status||'').toLowerCase();
+    if(!status) return null;
+    const map = { active:'#22c55e', trialing:'#7bd88f', past_due:'#f59e0b', payment_failed:'#ef4444', canceled:'#64748b' };
+    const color = map[status] || 'rgba(255,255,255,.6)';
+    return (
+      <span
+        title={`Billing: ${status}`}
+        style={{
+          marginRight:8,
+          padding:'4px 10px',
+          border:`1px solid ${color}66`,
+          background:'rgba(255,255,255,.04)',
+          borderRadius:999,
+          fontSize:12,
+          boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'
+        }}
+      >
+        {status.replace('_',' ')}
+      </span>
+    );
+  }catch(_e){ return null; }
+}
 // ---------- Auth helpers ----------
 function useAuthFlag(){
   const [authed, setAuthed] = React.useState(!!localStorage.getItem("token"));
@@ -1067,9 +1338,16 @@ function useNav(){
               window.dispatchEvent(new Event('me-updated'));
             }, delta);
           }
-        } catch (_e) {}
-      }catch(e){ if(mounted) setErr(e.error||"API error"); }
-      finally{ if(mounted) setLoading(false); }
+        } catch(e){ 
+          console.error(e);
+          setErr("Unable to load integration status.");
+        }
+      } catch(e) {
+        console.error(e);
+        setErr("Failed to load /me");
+      } finally {
+        if(mounted) setLoading(false);
+      }
     }
 
     fetchMe();
@@ -1122,192 +1400,199 @@ function Login(){
   );
 }
 const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.06)",color:"inherit",marginBottom:10};
-
-function RealtimeEmailScans() {
-  const [emails, setEmails] = React.useState([]);
-  const [busy, setBusy] = React.useState(false);
-  const API_ORIGIN =
-    (import.meta?.env?.VITE_API_BASE)
-    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
-
-  async function pollNow() {
-    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-    if (!token) return;
-    try {
-      setBusy(true);
-      const r = await fetch(`${API_ORIGIN}/email/poll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ max: 10 })
-      });
-      try { console.log('PollNow result', await r.json()); } catch (_e) {}
-    } catch (_e) {
-      // no-op
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Preload recent email alerts so the table isn't empty while waiting for SSE
-  React.useEffect(() => {
-    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-    if (!token) return;
-    const base = (import.meta?.env?.VITE_API_BASE)
-      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-            ? 'https://cyberguard-pro-cloud.onrender.com'
-            : 'http://localhost:8080');
-    fetch(`${base}/alerts`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(j => {
-        const rows = (j.alerts || [])
-          .filter(a => (a?.event?.type || '').toLowerCase() === 'email')
-          .slice(0, 25)
-          .map(a => ({
-            subject: a?.event?.email?.subject || a?.event?.subject || '(no subject)',
-            from: a?.event?.email?.from || a?.event?.from || '-',
-            date: (() => {
-              const w = a?.event?.email?.when
-                || a?.event?.email?.receivedDateTime
-                || a?.event?.email?.internalDate
-                || a?.created_at
-                || (Date.now()/1000);
-              return (typeof w === 'string' && w.includes('T')) ? w : new Date(Number(w) * 1000).toISOString();
-            })(),
-            score: Number(a?.score || 0)
-          }));
-        // Ensure newest first by actual email timestamp
-        rows.sort((b, a) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        if (rows.length) setEmails(rows);
-      })
-      .catch(() => {});
-  }, []);
-
-  React.useEffect(() => {
-    const base = (import.meta?.env?.VITE_API_BASE)
-      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-            ? 'https://cyberguard-pro-cloud.onrender.com'
-            : 'http://localhost:8080');
-    const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-    if (!token) return;
-
-    let es = null;
-    let closed = false;
-
-    function open(paths, idx = 0) {
-      if (closed) return;
-      const p = paths[idx];
-      if (!p) return; // no more fallbacks
-
-      const url = new URL(`${base}${p}`);
-      if (token) url.searchParams.set('token', token);
-
-      if (es) { try { es.close(); } catch (_e) {} es = null; }
-      es = new EventSource(url.toString());
-
-      es.onmessage = (e) => {
-        try {
-          const a = JSON.parse(e.data || '{}');
-
-          const subject =
-            a.subject ||
-            a?.event?.email?.subject ||
-            a?.event?.subject ||
-            '(no subject)';
-
-          const from =
-            a.from ||
-            a?.event?.email?.from ||
-            a?.event?.from ||
-            '-';
-
-          const when = (() => {
-            const w = a.when
-              || a.date
-              || a?.event?.email?.receivedDateTime
-              || a?.event?.email?.internalDate
-              || a?.created_at
-              || (Date.now()/1000);
-            return (typeof w === 'string' && w.includes('T')) ? w : new Date(Number(w) * 1000).toISOString();
-          })();
-
-          const score = Number(a.score ?? 0);
-
-          const row = { subject, from, date: when, score };
-          setEmails(prev => {
-            const next = [row, ...prev];
-            next.sort((b, a) => new Date(a.date).getTime() - new Date(b.date).getTime());
-            return next.slice(0, 50);
-          });
-        } catch (_e) {
-          // ignore parse errors
-        }
-      };
-
-      es.onerror = () => {
-        try { es.close(); } catch (_e) {}
-        es = null;
-        // fall back to the next endpoint after a short backoff
-        setTimeout(() => open(paths, idx + 1), 1500);
-      };
-    }
-
-    // Prefer dedicated scans stream; fall back gracefully
-    open(['/scans/stream', '/email/stream', '/alerts/stream']);
-
-    return () => {
-      closed = true;
-      if (es) { try { es.close(); } catch (_e) {} es = null; }
-    };
-  }, []);
-
-  const rowStyle = (score) => {
-    if (score >= 70) return { background: 'rgba(255, 82, 82, 0.15)', borderLeft: '4px solid #ff5252' };
-    if (score >= 40) return { background: 'rgba(255, 193, 7, 0.15)', borderLeft: '4px solid #ffc107' };
-    return { background: 'rgba(123, 216, 143, 0.12)', borderLeft: '4px solid #7bd88f' };
-  };
-
+// --- UI: Loading skeletons ---
+function SkeletonLine({ width='100%', height=12, radius=8 }){
+  const css = `@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}`;
   return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-        <div style={{fontWeight:700}}>Real‑time Email Scans</div>
-        <div>
-          <button onClick={pollNow} disabled={busy} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit',cursor:'pointer'}}>
-            {busy ? 'Polling…' : 'Poll now'}
-          </button>
-        </div>
+    <div style={{position:'relative',overflow:'hidden',width,height,borderRadius:radius,background:'rgba(255,255,255,.06)'}}>
+      <style dangerouslySetInnerHTML={{__html: css}} />
+      <div style={{position:'absolute',inset:0,background:'linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.12), rgba(255,255,255,0))',backgroundSize:'200px 100%',animation:'shimmer 1.2s linear infinite'}}/>
+    </div>
+  );
+}
+function SkeletonCard(){
+  return (
+    <div style={{padding:14,border:'1px solid rgba(255,255,255,.12)',borderRadius:12,background:'rgba(255,255,255,.04)'}}>
+      <SkeletonLine width="60%" height={10} />
+      <div style={{height:8}}/>
+      <SkeletonLine width="90%" height={22} />
+      <div style={{height:8}}/>
+      <SkeletonLine width="80%" height={10} />
+    </div>
+  );
+}
+// --- Futuristic Empty State ---
+function EmptyStateFx({ title="No data", subtitle="", actionHref, actionLabel }) {
+  const styleTag = `
+    @keyframes fxPulse { 
+      0%{opacity:.4;transform:scale(1)}
+      50%{opacity:1;transform:scale(1.02)}
+      100%{opacity:.4;transform:scale(1)}
+    }
+    @keyframes fxGrid {
+      0%{background-position:0 0,0 0}
+      100%{background-position:60px 30px,120px 60px}
+    }
+  `;
+  return (
+    <div style={{
+      border:'1px dashed rgba(255,255,255,.25)',
+      borderRadius:12,
+      padding:24,
+      textAlign:'center',
+      position:'relative',
+      overflow:'hidden',
+      background:'rgba(255,255,255,.02)',
+    }}>
+      <style dangerouslySetInnerHTML={{__html:styleTag}}/>
+      <div style={{
+        position:'absolute', inset:0, opacity:.08,
+        backgroundImage:'linear-gradient(transparent 96%, rgba(123,216,143,.25) 100%), linear-gradient(90deg, transparent 96%, rgba(123,216,143,.25) 100%)',
+        backgroundSize:'60px 60px, 60px 60px',
+        animation:'fxGrid 22s linear infinite'
+      }}/>
+      <div style={{position:'relative'}}>
+        <div style={{fontWeight:700, fontSize:16, marginBottom:6}}>{title}</div>
+        {subtitle && <div style={{opacity:.8, fontSize:13, marginBottom:12}}>{subtitle}</div>}
+        {actionHref && <a href={actionHref} style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,.25)',background:'rgba(255,255,255,.05)',textDecoration:'none',color:'#e6e9ef'}}>{actionLabel||'Learn more'}</a>}
       </div>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead>
-            <tr>
-              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>Subject</th>
-              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>From</th>
-              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>When</th>
-              <th style={{textAlign:"left",padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.12)",opacity:.8}}>Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {emails.length === 0 && (
-              <tr>
-                <td colSpan="4" style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)",opacity:.8}}>
-                  Waiting for new email events…
-                </td>
-              </tr>
-            )}
-            {emails.map((r, i) => (
-              <tr key={i} style={rowStyle(Number(r.score||0))}>
-                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{r.subject}</td>
-                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{r.from}</td>
-                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-                  {new Date(r.date).toLocaleString()}
-                </td>
-                <td style={{padding:"8px 6px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>{Number(r.score||0)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    </div>
+  );
+}
+// --- Futuristic Dashboard helpers ---
+function Sparkline({ points=[], width=120, height=36 }){
+  const h = height, w = width;
+  const max = Math.max(1, ...points);
+  const path = points.map((v,i)=>{
+    const x = (i/(points.length-1||1))*w;
+    const y = h - (v/max)*h;
+    return `${i===0?'M':'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg width={w} height={h} style={{display:'block'}}>
+      <defs>
+        <linearGradient id="glow" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#7bd88f"/>
+          <stop offset="100%" stopColor="#1f6feb"/>
+        </linearGradient>
+      </defs>
+      <path d={path} fill="none" stroke="url(#glow)" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function MiniTrend({ points=[], label='7d trend' }){
+  return (
+    <div style={{marginTop:4}}>
+      <div style={{opacity:.7,fontSize:11,marginBottom:2}}>{label}</div>
+      <Sparkline points={points} width={140} height={28} />
+    </div>
+  );
+}
+
+function FuturisticStat({ title, value, sub, series }){
+  const cardS={
+    padding:14,
+    border:'1px solid rgba(123,216,143,.35)',
+    borderRadius:14,
+    background:'linear-gradient(180deg, rgba(20,24,30,.72), rgba(12,14,18,.64))',
+    boxShadow:'0 8px 24px rgba(0,0,0,.28), 0 0 24px rgba(123,216,143,.12) inset',
+    position:'relative',
+    overflow:'hidden'
+  };
+  const glowLine={position:'absolute',inset:0,background:'radial-gradient(120px 40px at 20% 0%, rgba(31,111,235,.18), transparent)',pointerEvents:'none'};
+  return (
+    <div className="fx-tilt" style={cardS}>
+      <div style={glowLine}/>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div style={{opacity:.75,fontSize:12}}>{title}</div>
+        <div style={{width:120}}>{Array.isArray(series)&&series.length>1 ? <Sparkline points={series}/> : null}</div>
+      </div>
+      <div style={{fontSize:24,fontWeight:800,marginTop:4}}>{value}</div>
+      {sub && <div style={{opacity:.8,fontSize:12,marginTop:4}}>{sub}</div>}
+    </div>
+  );
+}
+
+// --- Dashboard Visuals: Risk gauge + Integration health strip ---
+function RiskGauge({ value=0, size=120 }){
+  const pct = Math.max(0, Math.min(100, Number(value)||0));
+  const r = (size/2) - 8; // padding
+  const c = size/2;
+  const circ = 2*Math.PI*r;
+  const dash = (pct/100)*circ;
+  const rest = circ - dash;
+  // color: low=green, med=blue, high=amber, critical=red
+  const color = pct>=80? '#ef4444' : pct>=60? '#f59e0b' : pct>=30? '#3b82f6' : '#22c55e';
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={c} cy={c} r={r} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="8" />
+      <g transform={`rotate(-90 ${c} ${c})`}>
+        <circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${dash} ${rest}`} />
+      </g>
+      <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" style={{fontSize:20,fontWeight:800,fill:'#e6e9ef'}}>{Math.round(pct)}</text>
+    </svg>
+  );
+}
+
+function IntegrationHealthStrip({ items=[] }){
+  const names = ['email','edr','dns','ueba','cloud'];
+  const map = {};
+  (items||[]).forEach(i=>{ map[String(i.type||'').toLowerCase()] = i; });
+  const dot = (ok)=>({display:'inline-block',width:8,height:8,borderRadius:999,background: ok? '#22c55e' : '#f59e0b', boxShadow: ok? '0 0 10px #22c55e88':'0 0 10px #f59e0b88'});
+  const chip = {display:'inline-flex',alignItems:'center',gap:6,padding:'4px 8px',border:'1px solid rgba(255,255,255,.16)',borderRadius:999,background:'rgba(255,255,255,.04)'};
+  return (
+    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+      {['email','edr','dns','ueba','cloud'].map(n=>{
+        const it = map[n];
+        const status = it?.status || 'unknown';
+        const ok = status==='connected' || status==='ok';
+        const title = it ? `${n}: ${status}` : `${n}: not configured`;
+        return (
+          <span key={n} style={chip} title={title}>
+            <span style={dot(ok)} />
+            <span style={{textTransform:'uppercase',fontSize:11,opacity:.85}}>{n}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function AIPulseHero({ stats }) {
+  const today = stats?.alerts_24h ?? stats?.day_events ?? 0;
+  const api = stats?.api_calls_30d ?? stats?.month_events ?? 0;
+  const styleTag = `@keyframes gridMove{0%{background-position:0 0,0 0}100%{background-position:60px 30px,120px 60px}}@keyframes pulse{0%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}100%{opacity:.6;transform:scale(1)}}`;
+  const wrap={
+    position:'relative', padding:16,
+    border:'1px solid rgba(255,255,255,.14)', borderRadius:16,
+    background:'linear-gradient(180deg, rgba(14,16,22,.82), rgba(10,12,16,.76))',
+    boxShadow:'0 16px 40px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06)',
+    overflow:'hidden'
+  };
+  const grid={
+    position:'absolute', inset:0,
+    backgroundImage:'linear-gradient(transparent 96%, rgba(123,216,143,.12) 100%), linear-gradient(90deg, transparent 96%, rgba(123,216,143,.12) 100%)',
+    backgroundSize:'60px 60px, 60px 60px',
+    animation:'gridMove 18s linear infinite', opacity:.28
+  };
+  const pulseDot={position:'absolute',right:16,top:16,width:10,height:10,borderRadius:999,background:'#7bd88f',boxShadow:'0 0 12px #7bd88f88',animation:'pulse 1.6s ease-in-out infinite'};
+  return (
+    <div style={wrap}>
+      <style dangerouslySetInnerHTML={{__html: styleTag}} />
+      <div style={grid}/>
+      <div style={pulseDot} title="AI online"/>
+      <div style={{position:'relative'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <div>
+            <div style={{opacity:.85,fontSize:12}}>CYBERGUARD AI — LIVE</div>
+            <div style={{fontSize:22,fontWeight:800,marginTop:4}}>Monitoring in real‑time</div>
+          </div>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+            <div style={{padding:'6px 10px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,background:'rgba(255,255,255,.05)'}}>Threats analyzed (24h): <b>{today}</b></div>
+            <div style={{padding:'6px 10px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,background:'rgba(255,255,255,.05)'}}>API events (30d): <b>{api}</b></div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1317,7 +1602,11 @@ function Dashboard(){
   const [me,setMe]=useState(null);
   const [stats,setStats]=useState(null);
   const [alerts,setAlerts]=useState([]);
+  const [conn, setConn] = useState([]);
   const [err,setErr]=useState(null);
+  const [askBusy, setAskBusy] = React.useState(false);
+  const [askQ, setAskQ] = React.useState("");
+  const [askMsg, setAskMsg] = React.useState("");
 
   useEffect(()=>{
     (async()=>{
@@ -1325,43 +1614,271 @@ function Dashboard(){
         const m = await apiGet("/me"); setMe(m);
         const u = await apiGet("/usage"); setStats(u);
         const a = await apiGet("/alerts"); setAlerts(a.alerts||[]);
+        try { const s = await apiGet('/integrations/status'); setConn(s?.items||[]); } catch(_e) {}
       }catch(e){ setErr(e.error||"API error"); }
     })();
   },[]);
   if(err) return <div style={{padding:16}}>{err}</div>;
   if(!me) return <div style={{padding:16}}>Loading…</div>;
 
+// --- Small UI helpers ---
+function EmptyStateFx({ title, subtitle, actionHref, actionLabel }) {
   return (
-    <div>
-      <h1 style={{marginTop:0}}>Dashboard</h1>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4, minmax(180px,1fr))",gap:12}}>
-        <Stat title="Tenant" value={me.name}/>
-        <Stat title="Plan" value={me.plan}/>
-        <Stat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? "-"}/>
-        <Stat title="Alerts (24h)" value={stats?.alerts_24h ?? "-"}/>
+    <div style={{
+      padding:20,
+      border:'1px dashed rgba(255,255,255,.15)',
+      borderRadius:12,
+      background:'rgba(255,255,255,.02)',
+      textAlign:'center'
+    }}>
+      <div style={{fontWeight:600, marginBottom:4}}>{title}</div>
+      {subtitle && <div style={{opacity:.75, fontSize:13, marginBottom:8}}>{subtitle}</div>}
+      {actionHref && (
+        <a href={actionHref} style={{
+          fontSize:12,
+          border:'1px solid rgba(255,255,255,.2)',
+          borderRadius:8,
+          padding:'6px 10px',
+          textDecoration:'none',
+          color:'#e6e9ef'
+        }}>{actionLabel||'Learn more'}</a>
+      )}
+    </div>
+  );
+}
+
+// Build small series arrays for sparklines (fallback to simple trending values)
+  const seriesAlerts = (()=>{
+    const n = Number(stats?.alerts_24h||0);
+    const base = Math.max(2, Math.round(n/6));
+    return [base, base+1, base-1, base+2, base, base+3, Math.max(0,n-base*5)];
+  })();
+  const seriesApi = (()=>{
+    const n = Number(stats?.api_calls_30d || stats?.month_events || 0);
+    const base = Math.max(4, Math.round(n/10));
+    return [base-2, base, base+1, base-1, base+2, base+3, base-1, base+2];
+  })();
+const seriesRisk = (()=>{
+  const arr = (alerts||[]).slice(0,32).map(a=>normalizeRisk(a?.score)).filter(n=>isFinite(n));
+  if(arr.length<4) return seriesAlerts;
+  const step = Math.ceil(arr.length/8);
+  const pts=[]; for(let i=0;i<arr.length;i+=step){
+    pts.push(Math.round(arr.slice(i,i+step).reduce((s,n)=>s+n,0)/Math.max(1,Math.min(step,arr.length-i))));
+  }
+  return pts.slice(-8);
+})();
+  // Compute overall risk from recent alerts (avg score of last 20 alerts)
+  const overallRisk = (function(){
+    const arr = (alerts||[]).slice(0,20).map(a=>normalizeRisk(a?.score)).filter(n=>isFinite(n)&&n>=0);
+    if(!arr.length) return 0;
+    const avg = arr.reduce((s,n)=>s+n,0)/arr.length;
+    return Math.max(0, Math.min(100, Math.round(avg)));
+  })();
+
+  async function quickAsk(e){
+    e?.preventDefault();
+    if(!askQ.trim()) return;
+    setAskBusy(true); setAskMsg("");
+    try{
+      const r = await API.post('/ai/ask', { question: askQ });
+      setAskMsg(r?.answer || 'No answer');
+      setAskQ('');
+    }catch(_e){ setAskMsg('Sorry — assistant failed.'); }
+    finally{ setAskBusy(false); }
+  }
+
+  // Quick AI suggested questions (dynamic)
+  function askSuggestion(q){
+    if(!q) return; setAskQ(q); setTimeout(()=>quickAsk(), 0);
+  }
+  const aiSuggestions = (function(){
+    const arr = [];
+    const recent = (alerts||[]).slice(0,5);
+    const recentTop = recent.filter(a=>Number(a?.score||0)>=60).length;
+    const riskDir = (seriesRisk?.[seriesRisk.length-1]||0) - (seriesRisk?.[0]||0);
+    if(recentTop>0) arr.push(`Explain the top ${Math.min(3,recentTop)} high‑risk alerts in the last day.`);
+    if(riskDir>0) arr.push('Why is risk trending up this week?'); else arr.push('What drove the drop in risk this week?');
+    arr.push('Which users or domains are most targeted by phishing right now?');
+    if((conn||[]).length) arr.push('Any integrations failing or missing configuration?');
+    else arr.push('What integrations should I connect first to improve coverage?');
+    arr.push('Recommend specific policy changes to reduce risk by 20%.');
+    return arr.slice(0,4);
+  })();
+
+  return (
+  <div style={{position:'relative'}}>
+    <h1 className="neon-title" style={{marginTop:0}}>Dashboard</h1>
+{/* Futuristic ambient background */}
+<style>{`
+  @keyframes nebula { 
+    0%{background-position:0 0, 0 0} 
+    50%{background-position:240px 140px, -180px -100px} 
+    100%{background-position:0 0, 0 0} 
+  }
+`}</style>
+<div
+  aria-hidden="true"
+  style={{
+    position:'absolute',
+    inset:0,
+    zIndex:0,
+    pointerEvents:'none',
+    opacity:.14,
+    backgroundImage:
+      'radial-gradient(640px 320px at 18% 8%, rgba(31,111,235,.38), transparent 60%), ' +
+      'radial-gradient(560px 280px at 86% 24%, rgba(123,216,143,.32), transparent 60%)',
+    backgroundRepeat:'no-repeat',
+    animation:'nebula 28s ease-in-out infinite'
+  }}
+/>
+
+      {/* AI Pulse hero */}
+      <div className="fade-in" style={{position:'relative', zIndex:1}}><AIPulseHero stats={stats} /></div>
+
+      {/* Futuristic stats */}
+      <div className="fade-in" style={{position:'relative', zIndex:1, display:'grid',gridTemplateColumns:'repeat(4, minmax(200px,1fr))',gap:12, marginTop:12}}>
+        <FuturisticStat
+  title="Tenant"
+  value={me.name||'-'}
+  sub={
+    <span>
+      Plan: {me.plan || '-'}
+      {me?.billing_status ? (
+        <span style={{marginLeft:6, verticalAlign:'middle'}}>
+          <BillingStatusChip me={me} />
+        </span>
+      ) : null}
+    </span>
+  }
+/>
+        <FuturisticStat title="API calls (30d)" value={stats?.api_calls_30d ?? stats?.month_events ?? '-'} series={seriesApi} />
+        <FuturisticStat title="Alerts (24h)" value={stats?.alerts_24h ?? '-'} series={seriesAlerts} />
+        <div className="fx-tilt"
+  title="Overall risk = average of the last 20 alert scores (0–100). Higher is riskier."
+  style={{
+    padding:14,
+    border:'1px solid rgba(123,216,143,.35)',
+    borderRadius:14,
+    background:'linear-gradient(180deg, rgba(20,24,30,.72), rgba(12,14,18,.64))',
+    boxShadow:'0 8px 24px rgba(0,0,0,.28), 0 0 24px rgba(123,216,143,.12) inset',
+    display:'grid',
+    gridTemplateColumns:'auto 1fr',
+    gap:10,
+    alignItems:'center'
+  }}
+>
+  <RiskGauge value={overallRisk} size={88} />
+  <div>
+    <div style={{opacity:.75,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+      Overall risk
+      <span
+        style={{fontSize:12,opacity:.8,border:'1px solid rgba(255,255,255,.25)',borderRadius:999,padding:'0 6px'}}
+        title="Average of last 20 alert scores"
+      >
+        ?
+      </span>
+    </div>
+    <div style={{fontSize:22,fontWeight:800,marginTop:4}}>{overallRisk}</div>
+    <div style={{opacity:.8,fontSize:12,marginTop:4}}>avg threat score (last 20)</div>
+<MiniTrend points={seriesRisk} label="7d risk trend" />
+<div style={{marginTop:6}}>
+  <Link
+    to="/alerts?sort=score_desc"
+        style={{fontSize:12,textDecoration:'none',border:'1px solid rgba(255,255,255,.18)',padding:'4px 8px',borderRadius:8,color:'#e6e9ef'}}
+      >
+        View details →
+      </Link>
+    </div>
+  </div>
+</div> 
       </div>
 
-      <div style={{marginTop:16}}>
-        <div style={{fontWeight:700, marginBottom:8}}>Recent alerts</div>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>
-              <th style={th}>When</th><th style={th}>Type</th><th style={th}>Score</th><th style={th}>Status</th>
-            </tr></thead>
-            <tbody>
-              {(alerts||[]).slice(0,10).map(a=>(
-                <tr key={a.id}>
-                  <td style={td}>{new Date(Number(a.created_at)*1000).toLocaleString()}</td>
-                  <td style={td}>{a?.event?.type || "-"}</td>
-                  <td style={td}>{a?.score}</td>
-                  <td style={td}>{a?.status}</td>
-                </tr>
+      <div style={{position:'relative', zIndex:1, marginTop:10}}>
+        <IntegrationHealthStrip items={conn} />
+        {Array.isArray(conn) && conn.length===0 && (
+          <div style={{margin:'8px 0 12px'}}>
+            <EmptyStateFx
+              title="No integrations connected"
+              subtitle="Connect your email, EDR, DNS or cloud to unlock full protection."
+              actionHref="/integrations"
+              actionLabel="Connect integrations"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Quick AI ask */}
+      <div style={{position:'relative', zIndex:1, marginTop:12, display:'grid', gridTemplateColumns:'2fr 3fr', gap:12}}>
+        <div style={{...card}}>
+          <div style={{fontWeight:700, marginBottom:8}}>Ask AI</div>
+          <form onSubmit={quickAsk} style={{display:'grid', gap:8}}>
+            <input
+              value={askQ}
+              onChange={e=>setAskQ(e.target.value)}
+              placeholder="e.g., Why was the last email flagged?"
+              style={{padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.06)',color:'inherit'}}
+              disabled={askBusy}
+            />
+            {/* Suggested AI questions */}
+            <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:2}}>
+              {aiSuggestions.map((q,i)=> (
+                <button
+  key={i}
+  type="button"
+  className="ghost"
+  style={{
+    padding:'4px 8px',
+    borderRadius:999,
+    border:'1px solid rgba(255,255,255,.2)',
+    background:'rgba(255,255,255,.04)',
+    color:'#e6e9ef',
+    fontSize:12,
+    cursor:'pointer'
+  }}
+  onClick={()=>askSuggestion(q)}
+  disabled={askBusy}
+>
+  {q}
+</button>
               ))}
-              {(!alerts || alerts.length===0) && <tr><td style={td} colSpan={4}>No alerts yet.</td></tr>}
-            </tbody>
-          </table>
+            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <button style={btn} disabled={askBusy}>{askBusy? 'Thinking…' : 'Ask'}</button>
+              <span style={{opacity:.85,fontSize:12}}>{askMsg}</span>
+            </div>
+          </form>
         </div>
-        <RealtimeEmailScans />
+
+        {/* Recent alerts modern list */}
+        <div style={{...card}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div className="neon-title-sm" style={{fontWeight:700}}>Recent alerts</div>
+            <Link to="/alerts" style={{textDecoration:'none', padding:'6px 10px', border:'1px solid rgba(255,255,255,.18)', borderRadius:8, color:'#e6e9ef'}}>View all</Link>
+          </div>
+          <div style={{marginTop:8, maxHeight:260, overflow:'auto'}}>
+            {(alerts||[]).slice(0,6).map((a)=>{
+              const n = normalizeRisk(a?.score);
+              const sev = n>=80? '#ef4444' : n>=60? '#f59e0b' : n>=30? '#3b82f6' : '#22c55e';
+              return (
+                <div key={a.id} className="fx-row" style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'center',padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
+                  <div>
+                    <div style={{fontWeight:600}}>{a?.event?.type || a?.evt_type || 'alert'}</div>
+                    <div style={{opacity:.8,fontSize:12}}>{a?.subject || a?.preview || a?.summary || '—'}</div>
+                  </div>
+                  <span style={{padding:'2px 8px',border:`1px solid ${sev}88`,color:sev,borderRadius:999,fontSize:12}}>{n||0}</span>
+                </div>
+              );
+            })}
+            {(!alerts || alerts.length===0) && (
+  <EmptyStateFx
+    title="No alerts yet"
+    subtitle="Alerts will appear here once threats are detected."
+    actionHref="/test"
+    actionLabel="Send a sample alert"
+  />
+)}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1424,6 +1941,16 @@ function Account(){
 
   const paid = me.plan !== "trial";
 
+  async function openPortal(){
+    try{
+      const j = await apiGet('/billing/portal');
+      const url = j?.url;
+      if (url) window.open(url, '_blank', 'noopener');
+    }catch(_e){
+      alert('Unable to open billing portal right now.');
+    }
+  }
+
   async function createAccountKey(){
     setMsg("");
     try{
@@ -1465,13 +1992,21 @@ function Account(){
   return (
     <div>
       <h1 style={{marginTop:0}}>Account</h1>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(280px,1fr))",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12}}>
         <div style={card}>
           <div style={{marginBottom:8}}><b>Current plan</b>: {me.plan}</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <button style={btn} onClick={()=>activate("basic")}>Choose Basic</button>
             <button style={btn} onClick={()=>activate("pro")}>Choose Pro</button>
             <button style={btn} onClick={()=>activate("pro_plus")}>Choose Pro+</button>
+          </div>
+          <div style={{marginTop:8, display:'flex', alignItems:'center', gap:8}}>
+            <button style={btn} onClick={openPortal}>Manage billing</button>
+            {me?.billing_status && (
+              <span style={{marginLeft:2}}>
+                <BillingStatusChip me={me} />
+              </span>
+            )}
           </div>
           <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr auto",gap:8,alignItems:"center"}}>
             <input
@@ -1496,6 +2031,22 @@ function Account(){
               <button style={btn} onClick={createAccountKey}>Create API Key</button>
             </>
           )}
+        </div>
+        <div style={card}>
+          <div style={{marginBottom:8}}><b>Appearance</b></div>
+          <label style={{display:'flex',alignItems:'center',gap:8}}>
+            <input
+              type="checkbox"
+              defaultChecked={typeof localStorage!=='undefined' && localStorage.getItem('reduce_motion')==='1'}
+              onChange={e=>{
+                if (e.target.checked) localStorage.setItem('reduce_motion','1');
+                else localStorage.removeItem('reduce_motion');
+                window.dispatchEvent(new Event('prefs-changed'));
+              }}
+            />
+            <span>Reduce motion & visual effects</span>
+          </label>
+          <div style={{opacity:.8,fontSize:12,marginTop:6}}>Disables ambient background and most animations.</div>
         </div>
       </div>
       {/* API Keys card */}
@@ -1642,7 +2193,16 @@ function Pricing(){
         <button disabled={busy || !paid} style={s.ghost} onClick={portal}>
           Manage billing
         </button>
-        {paid ? <span style={{opacity:.85}}>Current plan: <b>{me?.plan}</b></span> : <span style={{opacity:.75}}>You’ll see the billing portal after subscribing.</span>}
+        {paid ? (
+          <span style={{opacity:.85}}>
+            Current plan: <b>{me?.plan}</b>
+            {me?.billing_status ? (
+              <> — <span style={{fontSize:12, padding:'2px 6px', border:'1px solid rgba(255,255,255,.25)', borderRadius:999}}>{String(me.billing_status)}</span></>
+            ) : null}
+          </span>
+        ) : (
+          <span style={{opacity:.75}}>You’ll see the billing portal after subscribing.</span>
+        )}
       </div>
 
       {(msg || err) && (
@@ -1835,26 +2395,88 @@ function Admin(){
 function AlertsPage(){
   const [items, setItems] = React.useState([]);
   const [limit, setLimit] = React.useState(50);
-  const [days, setDays]   = React.useState(7);
-  const [loading, setLoading] = React.useState(false);
+  const [days, setDays] = React.useState(() => {
+  try {
+    const v = (typeof localStorage !== "undefined" && localStorage.getItem('alerts:days')) || "";
+    return v ? Number(v) || 7 : 7;
+  } catch {
+    return 7;
+  }
+});
+const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
-  const [q, setQ] = React.useState("");
-  const [onlyAnomaly, setOnlyAnomaly] = React.useState(false);
+  const [q, setQ] = React.useState(() => {
+  try { return (typeof localStorage !== "undefined" && localStorage.getItem('alerts:q')) || ""; }
+  catch { return ""; }
+});
+const [onlyAnomaly, setOnlyAnomaly] = React.useState(() => {
+  try { return (typeof localStorage !== "undefined" && localStorage.getItem('alerts:onlyAnomaly')) === "1"; }
+  catch { return false; }
+});
+  // --- Alerts query helpers (sanitize/normalize) ---
+  function normDays(x) {
+    const n = parseInt(x, 10);
+    return (Number.isFinite(n) && n > 0) ? String(n) : '7';
+  }
+  function cleanQ(s) {
+    if (!s) return '';
+    const t = String(s).trim();
+    return t.length >= 2 ? t : '';
+  }
+  function buildAlertsQS({ q, days, onlyAnomaly, levels, limit, offset }) {
+    const qs = new URLSearchParams();
+    qs.set('days', normDays(days));
+    const cq = cleanQ(q);
+    if (cq) qs.set('q', cq);
+    if (onlyAnomaly) qs.set('only_anomaly', '1');
+    if (Array.isArray(levels) && levels.length) qs.set('levels', levels.join(','));
+    if (limit) qs.set('limit', String(limit));
+    if (offset) qs.set('offset', String(offset));
+    return qs.toString();
+  }	
+
+  // Toast state for CSV export
+  const [toast, setToast] = React.useState("");
   const [selected, setSelected] = React.useState(null);
 
+  async function markReviewed(id){
+    try{
+      await api.post('/alerts/mark_reviewed', { id });
+      setToast('Marked reviewed'); setTimeout(()=>setToast(''), 1200);
+      loadAlerts(limit, days);
+    }catch(e){ setErr(e?.error||'Failed to mark'); }
+  }
+  async function ignoreDomain(dom){
+    if(!dom) return;
+    try{
+      await api.post('/policy/ignore_domain', { domain: dom });
+      setToast('Domain ignored'); setTimeout(()=>setToast(''), 1200);
+    }catch(e){ setErr(e?.error||'Failed to ignore'); }
+  }
+  function openInAutonomy(a){ window.location.href = '/autonomy'; }
+
   async function loadAlerts(nextLimit = limit, nextDays = days){
-    setLoading(true); setErr("");
+        setLoading(true); setErr("");
     try{
       const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-      const r = await fetch(`/alerts/export?days=${encodeURIComponent(nextDays)}&limit=${encodeURIComponent(nextLimit)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const j = await r.json();
-      if(!r.ok) throw new Error(j?.error || "fetch failed");
+      const origin =
+        (import.meta?.env?.VITE_API_BASE)
+        || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+              ? "https://cyberguard-pro-cloud.onrender.com"
+              : "http://localhost:8080");
+
+      const qs = buildAlertsQS({ q, days: nextDays, onlyAnomaly, levels: undefined, limit: nextLimit });
+      const url = `${origin}/alerts/export?${qs}`;
+      const r = await fetch(url, { headers:{ Authorization:`Bearer ${token}` }});
+      const text = await r.text();
+      let j; try { j = JSON.parse(text); } catch { j = { ok:false, error:text }; }
+      if (!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
+
       const list = Array.isArray(j.alerts) ? j.alerts : [];
       setItems(list);
     }catch(e){
       setErr(e?.message || String(e));
+      setItems([]);
     }finally{
       setLoading(false);
     }
@@ -1900,6 +2522,38 @@ function AlertsPage(){
 
   const list = filtered();
 
+  // Helper for building alerts export URL
+  function buildAlertsUrl(days, limit, query, anomaliesOnly){
+    const origin = (import.meta?.env?.VITE_API_BASE)
+      || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+           ? "https://cyberguard-pro-cloud.onrender.com"
+           : "http://localhost:8080");
+    const qs = buildAlertsQS({ q: query, days, onlyAnomaly: anomaliesOnly, levels: undefined, limit });
+    return `${origin}/alerts/export?format=csv&${qs}`;
+  }
+
+  // Export CSV helper
+  async function exportCsv(){
+    const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+    const url = buildAlertsUrl(days, 1000, q, onlyAnomaly);
+    try{
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `alerts_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=> URL.revokeObjectURL(a.href), 1500);
+      setToast('Exported CSV');
+      setTimeout(()=>setToast(''), 1600);
+    }catch(e){
+      setErr(e?.message || 'Export failed');
+    }
+  }
+
   return (
     <div style={s.wrap}>
       <h1 style={{marginTop:0}}>Alerts</h1>
@@ -1926,6 +2580,9 @@ function AlertsPage(){
           <button className="ghost" style={s.ghost} onClick={()=>loadAlerts(limit, days)} disabled={loading}>
             {loading? 'Refreshing…' : 'Refresh'}
           </button>
+          <button className="ghost" style={s.ghost} onClick={exportCsv} disabled={loading}>
+            Export CSV
+          </button>
           <button className="btn" style={s.btn} onClick={()=>setLimit(l=>l+50)} disabled={loading}>
             Load more (+50)
           </button>
@@ -1950,42 +2607,72 @@ function AlertsPage(){
 
       <div style={s.card}>
         {!loading && list.length===0 ? (
-          <div style={{opacity:.75,padding:12}}>No alerts{q? ' match your search' : ''}.</div>
+          <EmptyStateFx
+            title={`No alerts${q? ' match your search' : ''}`}
+            subtitle={onlyAnomaly ? 'Try turning off “Only anomalies” or broaden your date range.' : 'Try broadening your date range or clearing the search.'}
+            actionHref="/test"
+            actionLabel="Send a sample alert"
+          />
         ) : (
-          list.map(a=>{
-            const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
+          list.map(a => {
+            const created = a?.created_at ? new Date(Number(a.created_at) * 1000).toLocaleString() : '—';
             return (
-              <div key={a.id} style={s.row} onClick={()=>setSelected(a)} title="View details">
-                <div>
-                  <div style={{fontWeight:600}}>{a.from || a.from_addr || '—'}</div>
-                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
-                </div>
-                <div>
-                  <div style={{fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {a.subject || '—'}
+              <div
+                key={a.id}
+                onClick={() => setSelected(a)}
+                title="View details"
+                style={{
+                  padding: '10px 12px',
+                  borderBottom: '1px solid rgba(255,255,255,.08)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {a.subject || '(no subject)'}
                   </div>
-                  <div style={{opacity:.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:4}}>
-                    {a.preview || '—'}
+                  <div style={{ opacity: .7, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {a.from || a.from_addr || '—'}
                   </div>
                 </div>
-                <div style={{display:'flex',gap:8,justifyContent:'flex-end',alignItems:'center'}}>
-                  {a.evt_type && <span style={s.tag}>{a.evt_type}</span>}
-                  {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
-                  {(a.score!=null)
-                    ? (()=>{ const risk = riskFromScore(a.score);
-                        return (
-                          <span style={{...s.tag, borderColor:risk.color, background:risk.bg, color:risk.color}}>
-                            {risk.label} • {a.score}
-                          </span>
-                        );
-                      })()
-                    : null}
-                </div>
+                <div style={{ fontSize: 12, opacity: .7, whiteSpace: 'nowrap' }}>{created}</div>
+                {a.score != null && (() => {
+                  const risk = riskFromScore(a.score);
+                  return (
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        border: `1px solid ${risk.color}`,
+                        background: risk.bg,
+                        color: risk.color,
+                        fontSize: 12,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {risk.label} • {a.score}
+                    </span>
+                  );
+                })()}
               </div>
             );
           })
         )}
-        {loading && <div style={{opacity:.75,padding:12}}>Loading…</div>}
+        {loading && (
+          <div style={{display:'grid',gap:8,padding:12}}>
+            {Array.from({length:6}).map((_,i)=> (
+              <div key={i} style={{display:'grid',gridTemplateColumns:'220px 1fr 260px',gap:10,alignItems:'center'}}>
+                <SkeletonLine width="80%" />
+                <SkeletonLine width="95%" />
+                <SkeletonLine width="60%" />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Details Drawer / Modal */}
@@ -2041,6 +2728,11 @@ function AlertsPage(){
             </div>
 
           </div>
+        </div>
+      )}
+      {toast && (
+        <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
+          {toast}
         </div>
       )}
     </div>
@@ -2139,6 +2831,228 @@ function OnboardingTips() {
     </div>
   );
 }
+
+// --- Autonomy (Pro+) ---
+function AutonomyPage(){
+  const [me, setMe] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [policy, setPolicy] = React.useState(null);
+  const [actions, setActions] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+  const [statusFilter, setStatusFilter] = React.useState('all'); // all | proposed | approved | executed | failed
+  const [toast, setToast] = React.useState("");
+  const canApprove = !!(me?.is_super || (String(me?.role||'').toLowerCase()==='owner') || (String(me?.role||'').toLowerCase()==='admin'));
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function api(path, opts = {}) {
+    const token = localStorage.getItem("token") || "";
+    const url = `${API_ORIGIN}${path.startsWith('/') ? path : '/' + path}`;
+    const res = await fetch(url, {
+      method: opts.method || "GET",
+      headers: { "Content-Type":"application/json", Authorization:`Bearer ${token}` },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    const text = await res.text();
+    let json; try { json = JSON.parse(text); } catch { json = { ok:false, error:text }; }
+    if (!res.ok) throw Object.assign(new Error(json.error || res.statusText), { detail: json });
+    return json;
+  }
+
+  async function loadAll(){
+    setLoading(true); setErr("");
+    try{
+      const m = await api('/me');
+      setMe(m);
+      const pol = await api('/ai/policies');
+      setPolicy(Array.isArray(pol?.items) ? pol.items[0] || { mode:'manual' } : { mode:'manual' });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.message || 'load failed'); }
+    finally{ setLoading(false); }
+  }
+
+  React.useEffect(()=>{ loadAll(); },[]);
+
+  // Initialize filter from localStorage
+  React.useEffect(()=>{
+    try{ const v = (typeof localStorage!=="undefined" && localStorage.getItem('autonomy:filter')) || 'all'; setStatusFilter(v || 'all'); }catch{}
+  },[]);
+  // Persist filter on change
+  React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('autonomy:filter', String(statusFilter)); } }catch{} },[statusFilter]);
+
+  const caps = planCapabilities(me?.plan_actual || me?.plan || 'trial', me);
+  const proPlus = caps.ai; // same gating
+
+  async function setMode(mode){
+    setBusy(true); setErr("");
+    try{
+      const j = await api('/ai/policies', { method:'POST', body:{ mode } });
+      setPolicy(j?.policy || { mode });
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'failed to update'); }
+    finally{ setBusy(false); }
+  }
+  async function propose(){
+    setBusy(true); setErr("");
+    try{
+      await api('/ai/propose', { method:'POST' });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'propose failed'); }
+    finally{ setBusy(false); }
+  }
+  async function approveOne(id){
+    if(!id) return; if(!canApprove){ setErr('Not permitted'); return; }
+    setBusy(true); setErr("");
+    try{
+      await api('/ai/approve', { method:'POST', body:{ id } });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'approve failed'); }
+    finally{ setBusy(false); }
+  }
+  async function executeOne(id){
+    if(!id) return; if(!canApprove){ setErr('Not permitted'); return; }
+    setBusy(true); setErr("");
+    try{
+      await api('/ai/execute', { method:'POST', body:{ id } });
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'execute failed'); }
+    finally{ setBusy(false); }
+  }
+
+  async function bulkApprove(){
+    if(!canApprove){ setErr('Not permitted'); return; }
+    const targets = actions.filter(a => String(a.status||'').toLowerCase()==='proposed').map(a=>a.id);
+    if(targets.length===0) return;
+    setBusy(true); setErr("");
+    try{
+      for (const id of targets) { await api('/ai/approve', { method:'POST', body:{ id } }); }
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+      setToast(`Approved ${targets.length} action${targets.length===1?'':'s'}`);
+      setTimeout(()=>setToast(''), 1600);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'bulk approve failed'); }
+    finally{ setBusy(false); }
+  }
+  async function bulkExecute(){
+    if(!canApprove){ setErr('Not permitted'); return; }
+    const targets = actions.filter(a => String(a.status||'').toLowerCase()==='approved').map(a=>a.id);
+    if(targets.length===0) return;
+    setBusy(true); setErr("");
+    try{
+      for (const id of targets) { await api('/ai/execute', { method:'POST', body:{ id } }); }
+      const acts = await api('/ai/actions');
+      setActions(Array.isArray(acts?.items) ? acts.items : []);
+      setToast(`Executed ${targets.length} action${targets.length===1?'':'s'}`);
+      setTimeout(()=>setToast(''), 1600);
+    }catch(e){ setErr(e?.detail?.error || e?.message || 'bulk execute failed'); }
+    finally{ setBusy(false); }
+  }
+
+  const s={ wrap:{padding:16}, card:{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'},
+            btn:{padding:'8px 12px',borderRadius:8,border:'1px solid #2b6dff66',background:'#1f6feb',color:'#fff',cursor:'pointer'},
+            ghost:{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'} };
+
+  if (loading) return <div style={s.wrap}>Loading…</div>;
+  if (!proPlus) return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Autonomy (beta)</h1>
+      <div style={s.card}>This feature is available on <b>Pro+</b>. If you are on a trial of Basic/Pro, it unlocks temporarily.</div>
+    </div>
+  );
+
+  const filteredActions = Array.isArray(actions) ? actions.filter(a => {
+    const s = String(a.status||'').toLowerCase();
+    if (statusFilter === 'all') return true;
+    return s === statusFilter;
+  }) : [];
+
+  return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Autonomy (beta)</h1>
+      {policy?.mode === 'auto' && (
+        <div style={{margin:'8px 0', padding:'8px 10px', border:'1px solid #7bd88f55', background:'#7bd88f22', borderRadius:8}}>
+          <b>Auto-run is ON:</b> approved actions execute automatically every minute.
+        </div>
+      )}
+      {err && <div style={{padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8,marginBottom:8}}>Error: {err}</div>}
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr',gap:12}}>
+        <div style={s.card}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Policy</div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <span style={{opacity:.85,fontSize:12}}>Mode:</span>
+              <select value={policy?.mode||'manual'} onChange={e=>setMode(e.target.value)} disabled={busy} style={{padding:'6px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
+                <option value="manual">manual</option>
+                <option value="auto">auto</option>
+              </select>
+              <button style={s.ghost} onClick={loadAll} disabled={busy}>Refresh</button>
+            </div>
+          </div>
+          <div style={{opacity:.85,marginTop:6}}>When set to <b>auto</b>, approved actions will execute automatically.</div>
+        </div>
+
+        <div style={s.card}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:700}}>Actions</div>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+              <label style={{fontSize:12,opacity:.85}}>Filter:</label>
+              <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} disabled={busy}
+                style={{padding:'6px 8px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.06)',color:'inherit'}}>
+                <option value="all">all</option>
+                <option value="proposed">proposed</option>
+                <option value="approved">approved</option>
+                <option value="executed">executed</option>
+                <option value="failed">failed</option>
+              </select>
+              <span style={{fontSize:12,opacity:.8}}>({filteredActions.length})</span>
+              <button style={s.btn} onClick={propose} disabled={busy}>Propose actions</button>
+              {canApprove && <button style={s.ghost} onClick={bulkApprove} disabled={busy}>Approve all proposed</button>}
+              {canApprove && <button style={s.ghost} onClick={bulkExecute} disabled={busy}>Execute all approved</button>}
+              <button style={s.ghost} onClick={loadAll} disabled={busy}>Refresh</button>
+            </div>
+          </div>
+          <div style={{marginTop:8, borderTop:'1px solid rgba(255,255,255,.08)'}}>
+            <div style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px 180px',gap:8,padding:'8px 0',opacity:.75,fontSize:12}}>
+              <div>When</div><div>Action</div><div>Status</div><div>By</div><div>Controls</div>
+            </div>
+            {filteredActions.length===0 ? (
+              <div style={{opacity:.75}}>No actions yet.</div>
+            ) : filteredActions.map(a=> (
+              <div key={a.id} style={{display:'grid',gridTemplateColumns:'160px 1fr 120px 120px 180px',gap:8,padding:'8px 0',borderTop:'1px solid rgba(255,255,255,.06)'}}>
+                <div>{a.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—'}</div>
+                <div style={{whiteSpace:'pre-wrap'}}>{a.summary || a.type || JSON.stringify(a.params||{})}</div>
+                <div>{a.status || 'proposed'}</div>
+                <div>{a.actor || 'system'}</div>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {canApprove && String(a.status||'').toLowerCase()==='proposed' && (
+                    <button style={s.btn} disabled={busy} onClick={()=>approveOne(a.id)}>Approve</button>
+                  )}
+                  {canApprove && String(a.status||'').toLowerCase()==='approved' && (
+                    <button style={s.btn} disabled={busy} onClick={()=>executeOne(a.id)}>Execute</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {toast && (
+        <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',padding:'8px 12px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(0,0,0,.7)',borderRadius:8,zIndex:1000}}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
 // Wrap Dashboard to inject onboarding widget without touching original Dashboard implementation
 // Reusable collapsible section with localStorage persistence
 function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
@@ -2183,288 +3097,216 @@ function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
     </div>
   );
 }
-// Futuristic real-time email scan visualizer
-function LiveEmailScanner(){
-  const canvasRef = React.useRef(null);
-  const rafRef = React.useRef(0);
-  const particlesRef = React.useRef([]);
-  const lastCountRef = React.useRef(0);
-
-  // NEW: hold recent alerts (last ~50) and currently selected alert
-  const [recent, setRecent] = React.useState([]);
+function LiveEmailScan(){
+  const [items, setItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
   const [selected, setSelected] = React.useState(null);
 
-  const [stats, setStats] = React.useState({
-    total: 0,
-    new5: 0,
-    anomalies: 0,
-    updatedAt: null
-  });
+  async function load(){
+    setLoading(true); setErr("");
+    try{
+      const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+      const origin =
+        (import.meta?.env?.VITE_API_BASE)
+        || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
+              ? "https://cyberguard-pro-cloud.onrender.com"
+              : "http://localhost:8080");
 
-  function apiBase(){
-    return (import.meta?.env?.VITE_API_BASE)
-      || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
-           ? "https://cyberguard-pro-cloud.onrender.com"
-           : "http://localhost:8080");
-  }
-
-  // Poll alerts every 10s
-  React.useEffect(()=>{
-    let stop = false;
-    async function poll(){
-      try{
-        const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-        const url = `${apiBase()}/alerts/export?days=1&limit=200`;
-        const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` }});
-        const j = await r.json();
-        if(!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
-        const list = Array.isArray(j.alerts) ? j.alerts : [];
-
-        // sort newest first and store the most recent 50
-        list.sort((a,b)=> (Number(b.created_at||0) - Number(a.created_at||0)));
-        setRecent(list.slice(0,50));
-
-        const now = Date.now();
-        const new5 = list.filter(a=> (Number(a.created_at)||0)*1000 >= (now - 5*60*1000)).length;
-        const anomalies = list.filter(a=> (a?.anomaly===true) || (String(a?.anomaly_txt||"").trim().length>0)).length;
-        const total = list.length;
-
-        setStats({ total, new5, anomalies, updatedAt: new Date().toLocaleTimeString() });
-
-        // visual burst when new items arrive
-        if (new5 > lastCountRef.current){
-          addBurst(new5 - lastCountRef.current);
-        }
-        lastCountRef.current = new5;
-      }catch(_e){ /* silent */ }
-      finally{
-        if(!stop) setTimeout(poll, 10000);
-      }
-    }
-    poll();
-    return ()=>{ stop = true; };
-  },[]);
-
-  // Canvas sizing & animation
-  React.useEffect(()=>{
-    const canvas = canvasRef.current; if(!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    function resize(){
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width  = Math.max(320, rect.width * dpr);
-      canvas.height = Math.max(160, rect.height * dpr);
-      ctx.setTransform(1,0,0,1,0,0);
-      ctx.scale(dpr, dpr);
-    }
-    resize();
-    window.addEventListener('resize', resize);
-
-    function spawn(n){
-      for(let i=0;i<n;i++){
-        particlesRef.current.push({
-          x: Math.random()*canvas.clientWidth,
-          y: Math.random()*canvas.clientHeight,
-          v: 0.6 + Math.random()*1.8,
-          s: 1 + Math.random()*2,
-          hue: 200 + Math.random()*140,
-          life: 60 + Math.random()*180
-        });
-      }
-    }
-    spawn(60);
-
-    function tick(){
-      const W = canvas.clientWidth, H = canvas.clientHeight;
-      ctx.clearRect(0,0,W,H);
-
-      // subtle gradient glow
-      const grd = ctx.createLinearGradient(0,0,W,H);
-      grd.addColorStop(0, 'rgba(30,64,175,0.10)');
-      grd.addColorStop(1, 'rgba(16,185,129,0.08)');
-      ctx.fillStyle = grd;
-      ctx.fillRect(0,0,W,H);
-
-      // flowing particles
-      const arr = particlesRef.current;
-      for(let i=0;i<arr.length;i++){
-        const p = arr[i];
-        p.x += p.v; p.y += Math.sin((p.x+p.y)*0.01)*0.2;
-        p.life -= 1;
-        if(p.x>W+10) p.x = -10;
-        if(p.life<=0){ arr.splice(i,1); i--; continue; }
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.s, 0, Math.PI*2);
-        ctx.fillStyle = `hsla(${p.hue},80%,60%,0.8)`;
-        ctx.fill();
-      }
-      if(arr.length<80) spawn(5);
-
-      rafRef.current = requestAnimationFrame(tick);
-    }
-    rafRef.current = requestAnimationFrame(tick);
-    return ()=>{ cancelAnimationFrame(rafRef.current); window.removeEventListener('resize', resize); };
-  },[]);
-
-  function addBurst(n){
-    const canvas = canvasRef.current; if(!canvas) return;
-    for(let i=0;i<Math.min(40, n*4);i++){
-      particlesRef.current.push({
-        x: -10,
-        y: Math.random()*canvas.clientHeight,
-        v: 2 + Math.random()*2.5,
-        s: 1.5 + Math.random()*2.5,
-        hue: 320 + Math.random()*40,
-        life: 100 + Math.random()*120
+      const r = await fetch(`${origin}/alerts/export?days=1&limit=200`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
+
+      const text = await r.text();
+      let j;
+      try { j = JSON.parse(text); }
+      catch { throw new Error(text || "Invalid response"); }
+      if(!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
+
+      const list = Array.isArray(j.alerts) ? j.alerts : [];
+      list.sort((a,b)=> Number(b.created_at||0) - Number(a.created_at||0));
+      setItems(list);
+    }catch(e){
+      setErr(e?.message || String(e));
+    }finally{
+      setLoading(false);
     }
   }
 
-  // simple threat mapping shared with AlertsPage
-  function riskFromScore(score){
-    const s = Number(score);
-    if (isNaN(s)) return {label:'—', color:'#a1a1aa', bg:'rgba(161,161,170,.12)'};
-    if (s >= 70) return {label:'High', color:'#ef4444', bg:'rgba(239,68,68,.12)'};
-    if (s >= 40) return {label:'Medium', color:'#eab308', bg:'rgba(234,179,8,.15)'};
-    return {label:'Low', color:'#22c55e', bg:'rgba(34,197,94,.15)'};
-  }
+  React.useEffect(()=>{ load(); },[]);
+  React.useEffect(()=>{ const t = setInterval(load, 15000); return ()=>clearInterval(t); },[]);
 
+  function riskFromScore(sc){
+    const n = Number(sc);
+    if (!isFinite(n)) return { label:'Unknown', color:'#9ca3af', bg:'rgba(156,163,175,.15)' };
+    if (n >= 80) return { label:'Critical', color:'#fecaca', bg:'rgba(239,68,68,.15)' };
+    if (n >= 60) return { label:'High',     color:'#fcd34d', bg:'rgba(245,158,11,.15)' };
+    if (n >= 30) return { label:'Medium',   color:'#93c5fd', bg:'rgba(59,130,246,.15)' };
+    return { label:'Low',      color:'#86efac', bg:'rgba(34,197,94,.15)' };
+  }
+  function src(a){
+    const v=String(a?.evt_type||a?.type||a?.source||"").toLowerCase();
+    if(v.includes("dns")) return "DNS";
+    if(v.includes("edr")||v.includes("endpoint")) return "EDR";
+    if(v.includes("cloud")||v.includes("aws")||v.includes("azure")||v.includes("gcp")) return "Cloud";
+    return (a?.from || a?.from_addr) ? "Email" : "—";
+  }
   const s = {
-    shell:{
-      border:'1px solid rgba(255,255,255,.12)',
-      borderRadius:12,
-      background:'radial-gradient(1000px 400px at 10% -20%, rgba(37,99,235,.18), transparent), radial-gradient(800px 400px at 100% 120%, rgba(16,185,129,.12), transparent), rgba(255,255,255,.03)',
-      padding:12
-    },
-    head:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:8},
-    live:{display:'inline-flex',alignItems:'center',gap:6,fontSize:12,letterSpacing:.3},
-    dot:{width:8,height:8,borderRadius:99,background:'#14f195',boxShadow:'0 0 12px #14f195aa, 0 0 20px #14f19566'},
-    stat:{fontSize:13,opacity:.9},
-    canvasWrap:{height:180,border:'1px solid rgba(255,255,255,.08)',borderRadius:10,overflow:'hidden'},
-    listWrap:{marginTop:12, border:'1px solid rgba(255,255,255,.08)', borderRadius:10, overflow:'hidden'},
-    row:{display:'grid',gridTemplateColumns:'220px 1fr 140px',gap:10,alignItems:'center',padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,.06)',cursor:'pointer'},
-    tag:{display:'inline-block',padding:'2px 6px',border:'1px solid rgba(255,255,255,.18)',borderRadius:999,opacity:.85,fontSize:12}
+    wrap:{marginTop:12, padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)'},
+    head:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8},
+    grid:{display:'grid',gridTemplateColumns:'160px 120px 1fr 140px',gap:10,alignItems:'center'},
+    pill:(c,b)=>({fontSize:12,padding:'2px 8px',borderRadius:999,border:`1px solid ${c}`,background:b,color:c,display:'inline-block'})
   };
+  const scanCss = `
+  /* Futuristic left-to-right scanner bar */
+  @keyframes sweepX { from{ transform: translateX(-30%);} to{ transform: translateX(130%);} }
+  @keyframes glowPulse { 0%{opacity:.35} 50%{opacity:.95} 100%{opacity:.35} }
+  .scan-rail{
+    position:relative;
+    height:18px;
+    flex:1;
+    border-radius:999px;
+    background: linear-gradient(90deg, rgba(37,161,255,.08), rgba(123,216,143,.08));
+    border:1px solid rgba(255,255,255,.12);
+    overflow:hidden;
+    box-shadow:
+      inset 0 0 14px rgba(37,161,255,.25),
+      0 0 24px rgba(123,216,143,.2);
+  }
+  .scan-rail .grid{
+    position:absolute; inset:0;
+    background-image:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, transparent 1px 50px);
+    opacity:.25;
+    mix-blend-mode:screen;
+    pointer-events:none;
+  }
+  .scan-rail .sweep{
+    position:absolute; inset:-20% -40%;
+    background: linear-gradient(90deg,
+      rgba(37,161,255,0) 0%,
+      rgba(37,161,255,.6) 45%,
+      rgba(123,216,143,.7) 55%,
+      rgba(123,216,143,0) 100%);
+    filter: blur(6px);
+    animation: sweepX 2.6s linear infinite;
+    pointer-events:none;
+  }
+  .scan-rail .glow{
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse at center, rgba(37,161,255,.35), rgba(37,161,255,0) 60%);
+    animation: glowPulse 3s ease-in-out infinite;
+    pointer-events:none;
+  }
+  `;
 
   return (
-    <div style={s.shell}>
+    <div style={s.wrap} aria-label="Live Email Scan">
       <div style={s.head}>
-        <div style={s.live}><span style={s.dot}/><b>LIVE</b>&nbsp;Email scanning</div>
-        <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-          <div style={s.stat}>Alerts (24h): <b>{stats.total}</b></div>
-          <div style={s.stat}>New (5m): <b>{stats.new5}</b></div>
-          <div style={s.stat}>Anomalies: <b>{stats.anomalies}</b></div>
-          <div style={{fontSize:12,opacity:.65}}>Updated: {stats.updatedAt||'–'}</div>
+        <div style={{fontWeight:700}}>Live Email Scan</div>
+        <div style={{display:'flex',alignItems:'center',gap:10, flex:1}}>
+          <style>{scanCss}</style>
+          <div className="scan-rail" aria-hidden="true" style={{flex:1, minWidth:220}}>
+            <div className="grid"></div>
+            <div className="glow"></div>
+            <div className="sweep"></div>
+          </div>
+          <div style={{opacity:.8,fontSize:12, whiteSpace:'nowrap'}}>
+            {loading? 'Refreshing…' : `Scanned last 24h: ${items.length}`}
+          </div>
         </div>
       </div>
 
-      <div style={s.canvasWrap}>
-        <canvas ref={canvasRef} style={{width:'100%',height:'100%',display:'block'}}/>
-      </div>
+      {err && <div style={{padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8,marginBottom:8}}>Error: {err}</div>}
 
-      {/* NEW: Recently scanned emails list */}
-      <div style={s.listWrap}>
-        <div style={{padding:'8px 10px',opacity:.85,fontSize:13,background:'rgba(255,255,255,.02)'}}>Recently scanned (latest 50)</div>
-        <div style={{maxHeight:240, overflowY:'auto'}}>
-          {recent.length===0 ? (
-            <div style={{opacity:.75,padding:10}}>Waiting for scans…</div>
-          ) : recent.map(a=>{
-            const created = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
-            const risk = (a?.score!=null) ? riskFromScore(a.score) : null;
-            const type = a?.evt_type || a?.type || 'email';
-            return (
-              <div key={a.id} style={s.row} onClick={()=>setSelected(a)}>
-                <div>
-                  <div style={{fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{a.from || a.from_addr || '—'}</div>
-                  <div style={{fontSize:12,opacity:.75,marginTop:2}}>{created}</div>
-                </div>
-                <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                  <div style={{fontWeight:600}}>{a.subject || '—'}</div>
-                  <div style={{opacity:.85}}>{a.preview || '—'}</div>
-                </div>
-                <div style={{display:'flex',gap:6,justifyContent:'flex-end',alignItems:'center'}}>
-                  <span style={s.tag}>{type}</span>
-                  {(a.anomaly_txt||"").trim() ? <span style={s.tag}>anomaly</span> : null}
-                  {risk && <span style={{...s.tag, borderColor:risk.color, background:risk.bg, color:risk.color}}>{risk.label}</span>}
-                </div>
+      <div style={{borderTop:'1px solid rgba(255,255,255,.08)'}}>
+        <div style={{...s.grid, padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,.08)', fontSize:12, opacity:.75}}>
+          <div>When</div><div>Source</div><div>Subject / From</div><div>Threat</div>
+        </div>
+
+        {(items.slice(0, 12)).map(a=>{
+          const when = a?.created_at ? new Date(Number(a.created_at)*1000).toLocaleString() : '—';
+          const risk = (a.score!=null) ? riskFromScore(a.score) : null;
+          return (
+            <div key={a.id} style={s.grid} onClick={()=>setSelected(a)} title="Open details">
+              <div style={{opacity:.85}}>{when}</div>
+              <div>{src(a)}</div>
+              <div style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                <b>{a.subject || '(no subject)'}</b>
+                <span style={{opacity:.7}}> — {a.from || a.from_addr || '—'}</span>
               </div>
-            );
-          })}
-        </div>
+              <div>
+                {risk ? <span style={s.pill(risk.color, risk.bg)}>{risk.label} • {a.score}</span> : '—'}
+              </div>
+            </div>
+          );
+        })}
+        {(!loading && items.length===0) && (
+          <div style={{padding:'8px 0'}}>
+            <EmptyStateFx
+              title="No messages scanned yet"
+              subtitle="Connect email and give it a moment—new messages will appear as they arrive."
+              actionHref="/integrations"
+              actionLabel="Connect email"
+            />
+          </div>
+        )}
       </div>
 
-      {/* NEW: quick details modal */}
+      <div style={{marginTop:10}}>
+        <a href="/alerts" style={{fontSize:12}}>Open full Alerts →</a>
+      </div>
+
       {selected && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000}}>
           <div style={{width:'min(840px,94vw)',maxHeight:'86vh',overflow:'auto',background:'linear-gradient(180deg, rgba(28,30,38,.96), rgba(22,24,30,.94))',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,padding:16,boxShadow:'0 18px 48px rgba(0,0,0,.35)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <div style={{fontWeight:700}}>Email details</div>
+              <div style={{fontWeight:700}}>Scanned email details</div>
               <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}>Close</button>
             </div>
-
-            <div style={{display:'grid',gridTemplateColumns:'1fr 260px',gap:12,alignItems:'start'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 240px',gap:12,alignItems:'start'}}>
               <div>
                 <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Subject</div>
                 <div style={{fontWeight:700,marginBottom:10}}>{selected.subject || '—'}</div>
-
                 <div style={{fontSize:14,opacity:.8,marginBottom:4}}>Preview</div>
                 <pre style={{whiteSpace:'pre-wrap',padding:10,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.05)'}}>{selected.preview || '—'}</pre>
               </div>
               <div>
                 <div style={{padding:12,border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
-                  <div style={{opacity:.8,fontSize:13,marginBottom:6}}>Meta</div>
-                  <div style={{fontSize:13,display:'grid',gap:6}}>
+                  <div style={{fontSize:13,opacity:.8,marginBottom:6}}>Meta</div>
+                  <div style={{fontSize:13,display:'grid',gap:4}}>
                     <div><b>From:</b> {selected.from || selected.from_addr || '—'}</div>
-                    <div><b>Type:</b> {selected.evt_type || 'email'}</div>
-                    <div><b>Created:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
-                    {selected.score!=null ? (()=>{ const r=riskFromScore(selected.score); return (<div><b>Threat:</b> {r.label} <span style={{opacity:.7}}>(score {selected.score})</span></div>); })() : <div><b>Threat:</b> —</div>}
-                    {(selected.anomaly_txt||"").trim() ? <div><b>Anomaly:</b> {selected.anomaly_txt}</div> : null}
-                  </div>
-
-                  <div style={{marginTop:10, display:'flex', gap:8, flexWrap:'wrap'}}>
-                    <button
-                      style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}
-                      onClick={async ()=>{
-                        const q = `from:"${(selected.from||selected.from_addr||'').replace(/"/g,'\\"')}" subject:"${(selected.subject||'').replace(/"/g,'\\"')}"`;
-                        try{ await navigator.clipboard.writeText(q); alert('Copied Outlook search to clipboard'); }catch(_e){ alert('Copy failed'); }
-                      }}>
-                      Copy Outlook Search
-                    </button>
-                    <button
-                      style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,.2)',background:'transparent',color:'#e6e9ef',cursor:'pointer'}}
-                      onClick={async ()=>{
-                        try{ await navigator.clipboard.writeText(JSON.stringify(selected,null,2)); alert('Copied JSON to clipboard'); }catch(_e){ alert('Copy failed'); }
-                      }}>
-                      Copy JSON
-                    </button>
+                    <div><b>Source:</b> {src(selected)}</div>
+                    <div><b>Received:</b> {selected.created_at ? new Date(Number(selected.created_at)*1000).toLocaleString() : '—'}</div>
+                    {selected.score!=null ? (()=>{const r=riskFromScore(selected.score); return <div><b>Threat:</b> {r.label} <span style={{opacity:.8}}>(score {selected.score})</span></div>;})() : null}
                   </div>
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       )}
     </div>
   );
 }
+// DashboardWithOnboarding: wrapper for Dashboard with onboarding/tips sections
 function DashboardWithOnboarding(props){
   return (
     <div style={{padding:16}}>
-      {/* Render existing Dashboard first */}
-      <Dashboard {...props} />
-
-      {/* Live real-time visual – always shown */}
-      <div style={{marginTop:20}}>
-        <h2 style={{marginBottom:10}}>Live email scan</h2>
-        <LiveEmailScanner/>
-      </div>
-
-      {/* Keep onboarding/tips collapsible */}
+      {/* Onboarding/tips: place Get started first under trial banner */}
       <CollapsibleSection id="onboarding" title="Get started" defaultCollapsed={true}>
         <OnboardingChecklist/>
       </CollapsibleSection>
+
+      <LiveStatusTicker inline />
+
+      {/* Render existing Dashboard next */}
+      <Dashboard {...props} />
+
+      {/* Live Email Scan — static, always visible */}
+      <LiveEmailScan/>
+
+      {/* Explanation section remains collapsible */}
       <CollapsibleSection id="explain" title="What am I looking at?" defaultCollapsed={true}>
         <OnboardingTips/>
       </CollapsibleSection>
@@ -2506,6 +3348,117 @@ function RequireAuth({ children }){
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
+function LiveStatusTicker({ inline=false }){
+  const [msgs, setMsgs] = React.useState([]);
+
+  const API_ORIGIN = (import.meta?.env?.VITE_API_BASE)
+    || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function api(path){
+    const token = (typeof localStorage!=='undefined' && localStorage.getItem('token')) || '';
+    const url = `${API_ORIGIN}${path.startsWith('/')?path:'/'+path}`;
+    const r = await fetch(url, { headers:{ Authorization:`Bearer ${token}` }});
+    const t = await r.text();
+    try { return JSON.parse(t); } catch { return { ok:false, error:t }; }
+  }
+
+  async function refresh(){
+    try{
+      const [alerts, integ, actions] = await Promise.all([
+        api('/alerts/export?days=1&limit=50'),
+        api('/integrations/status'),
+        api('/ai/actions').catch(()=>({items:[]}))
+      ]);
+
+      // Alerts summary
+      let aMsgs = [];
+      if (alerts && Array.isArray(alerts.alerts)){
+        const list = alerts.alerts;
+        const today = list.length;
+        const high = list.filter(a=> Number(a?.score||0) >= 60 && Number(a?.score||0) < 80).length;
+        const crit = list.filter(a=> Number(a?.score||0) >= 80).length;
+        aMsgs.push(`Today: ${today} alerts` + (high||crit? ` (${high} high, ${crit} critical)` : ''));
+      }
+
+      // Integrations summary
+      let iMsgs = [];
+      const items = Array.isArray(integ?.items) ? integ.items : [];
+      if (items.length){
+        const ok = items.filter(x=> x.status==='connected' || x.status==='ok').length;
+        const pend = items.filter(x=> x.status==='pending').length;
+        const err = items.filter(x=> x.status==='error' || (x.last_error && String(x.last_error).trim())).length;
+        iMsgs.push(`Integrations: ${ok} ok` + (pend? `, ${pend} pending`:'') + (err? `, ${err} error`:''));
+      } else {
+        iMsgs.push('No integrations connected — set up Email, DNS, EDR');
+      }
+
+      // AI actions summary (best-effort)
+      let aiMsgs = [];
+      const acts = Array.isArray(actions?.items) ? actions.items : [];
+      if (acts.length){
+        const proposed = acts.filter(a=> String(a.status||'').toLowerCase()==='proposed').length;
+        const approved = acts.filter(a=> String(a.status||'').toLowerCase()==='approved').length;
+        const executed = acts.filter(a=> String(a.status||'').toLowerCase()==='executed').length;
+        aiMsgs.push(`AI: ${proposed} proposed, ${approved} approved, ${executed} executed`);
+      }
+
+      const next = [ ...aMsgs, ...iMsgs, ...aiMsgs ];
+      setMsgs(next.length ? next : ['Status: no data yet']);
+    }catch(_e){ setMsgs(['Status: no data yet']); }
+  }
+
+  React.useEffect(()=>{ refresh(); const t=setInterval(refresh, 30000); return ()=>clearInterval(t); },[]);
+
+  const css = `
+    @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @media (prefers-reduced-motion: reduce) { .ticker-track { animation: none !important; } }
+  `;
+
+  const bar = inline ? {
+    position:'relative', margin:'8px 0 12px', zIndex: 1,
+    background:'rgba(8,10,14,.9)',
+    border:'1px solid rgba(255,255,255,.12)',
+    borderRadius:8,
+    padding:'6px 10px',
+  } : {
+    position:'fixed', left:0, right:0, bottom:0, zIndex: 1200,
+    background:'rgba(8,10,14,.9)',
+    borderTop:'1px solid rgba(255,255,255,.12)',
+    backdropFilter:'blur(6px)',
+    padding:'6px 10px',
+  };
+
+  const chip = {
+    display:'inline-flex', alignItems:'center', gap:6,
+    border:'1px solid rgba(255,255,255,.18)', borderRadius:999,
+    padding:'2px 8px', marginRight:10,
+    background:'rgba(255,255,255,.04)', fontSize:12
+  };
+
+  const content = msgs.join(' • ');
+  const dup = `${content}  •  ${content}`;
+
+  return (
+    <div role="region" aria-label="Live status ticker" style={bar}>
+      <style>{css}</style>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <span style={{...chip, fontWeight:700}}>Status</span>
+        <div style={{position:'relative', overflow:'hidden', flex:1, height:22}}>
+          <div className="ticker-track" style={{
+            whiteSpace:'nowrap', display:'inline-block',
+            willChange:'transform',
+            animation:'tickerScroll 40s linear infinite'
+          }}>
+            {dup}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
@@ -2513,26 +3466,29 @@ function App(){
   return (
     <ErrorBoundary>
       <Layout>
-        <Routes>
-          <Route path="/login" element={<AuthLogin/>}/>
-          <Route path="/register" element={<Register/>}/>
+        <>
+          <Routes>
+            <Route path="/login" element={<AuthLogin/>}/>
+            <Route path="/register" element={<Register/>}/>
 
-          <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
-          <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
-          <Route path="/policy" element={protect(<Policy api={API}/>)} />
-          <Route path="/pricing" element={protect(<Pricing/>)} />
-          <Route path="/account" element={protect(<Account api={API}/>)} />
-          <Route path="/alerts" element={protect(<AlertsPage/>)} />
-          <Route path="/admin" element={protect(<Admin api={API}/>)} />
+            <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
+            <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
+            <Route path="/policy" element={protect(<Policy api={API}/>)} />
+            <Route path="/pricing" element={protect(<PricingPage/>)} />
+            <Route path="/account" element={protect(<Account api={API}/>)} />
+            <Route path="/alerts" element={protect(<AlertsPage/>)} />
+            <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
+            <Route path="/admin" element={protect(<Admin api={API}/>)} />
 
-          <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
-          <Route path="/admin/console/trial" element={protect(<AdminConsolePage page="trial" />)} />
-          <Route path="/admin/console/retention" element={protect(<AdminConsolePage page="retention" />)} />
-          <Route path="/admin/console/audit" element={protect(<AdminConsolePage page="audit" />)} />
-          <Route path="/test" element={protect(<TestEvents api={API}/>)} />
-
-          <Route path="*" element={<Navigate to="/" replace />}/>
-        </Routes>
+            <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
+            <Route path="/admin/console/trial" element={protect(<AdminConsolePage page="trial" />)} />
+            <Route path="/admin/console/retention" element={protect(<AdminConsolePage page="retention" />)} />
+            <Route path="/admin/console/audit" element={protect(<AdminConsolePage page="audit" />)} />
+            <Route path="/test" element={protect(<TestEvents api={API}/>)} />
+            <Route path="/support" element={protect(<Support/>)} /> 
+            <Route path="*" element={<Navigate to="/" replace />}/>
+          </Routes>
+        </>
       </Layout>
     </ErrorBoundary>
   );
@@ -2709,30 +3665,35 @@ function Integrations({ api }) {
 
   // Handle OAuth return flags (?connected=..., ok=..., err=...)
   React.useEffect(() => {
-    const url = new URL(window.location.href);
-    const sp = url.searchParams;
-    const connected = sp.get('connected');
-    if (connected) {
-      const ok  = sp.get('ok');
-      const err = sp.get('err');
+    try {
+      const sp = new URLSearchParams(window.location.search || '');
+      const connected = sp.get('connected');
+      if (connected) {
+        const ok  = sp.get('ok');
+        const err = sp.get('err');
 
-      if (ok === '1') {
-        setToast((connected === 'm365' ? 'Microsoft 365' : 'Google') + ' connected');
-      } else {
-        setToast(`Connection failed${err ? `: ${err}` : ''}`);
+        if (ok === '1') {
+          setToast((connected === 'm365' ? 'Microsoft 365' : 'Google') + ' connected');
+        } else {
+          setToast(`Connection failed${err ? `: ${err}` : ''}`);
+        }
+        setTimeout(() => setToast(''), 1800);
+
+        // remove flags from the URL (Safari-safe)
+        sp.delete('connected');
+        sp.delete('ok');
+        sp.delete('err');
+
+        const qs = sp.toString();
+        const clean = window.location.origin + window.location.pathname + (qs ? ('?' + qs) : '');
+        window.history.replaceState({}, '', clean);
+
+        fetchConnStatus();
       }
-      setTimeout(() => setToast(''), 1800);
-
-      // remove flags from the URL
-      sp.delete('connected');
-      sp.delete('ok');
-      sp.delete('err');
-      window.history.replaceState({}, '', url.toString());
-
-      fetchConnStatus();
+    } catch (_e) {
+      console.warn("Ignored OAuth URL cleanup error", _e);
     }
   }, []);
-
   // Load current connection status on first render
   React.useEffect(() => {
     fetchConnStatus();
@@ -2762,6 +3723,40 @@ function Integrations({ api }) {
                     Connected as: {c.account.displayName || c.account.mail || c.account.userPrincipalName || '—'}
                   </div>
                 )}
+                {(c.status === 'error' || (c.last_error && String(c.last_error).trim())) && (
+                  <div style={{marginTop:6, display:'grid', gap:6}}>
+                    <div style={{fontSize:12, padding:'4px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:6}}>
+                      Error{c.last_error ? ': ' + String(c.last_error) : ''}
+                    </div>
+                    <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                      {/* Re-auth / Reconnect */}
+                      <button
+                        style={styles.ghost}
+                        onClick={() => {
+                          const t = String(c.provider || c.type || '').toLowerCase();
+                          if (t.includes('m365') || t.includes('o365') || t.includes('office')) { startEmailOAuth('o365'); return; }
+                          if (t.includes('google') || t.includes('gws')  || t.includes('gmail')) { startEmailOAuth('gmail'); return; }
+                          if (t.includes('imap')) { openEmailWizard('imap'); return; }
+                          if (c.type === 'edr') { safe(()=>api.post('/integrations/edr/enrollment-token',{})); return; }
+                          if (c.type === 'dns') { safe(()=>api.get('/integrations/dns/bootstrap')); return; }
+                        }}
+                      >
+                        Re-auth / Reconnect
+                      </button>
+
+                      {/* Admin-only: Reset connector */}
+                      {(meState?.is_super || meState?.role === 'owner') && (
+                        <button
+                          style={styles.ghost}
+                          title="Admin: reset connector state"
+                          onClick={() => { if (confirm(`Reset ${String(c.type||'integration')} connector?`)) { safe(()=>api.post('/admin/ops/connector/reset', { type: c.type })); } }}
+                        >
+                          Reset connector (admin)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -2777,6 +3772,9 @@ function Integrations({ api }) {
             <div style={{fontWeight:700}}>Email Security</div>
             <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('email').status)}>
               {getState('email').status}
+              {getState('email').status === 'error' && (
+                <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+              )}
             </span>
           </div>
           <div style={{opacity:.85,marginTop:6}}>Connect your provider to scan for phishing/malware.</div>
@@ -2812,6 +3810,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>Endpoint (EDR)</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('edr').status)}>
                 {getState('edr').status}
+                {getState('edr').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Generate an enrollment token for your agent installer.</div>
@@ -2836,6 +3837,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>DNS Protection</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('dns').status)}>
                 {getState('dns').status}
+                {getState('dns').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Bootstrap to get resolver IPs and your token.</div>
@@ -2861,6 +3865,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>UEBA</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('ueba').status)}>
                 {getState('ueba').status}
+                {getState('ueba').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Connect M365 or Google Workspace to stream audit/sign-in logs.</div>
@@ -2880,6 +3887,9 @@ function Integrations({ api }) {
               <div style={{fontWeight:700}}>Cloud Security</div>
               <span style={{opacity:.85,fontSize:12}} title={statusHelp(getState('cloud').status)}>
                 {getState('cloud').status}
+                {getState('cloud').status === 'error' && (
+                  <span style={{marginLeft:8, fontSize:11, padding:'2px 6px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:999}}>error</span>
+                )}
               </span>
             </div>
             <div style={{opacity:.85,marginTop:6}}>Connect AWS / Azure / GCP for cloud findings & audit logs.</div>
@@ -2899,7 +3909,7 @@ function Integrations({ api }) {
           <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</div>
           <div style={{marginTop:8}}>
             {planCapabilities(meState?.plan || 'trial', meState).ai ? (
-              <button style={btn} onClick={()=>alert('AI assistant preview. Full features on Pro+.')}>Open Assistant</button>
+              <Link to="/autonomy"><button style={btn}>Open Autonomy</button></Link>
             ) : (
               <LockedTile title="AI Security Assistant" reason="Available on Pro+ (trial preview unlocks it temporarily)." />
             )}
@@ -3027,119 +4037,6 @@ function Integrations({ api }) {
       )}
     </div>
   );
-}
-// --- Alerts Page ---
-function Alerts(){
-  const [items, setItems] = React.useState([]);
-  const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState("");
-  const [q, setQ] = React.useState("");
-  const [days, setDays] = React.useState(7);
-  const [onlyAnomalies, setOnlyAnomalies] = React.useState(false);
-  const [page, setPage] = React.useState(0);
-
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [selected, setSelected] = React.useState(null);
-
-  function openAlert(a){ setSelected(a); setDrawerOpen(true); }
-  function closeDrawer(){ setSelected(null); setDrawerOpen(false); }
-  function copyText(txt){ try{ navigator.clipboard.writeText(String(txt||"")); }catch{} }
-
-  function threatLabel(score){
-    const n = Number(score);
-    if (!isFinite(n)) return "—";
-    if (n <= -0.8) return "High";
-    if (n <= -0.4) return "Medium";
-    if (n <= -0.1) return "Low";
-    return "Info";
-  }
-
-  function buildAlertsUrl(days, limit, query, anomaliesOnly){
-    const origin = (import.meta?.env?.VITE_API_BASE)
-      || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
-           ? "https://cyberguard-pro-cloud.onrender.com"
-           : "http://localhost:8080");
-    const params = new URLSearchParams();
-    params.set("days", String(days||7));
-    params.set("limit", String(limit||100));
-    if(query) params.set("q", query);
-    if(anomaliesOnly) params.set("anomaly", "1");
-    return `${origin}/alerts/export?${params.toString()}`;
-  }
-
-  async function fetchAlerts(reset=false){
-    const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-    const url = buildAlertsUrl(days,100,q,onlyAnomalies);
-    setLoading(true); setErr("");
-    try{
-      const r = await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
-      const list = Array.isArray(j?.alerts)? j.alerts:[];
-      setItems(prev=>reset?list:[...prev,...list]);
-      setPage(p=>reset?1:p+1);
-    }catch(e){ setErr(e?.message||"Failed to load alerts"); }
-    finally{ setLoading(false); }
-  }
-
-  React.useEffect(()=>{ fetchAlerts(true); },[]);
-  React.useEffect(()=>{
-    const t=setTimeout(()=>fetchAlerts(true),300);
-    return ()=>clearTimeout(t);
-  },[q,days,onlyAnomalies]);
-
-  const s={
-    wrap:{padding:16},
-    row:{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,.08)"},
-    head:{fontSize:12,opacity:.7,padding:"6px 0"},
-    badge:(st)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:st==="new"?"rgba(59,130,246,.15)":"transparent"}),
-    src:(k)=>({fontSize:12,padding:"2px 8px",borderRadius:999,border:"1px solid rgba(255,255,255,.18)",background:k==="Email"?"rgba(59,130,246,.18)":k==="DNS"?"rgba(99,102,241,.18)":k==="EDR"?"rgba(16,185,129,.18)":k==="Cloud"?"rgba(234,179,8,.18)":"transparent"}),
-    threat:(sc)=>({
-      fontSize:12,padding:"2px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.18)",
-      background:sc<=-0.8?"rgba(220,38,38,.2)":sc<=-0.4?"rgba(234,179,8,.2)":sc<=-0.1?"rgba(34,197,94,.2)":"rgba(156,163,175,.2)"
-    }),
-    input:{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.14)",background:"rgba(255,255,255,.06)",color:"inherit"}
-  };
-
-  function fmt(ts){ try{ return new Date(Number(ts||0)*1000).toLocaleString(); }catch{ return "—"; } }
-  function sourceOf(a){ const v=String(a?.source||a?.evt_type||a?.type||a?.event?.type||"").toLowerCase(); if(v.includes("email")||a?.from) return "Email"; if(v.includes("dns")) return "DNS"; if(v.includes("edr")||v.includes("endpoint")) return "EDR"; if(v.includes("cloud")||v.includes("aws")||v.includes("azure")||v.includes("gcp")) return "Cloud"; return "—"; }
-
-  return (<div style={s.wrap}>
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"space-between",marginBottom:8}}>
-      <h1 style={{margin:0}}>Alerts</h1>
-      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{...s.input,width:320}}/>
-        <div style={{display:"inline-flex",alignItems:"center",gap:6}}>
-          <span style={{fontSize:12,opacity:.8}}>Last</span>
-          <input type="number" min="1" max="90" value={days} onChange={e=>setDays(Number(e.target.value)||7)} style={{...s.input,width:70}}/>
-          <span style={{fontSize:12,opacity:.8}}>days</span>
-        </div>
-        <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13}}>
-          <input type="checkbox" checked={onlyAnomalies} onChange={e=>setOnlyAnomalies(e.target.checked)}/>Only anomalies
-        </label>
-        <button onClick={()=>fetchAlerts(true)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>{loading?"Loading…":"Refresh"}</button>
-        <button onClick={()=>fetchAlerts(false)} disabled={loading} style={{padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.2)"}}>Load more</button>
-      </div>
-    </div>
-    {loading && <div style={{opacity:.8}}>Loading…</div>}
-    {err && <div style={{border:"1px solid #ff7a7a88",background:"#ff7a7a22",borderRadius:8,padding:10,margin:"8px 0"}}>Error: {err}</div>}
-    {!loading && !items.length && !err && <div style={{opacity:.7}}>No alerts.</div>}
-    {!!items.length && <div>
-      <div style={{display:"grid",gridTemplateColumns:"160px 120px 220px 1fr 1fr 80px 120px",gap:10,padding:"6px 0",borderBottom:"1px solid rgba(255,255,255,.12)"}}>
-        <div style={s.head}>When</div><div style={s.head}>Source</div><div style={s.head}>From</div><div style={s.head}>Subject</div><div style={s.head}>Preview</div><div style={s.head}>Status</div><div style={s.head}>Threat</div>
-      </div>
-      {items.map(a=><div key={a.id} style={{...s.row,cursor:"pointer"}} onClick={()=>openAlert(a)}>
-        <div style={{opacity:.85}}>{fmt(a.created_at||a.event?.when)}</div>
-        <div><span style={s.src(sourceOf(a))}>{sourceOf(a)}</span></div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.from||a.from_addr||"—"}</div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.subject||"—"}</div>
-        <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.preview||"—"}</div>
-        <div><span style={s.badge(a.status||"new")}>{a.status||"new"}</span></div>
-        <div>{a.score!=null?<span style={s.threat(a.score)}>{threatLabel(a.score)} • {a.score}</span>:"—"}</div>
-      </div>)}
-    </div>}
-    {drawerOpen && <><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:1000}} onClick={closeDrawer}/><aside style={{position:"fixed",top:0,right:0,height:"100%",width:"min(560px,92vw)",background:"rgba(28,30,38,.96)",borderLeft:"1px solid rgba(255,255,255,.12)",zIndex:1001,display:"flex",flexDirection:"column"}}><div style={{display:"flex",justifyContent:"space-between",padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.08)"}}><div><div style={{fontWeight:700,fontSize:16}}>{selected?.subject||"(no subject)"}</div><div style={{fontSize:12,opacity:.8}}>From: {selected?.from||selected?.from_addr||"—"}</div></div><button onClick={closeDrawer} style={{padding:"6px 10px",borderRadius:8}}>Close</button></div><div style={{padding:16,overflow:"auto"}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div><b>Source</b><div>{sourceOf(selected)}</div></div><div><b>Threat</b><div><span style={s.threat(selected?.score)}>{threatLabel(selected?.score)}</span></div></div></div><pre style={{whiteSpace:"pre-wrap",padding:10,border:"1px solid rgba(255,255,255,.12)",borderRadius:10,background:"rgba(255,255,255,.05)"}}>{JSON.stringify(selected,null,2)}</pre></div></aside></>}
-  </div>);
 }
 function TestEvents({ api }){
   const [out, setOut] = React.useState("");
@@ -3346,6 +4243,17 @@ function BillingPanel() {
     })();
   }, []);
 
+  // Billing status helper tooltip
+  function billingHelp(st){
+    const s = String(st||'').toLowerCase();
+    if(s==='active') return 'Active: billing is in good standing.';
+    if(s==='trialing' || s==='trial') return 'Trialing: you are on a trial; features may be limited after it ends.';
+    if(s==='past_due') return 'Past due: a payment failed or is overdue. Update your payment method.';
+    if(s==='payment_failed') return 'Payment failed: please update your card in the billing portal.';
+    if(s==='canceled' || s==='cancelled') return 'Canceled: your subscription is canceled; access may be limited.';
+    return 'Billing status';
+  }
+
   async function startCheckout(planKey) {
     setLoading(true); setErr("");
     try {
@@ -3386,6 +4294,9 @@ function BillingPanel() {
       <h2 style={{ marginBottom: 8 }}>Billing</h2>
       <p style={{ color: "#666", marginTop: 0 }}>
         Current plan: <b>{String(effective).toUpperCase()}</b>
+        {me?.billing_status ? (
+          <> — <span title={billingHelp(me.billing_status)} style={{fontSize:12, padding:'2px 6px', border:'1px solid rgba(255,255,255,.25)', borderRadius:999}}>{String(me.billing_status)}</span></>
+        ) : null}
         {me?.trial?.active ? (
           <> — trial active, <b>{trialDays}</b> day{trialDays===1?"":"s"} left</>
         ) : null}
@@ -3443,7 +4354,10 @@ function BillingPanel() {
     </div>
   );
 }
-
+// Route shim: keep /pricing working by rendering BillingPanel
+function PricingPage(){
+  return <BillingPanel/>;
+}
 function PlanCard({ name, price, features, onChoose, loading, highlight }) {
   return (
     <div style={{
@@ -3467,11 +4381,114 @@ function PlanCard({ name, price, features, onChoose, loading, highlight }) {
     </div>
   );
 }
+// --- Support Page ---
+function Support(){
+  const [name, setName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [hp, setHp] = React.useState(""); // honeypot
+  const [sent, setSent] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  async function submit(e){
+    e.preventDefault();
+    setErr("");
+    try{
+      if (hp) { setSent(true); return; } // bot trap
+      const r = await fetch(`${API_ORIGIN}/support/send`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ name, email, message, hp })
+      });
+      const t = await r.text();
+      let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+      if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
+      setSent(true);
+    } catch(e){
+      setErr(e?.message || "send failed");
+    }
+  }
+
+  const s = {
+    wrap:{maxWidth:600, margin:"40px auto", padding:16},
+    input:{padding:"10px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,.2)", background:"rgba(255,255,255,.06)", color:"inherit"},
+    btn  :{padding:"10px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,.2)", background:"#1f6feb", color:"#fff", cursor:"pointer"}
+  };
+
+  return (
+    <div style={s.wrap}>
+      <h1 style={{marginTop:0}}>Support</h1>
+      <p style={{opacity:.8}}>Questions or issues? Send us a message and we’ll get back to you.</p>
+      {sent ? (
+        <div style={{padding:"10px 12px", border:"1px solid #7bd88f55", background:"#7bd88f22", borderRadius:10}}>
+          ✅ Thanks! Your message was sent.
+        </div>
+      ) : (
+        <form onSubmit={submit} style={{display:"grid", gap:10}}>
+          <label>Name</label>
+          <input style={s.input} value={name} onChange={e=>setName(e.target.value)} required />
+          <label>Email</label>
+          <input style={s.input} type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
+          {/* honeypot */}
+          <div style={{position:"absolute", left:"-5000px"}}>
+            <input value={hp} onChange={e=>setHp(e.target.value)} tabIndex="-1" autoComplete="off" />
+          </div>
+          <label>Message</label>
+          <textarea style={s.input} value={message} onChange={e=>setMessage(e.target.value)} rows={6} required />
+          <button type="submit" style={s.btn}>Send</button>
+          {err && <div style={{padding:"8px 10px", border:"1px solid #ff7a7a88", background:"#ff7a7a22", borderRadius:8}}>Error: {err}</div>}
+        </form>
+      )}
+      <p style={{marginTop:12, opacity:.85}}>
+        Or email <a href="mailto:support@cyberguardpro.com">support@cyberguardpro.com</a>
+      </p>
+    </div>
+  );
+}
+// ---- DEBUG OVERLAY (temporary, to diagnose blank screen) ----
+function DebugOverlay(){
+  const loc = useLocation ? useLocation() : { pathname: '(no-router)' };
+  const [visible, setVisible] = React.useState(()=>{
+    try{ return localStorage.getItem('debug:overlay') === '1'; }catch{ return true; }
+  });
+  React.useEffect(()=>{
+    // Ensure page is visibly styled even if app styles fail
+    try{
+      document.body.style.background = document.body.style.background || '#0b0c0d';
+      document.body.style.color = document.body.style.color || '#e6e9ef';
+    }catch(_e){}
+  },[]);
+  React.useEffect(()=>{ try{ localStorage.setItem('debug:overlay', visible? '1':'0'); }catch{} },[visible]);
+  if(!visible) return null;
+  return (
+    <div style={{position:'fixed',top:8,left:8,right:8,zIndex:99999,pointerEvents:'none'}}>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <span style={{pointerEvents:'auto',padding:'4px 8px',border:'1px solid #2b6dff66',background:'rgba(37,99,235,.15)',borderRadius:8,fontSize:12}}>DEBUG: mounted</span>
+        <span style={{pointerEvents:'auto',padding:'4px 8px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.08)',borderRadius:8,fontSize:12}}>path: {String(loc?.pathname||'/?')}</span>
+        <span style={{pointerEvents:'auto',padding:'4px 8px',border:'1px solid rgba(255,255,255,.2)',background:'rgba(255,255,255,.08)',borderRadius:8,fontSize:12}}>token: { (typeof localStorage!=='undefined' && localStorage.getItem('token')) ? 'present' : 'missing' }</span>
+        <button onClick={()=>setVisible(false)} style={{pointerEvents:'auto',padding:'2px 6px',borderRadius:6,border:'1px solid rgba(255,255,255,.25)',background:'transparent',color:'inherit',cursor:'pointer'}}>hide</button>
+      </div>
+    </div>
+  );
+}
+
+// Global error taps to surface any silent runtime errors
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e)=>{ try{ console.error('[global error]', e.message, e.error); }catch{} });
+  window.addEventListener('unhandledrejection', (e)=>{ try{ console.error('[unhandled rejection]', e.reason); }catch{} });
+}
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
+      <DebugOverlay/>
       <App/>
     </BrowserRouter>
   </React.StrictMode>
-  );
-}
+);	
