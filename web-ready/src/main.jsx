@@ -1046,9 +1046,7 @@ function Layout({ children }) {
         `}</style>
 
 {/* CGP brand (autoinserted) */}
-<div data-cgp-brand style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-  <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:36,width:"auto"}} />
-</div>}
+<img src="/brand/logo.png" alt="CyberGuard Pro" style={{height:28, width:'auto', display:'block'}} />
         <div style={{marginTop:10, opacity:.9}}>
           New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
         </div>
