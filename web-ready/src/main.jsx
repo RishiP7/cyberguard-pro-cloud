@@ -980,6 +980,19 @@ function TopBadges(){
 }
 
 
+function BrandLogo(){
+  const candidates=["/brand/logo.png","/brand/logo.svg"]; // png first, svg fallback
+  const [src,setSrc]=React.useState(candidates[0]);
+  return (
+    <img
+      src={src}
+      alt="Cyber Guard Pro"
+      style={{height:44,width:"auto",objectFit:"contain",display:"block"}}
+      onError={()=>{ const i=candidates.indexOf(src); if(i<candidates.length-1) setSrc(candidates[i+1]); }}
+    />
+  );
+}
+
 function Layout({ children }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#090b10', color: '#e6e9ef' }}>
@@ -1231,6 +1244,35 @@ function AIPulseHero({ stats }) {
       </div>
     </div>
   );
+}
+
+function BillingStatusChip({ me }){
+  try{
+    const raw = (me && (me.billing_status || me.billingStatus)) || "";
+    const status = String(raw).toLowerCase();
+    if(!status) return null;
+    const color = status === "active" ? "#22c55e"
+                : status === "past_due" ? "#f59e0b"
+                : status === "payment_failed" ? "#ef4444"
+                : "rgba(255,255,255,.8)";
+    return (
+      <span
+        style={{
+          display:"inline-flex",
+          alignItems:"center",
+          border:`1px solid ${color}88`,
+          color,
+          borderRadius:999,
+          padding:"2px 8px",
+          fontSize:12,
+          background:"rgba(255,255,255,.04)"
+        }}
+        title={`billing: ${status}`}
+      >
+        {status.replace(/_/g," ")}
+      </span>
+    );
+  }catch(_e){ return null; }
 }
 
 function Dashboard(){
