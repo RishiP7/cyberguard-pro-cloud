@@ -4246,3 +4246,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Only a single BrandLogo definition should exist in this file.
