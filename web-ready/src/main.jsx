@@ -1036,12 +1036,7 @@ function Layout({ children }) {
 {/* CGP brand (autoinserted) */}
 <div data-cgp-brand style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
     <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:24,width:"auto"}} />
-        <form onSubmit={submit}>
-          <input style={inp} value={email} onChange={e=>setEmail(e.target.value)} placeholder="email"/>
-          <input style={inp} type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="password"/>
-          <button style={btn} type="submit">Sign in</button>
-        </form>
-        {msg && <div style={{marginTop:8, color:"#ff8a8a"}}>{msg}</div>}
+  </div>}
         <div style={{marginTop:10, opacity:.9}}>
           New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
         </div>
@@ -2967,62 +2962,56 @@ function DashboardWithOnboarding(props){
 function AuthLogin(){
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [err, setErr] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState('');
 
-  const API_BASE =
-    (import.meta?.env?.VITE_API_BASE)
-    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
-
+  const inp = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,.15)",
+    background: "rgba(255,255,255,.06)",
+    color: "inherit",
+    marginBottom: 10
+  };
+  const btn = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,.2)",
+    background: "rgba(255,255,255,.12)",
+    cursor: "pointer"
+  };
 
   async function onSubmit(e){
     e.preventDefault();
-    setErr(''); setLoading(true);
+    setErr('');
+    setLoading(true);
     try{
-      const r = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${API_ORIGIN}/auth/admin-login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      const t = await r.text();
-      let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
-      if (!r.ok || !j.ok || !j.token) throw new Error(j.error || 'login failed');
-      if (typeof localStorage !== 'undefined') localStorage.setItem('token', j.token);
-      window.location.href = '/';
-    } catch(e){
-      setErr(e?.message || 'login failed');
-    } finally {
+      const data = await res.json();
+      if (!res.ok || !data?.token) throw new Error(data?.error || 'login failed');
+      if (typeof localStorage !== 'undefined') localStorage.setItem('token', data.token);
+      if (typeof window !== 'undefined') window.location.replace('/');
+    }catch(e){
+      setErr(String(e?.message || e));
+    }finally{
       setLoading(false);
     }
   }
 
   return (
-    <div style={{maxWidth:420, margin:'80px auto', padding:20}}>
-      <h1>Sign in</h1>
-      <p style={{opacity:.8}}>Use your admin email and password.</p>
-      <form onSubmit={onSubmit} style={{display:'grid', gap:10}}>
-        <input
-          placeholder="Email"
-          type="email"
-          value={email}
-          onChange={e=>setEmail(e.target.value)}
-          required
-          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
-        />
-        <input
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={e=>setPassword(e.target.value)}
-          required
-          style={{padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.06)', color:'inherit'}}
-        />
-        <button type="submit" disabled={loading} style={{padding:'10px 12px', borderRadius:8}}>
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-        {err && <div style={{color:'#f99'}}>Error: {err}</div>}
+    <div style={{ maxWidth: 380, margin: '80px auto' }}>
+      <h1 style={{ marginBottom: 16 }}>Sign in</h1>
+      <form onSubmit={onSubmit}>
+        <input style={inp} type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="Email" />
+        <input style={inp} type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Password" />
+        {err && <div style={{ color: '#ff7777', marginBottom: 10 }}>{err}</div>}
+        <button style={btn} disabled={loading} type="submit">{loading ? 'Signing in…' : 'Save & Continue'}</button>
       </form>
     </div>
   );
