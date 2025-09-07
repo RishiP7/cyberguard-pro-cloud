@@ -57,6 +57,13 @@ app.get('/me', authMiddleware, (req, res) => {
 });
 
 
+} catch (e) {
+    console.error('me error', e);
+    res.status(500).json({ ok:false, error:'me failed' });
+  }
+});
+
+
 
 
 app.post('/auth/admin-login', async (req, res) => {
@@ -1341,7 +1348,7 @@ app.post("/auth/register",async (req,res)=>{
 });
 
 // ---------- me / usage ----------
-if(!rows.length) return res.status(404).json({error:"tenant not found"});
+
     const me = rows[0];
     const eff = await getEffectivePlan(req.user.tenant_id, req);
     me.effective_plan = eff.effective;
