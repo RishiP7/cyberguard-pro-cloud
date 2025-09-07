@@ -6,20 +6,28 @@ function BrandLogo(){
   const override =
     (typeof window!=='undefined' && (window.LOGO_URL ||
       (typeof localStorage!=='undefined' && localStorage.getItem('logo_url')))) || '';
-  const candidates=["/brand/logo.png","/brand/logo.svg"].filter(Boolean);
+  const candidates = [
+    override,
+    '/brand/logo.png',
+    '/logo.svg',
+    '/logo.png',
+    '/logo192.png',
+    '/assets/logo.svg',
+    '/assets/logo.png'
+  ].filter(Boolean);
 
   const [idx, setIdx] = React.useState(0);
   const src = candidates[idx] || '';
 
   // Fallback to text if nothing is available
-  if (!src) return <BrandLogo/>;
+  if (!src) return <h2 style={{margin:0,fontSize:18}}>Cyber Guard Pro</h2>;
 
   // IMPORTANT: keep width:auto and objectFit:contain so it never squashes
   return (
     <img
       src={src}
       alt="Cyber Guard Pro"
-      style={{height:54,width:"auto",objectFit:"contain",display:"block"}}
+      style={{ height: 64, width: 'auto', objectFit: 'contain', display: 'block', maxWidth: 'none' }}
       onError={()=>{ if (idx < candidates.length-1) setIdx(idx+1); }}
     />
   );
@@ -972,6 +980,18 @@ function TopBadges(){
 }
 
 
+function BrandLogo(){
+  const candidates=["/brand/logo.png","/brand/logo.svg"]; // png first, svg fallback
+  const [src,setSrc]=React.useState(candidates[0]);
+  return (
+    <img
+      src={src}
+      alt="Cyber Guard Pro"
+      style={{height:44,width:"auto",objectFit:"contain",display:"block"}}
+      onError={()=>{ const i=candidates.indexOf(src); if(i<candidates.length-1) setSrc(candidates[i+1]); }}
+    />
+  );
+}
 
 function Layout({ children }) {
   return (
@@ -2999,7 +3019,11 @@ function AuthLogin(){
     background: "rgba(255,255,255,.12)",
     cursor: "pointer"
   };
-
+const API_ORIGIN =
+  (import.meta?.env?.VITE_API_BASE)
+  || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+        ? 'https://cyberguard-pro-cloud.onrender.com'
+        : 'http://localhost:8080');
   async function onSubmit(e){
     e.preventDefault();
     setErr('');
