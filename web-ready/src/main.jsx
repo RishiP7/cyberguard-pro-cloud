@@ -1025,6 +1025,10 @@ function Layout({ children }) {
           <Link className="side-link" to="/alerts">Alerts</Link>
           <Link className="side-link" to="/integrations">Integrations</Link>
           <Link className="side-link" to="/policy">Policy</Link>
+<Link className="side-link" to="/autonomy">Autonomy</Link>
+<Link className="side-link" to="/test">Test</Link>
+<Link className="side-link" to="/support">Support</Link>
+<Link className="side-link" to="/pricing">Pricing</Link>
           <Link className="side-link" to="/account">Account</Link>
           {typeof localStorage !== 'undefined' && localStorage.getItem('token') ? (
             <Link className="side-link" to="/admin">Admin</Link>
