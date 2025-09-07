@@ -49,50 +49,7 @@ app.get('/me', authMiddleware, (req, res) => {
       ok: true,
       user: { email, role, plan, tenant_id },
       tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
-    });
-  } catch (e) {
-    console.error('me error', e);
-    return res.status(500).json({ ok:false, error:'me failed' });
-  }
-});
-
-
-} catch (e) {
-    console.error('me error', e);
-    res.status(500).json({ ok:false, error:'me failed' });
-  }
-});
-
-
-
-
-
-app.post('/auth/admin-login', async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@cyberguardpro.com';
-    const adminPass  = process.env.ADMIN_PASSWORD || 'ChangeMeNow!';
-    if (email === adminEmail && password === adminPass) {
-      const token = (await import('jsonwebtoken')).default.sign(
-        { sub: email, role: 'owner', plan: 'pro_plus' },
-        process.env.JWT_SECRET || 'dev-secret',
-        { expiresIn: '12h' }
-      );
-res.json({ ok: true, token });
-    }
-res.status(401).json({ ok:false, error: 'invalid credentials' });
-  } catch (e) {
-    console.error('auth/admin-login error', e);
-res.status(500).json({ ok:false, error: 'server error' });
-  }
-});
-
-// Parse JSON for all routes except the Stripe webhook (which must remain raw)
-app.use((req, res, next) => {
-  if (req.originalUrl === '/billing/webhook') return next();
-  return express.json()(req, res, next);
-});
-app.use((req, res, next) => {
+    });app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
   return express.urlencoded({ extended: true })(req, res, next);
 });
