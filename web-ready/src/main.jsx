@@ -1033,6 +1033,16 @@ function Layout({ children }) {
           }
         `}</style>
 
+{/* CGP brand (autoinserted) */}
+<div data-cgp-brand style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+  <img
+    src="/brand/logo.svg"
+    alt="Cyber Guard Pro"
+    style={{ height: 22, width: "auto" }}
+    onError={(e)=>{ try { if (e?.target) e.target.src = "/brand/logo.png"; } catch(_){} }}
+  />
+  <h2 style={{ margin: 0, fontSize: 18 }}>Cyber Guard Pro</h2>
+</div>
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <NavLink to="/"              className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Dashboard</NavLink>
           <NavLink to="/alerts"        className={({isActive}) => 'side-link' + (isActive ? ' active' : '')}>Alerts</NavLink>
