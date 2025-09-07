@@ -2,6 +2,36 @@
 import ReactDOM from "react-dom/client";
 
 // --- BrandLogo: tries overrides + common paths, falls back to text ---
+function BrandLogo(){
+  const override =
+    (typeof window!=='undefined' && (window.LOGO_URL ||
+      (typeof localStorage!=='undefined' && localStorage.getItem('logo_url')))) || '';
+  const candidates = [
+    override,
+    '/brand/logo.png',
+    '/logo.svg',
+    '/logo.png',
+    '/logo192.png',
+    '/assets/logo.svg',
+    '/assets/logo.png'
+  ].filter(Boolean);
+
+  const [idx, setIdx] = React.useState(0);
+  const src = candidates[idx] || '';
+
+  // Fallback to text if nothing is available
+  if (!src) return <h2 style={{margin:0,fontSize:18}}>Cyber Guard Pro</h2>;
+
+  // IMPORTANT: keep width:auto and objectFit:contain so it never squashes
+  return (
+    <img
+      src={src}
+      alt="Cyber Guard Pro"
+      style={{ height: 64, width: 'auto', objectFit: 'contain', display: 'block', maxWidth: 'none' }}
+      onError={()=>{ if (idx < candidates.length-1) setIdx(idx+1); }}
+    />
+  );
+}
 import React, { useEffect, useState } from "react";
 import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Register from "./pages/Register.jsx";
@@ -950,7 +980,6 @@ function TopBadges(){
 }
 
 
-
 function BrandLogo(){
   const candidates=["/brand/logo.png","/brand/logo.svg"]; // png first, svg fallback
   const [src,setSrc]=React.useState(candidates[0]);
@@ -963,7 +992,6 @@ function BrandLogo(){
     />
   );
 }
-
 
 function Layout({ children }) {
   return (
@@ -3882,6 +3910,26 @@ function planCapabilities(plan, me){
     ai:    effective === 'pro_plus'
   };
 }
+
+
+/**
+ * normalizeRisk(v):
+ * Accepts a string label (e.g., "critical", "high", "medium", "low") or a numeric score (0–100)
+ * and returns one of: 'critical' | 'high' | 'medium' | 'low' | 'unknown'.
+ */
+function normalizeRisk(v){
+  const s = String(v ?? '').toLowerCase().trim();
+  if (s === 'critical' || s === 'high' || s === 'medium' || s === 'low' || s === 'unknown') return s;
+  const n = Number(v);
+  if (Number.isFinite(n)) {
+    if (n >= 80) return 'critical';
+    if (n >= 60) return 'high';
+    if (n >= 30) return 'medium';
+    if (n >= 0)  return 'low';
+  }
+  return 'unknown';
+}
+
 // --- BillingPanel: self-serve subscriptions (Basic/Pro/Pro+) + Portal ---
 
 function BillingPanel() {
