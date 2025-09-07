@@ -24,7 +24,18 @@ function BrandLogo(){
     
 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
   <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{ height: 22, width: "auto" }} />
+  
+<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+  <img
+    src="/brand/logo.svg"
+    alt="Cyber Guard Pro"
+    style={{ height: 22, width: "auto" }}
+    onError={(e)=>{ try {
+      if (e?.target) { e.target.src = "/brand/logo.png"; }
+    } catch(_){} }}
+  />
   <h2 style={{ margin: 0, fontSize: 18 }}>Cyber Guard Pro</h2>
+</div>
 </div>
   </div>;
   }
