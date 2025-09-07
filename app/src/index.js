@@ -2888,8 +2888,7 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
-
-/* ===== NO-DB /me (forced) ===== */
+/* ===== NO-DB /me (clean) ===== */
 app.get('/me', authMiddleware, (req, res) => {
   try {
     const u = req.user || {};
@@ -2897,12 +2896,21 @@ app.get('/me', authMiddleware, (req, res) => {
     const plan = u.plan || 'pro_plus';
     const tenant_id = u.tenant_id || 'tenant_admin';
     const role = u.role || 'owner';
-    return res.json({
+    res.json({
       ok: true,
       user: { email, role, plan, tenant_id },
       tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
     });
   } catch (e) {
+    console.error('me error', e);
+    res.status(500).json({ ok:false, error:'me failed' });
+  }
+});
+/* ===== /me end ===== */
+
+
+/* ===== NO-DB /me (forced) ===== */
+} catch (e) {
     console.error('me error', e);
     return res.status(500).json({ ok:false, error:'me failed' });
   }
