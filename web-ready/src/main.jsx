@@ -3,7 +3,9 @@ import ReactDOM from "react-dom/client";
 
 // --- BrandLogo: tries overrides + common paths, falls back to text ---
 function BrandLogo(){
-  const override = (typeof window!=='undefined' && (window.LOGO_URL || (typeof localStorage!=='undefined' && localStorage.getItem('logo_url')))) || '';
+  const override =
+    (typeof window!=='undefined' && (window.LOGO_URL ||
+      (typeof localStorage!=='undefined' && localStorage.getItem('logo_url')))) || '';
   const candidates = [
     override,
     '/brand/logo.png',
@@ -14,42 +16,19 @@ function BrandLogo(){
     '/assets/logo.png'
   ].filter(Boolean);
 
-  const [srcIdx, setSrcIdx] = React.useState(0);
-  const src = candidates[srcIdx] || '';
+  const [idx, setIdx] = React.useState(0);
+  const src = candidates[idx] || '';
 
-  if (!src) {
-    // nothing to try; render text only
-    return <div style={{display:'flex',alignItems:'center',gap:10}}>
-    <BrandLogo/>
-    
-<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-  <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{ height: 22, width: "auto" }} />
-  
-<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-  <img
-    src="/brand/logo.png"
-    alt="Cyber Guard Pro"
-    style={{ height: 22, width: "auto" }}
-    onError={(e)=>{ try {
-      if (e?.target) { e.target.src = "/brand/logo.png"; }
-    } catch(_){} }}
-  />
-  <div data-cgp-brand style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-  <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:36,width:"auto"}} />
-</div>
-</div>
-</div>
-  </div>;
-  }
+  // Fallback to text if nothing is available
+  if (!src) return <h2 style={{margin:0,fontSize:18}}>Cyber Guard Pro</h2>;
+
+  // IMPORTANT: keep width:auto and objectFit:contain so it never squashes
   return (
     <img
       src={src}
       alt="Cyber Guard Pro"
-      style={{height:22, width:'auto', display:'block'}}
-      onError={()=>{
-        // try next candidate
-        if (srcIdx < candidates.length - 1) setSrcIdx(srcIdx+1);
-      }}
+      style={{ height: 64, width: 'auto', objectFit: 'contain', display: 'block', maxWidth: 'none' }}
+      onError={()=>{ if (idx < candidates.length-1) setIdx(idx+1); }}
     />
   );
 }
@@ -1019,7 +998,7 @@ function Layout({ children }) {
           height: '100vh'
         }}
       >
-        <img src="/brand/logo.png" alt="CyberGuard Pro" style={{height:28, width:'auto', display:'block'}} />
+        <BrandLogo/>
 
         <style>{`
           .side-link {
@@ -1046,6 +1025,11 @@ function Layout({ children }) {
         <div style={{marginTop:10, opacity:.9}}>
           New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
         </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex: 1, padding: 16 }}>
+        {(typeof localStorage!=='undefined' && localStorage.getItem('token')) ? children : <AuthLogin/>}
       </div>
     </div>
   );
