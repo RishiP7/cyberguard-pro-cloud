@@ -97,7 +97,6 @@ function corsOrigin(origin, cb){
   const norm = String(origin).trim().toLowerCase().replace(/\/$/, '');
   const allowed = ALLOWED_ORIGINS.includes(norm);
   return cb(null, allowed);
-}
 
 app.use(cors({
   origin: corsOrigin,
@@ -113,7 +112,6 @@ app.use(cors({
 ,
   optionsSuccessStatus: 204
 }));
-
 
 app.use(helmet());
 
@@ -168,7 +166,6 @@ function readAdminFlags(req){
   const preview = req.headers['x-plan-preview']; // 'trial'|'basic'|'pro'|'pro+'
   const override = req.headers['x-admin-override'] === '1';
   return { preview, override };
-}
 
 async function getEffectivePlan(tenant_id, req){
   const { rows } = await q(`SELECT plan, trial_started_at, trial_ends_at, trial_status FROM tenants WHERE tenant_id=$1`, [tenant_id]);
@@ -186,7 +183,6 @@ async function getEffectivePlan(tenant_id, req){
   if (trialActive) effective = 'pro_plus';
   if (flags && flags.preview && (req?.user?.is_super)) {
     effective = String(flags.preview).toLowerCase();
-  }
 
   return {
     plan: t.plan,
@@ -196,7 +192,6 @@ async function getEffectivePlan(tenant_id, req){
     effective,
     trial_active: trialActive
   };
-}
 
 async function aiReply(tenant_id, prompt){
   try{
@@ -226,7 +221,6 @@ async function aiReply(tenant_id, prompt){
     console.error('aiReply error', e);
     return 'Assistant is unavailable right now. An admin will reply shortly.';
   }
-}
 
 // ---- API key based auth for integrations & connector upsert helper ----
 async function tenantIdFromApiKey(key){
@@ -255,7 +249,6 @@ async function upsertConnector(tenant_id, type, provider, patch){
              details=COALESCE(connectors.details,'{}'::jsonb) || COALESCE(EXCLUDED.details,'{}'::jsonb),
              updated_at=EXTRACT(EPOCH FROM NOW())`,
            [id, tenant_id, type, provider||null, patch?.status||'connected', patch?.details? JSON.stringify(patch.details) : '{}']);
-}
 
 // ====== Email connector helpers ======
 async function getEmailConnector(tenant_id){
@@ -266,7 +259,6 @@ async function getEmailConnector(tenant_id){
   // Fallback: latest email connector if schema was older
   const latest = await q(`SELECT id, tenant_id, type, provider, status, details, updated_at FROM connectors WHERE tenant_id=$1 AND type='email' ORDER BY updated_at DESC LIMIT 1`, [tenant_id]);
   return latest.rows[0] || null;
-}
 
 function maskTokens(details){
   try{
@@ -277,7 +269,6 @@ function maskTokens(details){
     }
     return d;
   }catch(_){ return details || {}; }
-}
 
 // ===== M365 email polling helpers =====
 async function getM365AccessTokenForTenant(tenant_id){
@@ -323,7 +314,6 @@ async function getM365AccessTokenForTenant(tenant_id){
     } catch (e) { lastErr = e; }
   }
   return { ok:false, reason:'refresh_failed', detail:lastErr };
-}
 
 async function graphGet(tenant_id, path){
   const conn = await getEmailConnector(tenant_id);
@@ -348,7 +338,6 @@ async function graphGet(tenant_id, path){
     resp = await doGet(access);
   }
   return resp;
-}
 
 function classifyEmail(subject, bodyPreview){
   const txt = ((subject||'') + ' ' + (bodyPreview||''))
@@ -368,7 +357,6 @@ function classifyEmail(subject, bodyPreview){
   if (hasUrl && score > -1.0) score = Math.min(score, -0.6);
 
   return score;
-}
 
 // ---- Realtime scans ring buffer (per-tenant, in-memory) ----
 const recentScans = new Map(); // tenant_id -> [{subject,from,when,severity,score}, ...]
@@ -410,12 +398,11 @@ async function scanAndRecordEmails(tenant_id, items){
       });
       // SSE broadcast
       bus.emit('scan', { tenant_id, scan: { subject: subj, from, when, severity, score } });
-    } catch(_e) {}
+
     const alert = await writeAlert(tenant_id, ev);
     if(alert) alertsCreated++;
   }
   return alertsCreated;
-}
 
 async function fetchM365Inbox(tenant_id, maxCount=10){
   const sel = '$select=receivedDateTime,from,subject,bodyPreview,webLink';
@@ -429,7 +416,6 @@ async function fetchM365Inbox(tenant_id, maxCount=10){
   }
   const j = await r.json();
   return Array.isArray(j?.value) ? j.value : [];
-}
 
 // ===== M365 delta polling (only new/changed messages) =====
 async function fetchM365Delta(tenant_id, pageTop = 25) {
@@ -463,7 +449,6 @@ async function fetchM365Delta(tenant_id, pageTop = 25) {
     break;
   }
   return items;
-}
 
 // ===== Gmail helpers (refresh + list) =====
 async function getGoogleAccessTokenForTenant(tenant_id){
@@ -487,7 +472,6 @@ async function getGoogleAccessTokenForTenant(tenant_id){
   if(!r.ok || !j.access_token) return { ok:false };
   await upsertConnector(tenant_id, 'email', 'google', { status:'connected', details: { ...(details||{}), tokens: { ...(details?.tokens||{}), ...j } } });
   return { ok:true, access: j.access_token };
-}
 
 async function gmailList(tenant_id, qStr = 'newer_than:1d', max = 25){
   const conn = await getEmailConnector(tenant_id);
@@ -710,7 +694,6 @@ function extractBearer(req) {
   const h = req.headers?.authorization || req.headers?.Authorization || "";
   const m = /^Bearer\s+(.+)$/i.exec(h || "");
   return qTok || (m ? m[1] : "");
-}
 
 // --- M365 OAuth start (robust) ---
 app.get("/auth/m365/start", async (req, res) => {
@@ -730,7 +713,6 @@ res.status(500).json({
         error: "m365 env missing",
         have: { CLIENT_ID: !!CLIENT_ID, REDIRECT: !!REDIRECT }
       });
-    }
 
     // verify the user token (from ?token= or Authorization header)
     const tok = extractBearer(req);
@@ -795,7 +777,7 @@ app.get("/auth/m365/callback", async (req, res) => {
     try {
       const decodedState = JSON.parse(Buffer.from(String(state), "base64url").toString("utf8"));
       sessionToken = decodedState?.t || null;
-    } catch (_) {}
+
     if (!sessionToken) return res.status(400).send("bad state");
 
     let sess;
@@ -828,7 +810,6 @@ res.status(401).send("invalid session");
       });
       const json = await resp.json();
       return { ok: resp.ok && !!json?.access_token, json };
-    }
 
     // Try env tenant first, then consumers, then common
     const attempts = [preferredTenant, "consumers", "common"]
@@ -841,13 +822,11 @@ res.status(401).send("invalid session");
       const msg = (r.json?.error_description || r.json?.error || '').toString();
       const personal = /personal Microsoft account|AADSTS70000121/i.test(msg);
       if (!personal && t !== attempts[attempts.length-1]) continue;
-    }
 
     if (!tokens || !tokens.access_token) {
       console.error('m365 token exchange failed (all attempts)');
       const to = `${FRONTEND_URL.replace(/\/$/, '')}/integrations?connected=m365&ok=0&err=${encodeURIComponent('token_exchange_failed')}`;
       return res.redirect(to);
-    }
 
     // Fetch identity for “Connected as …”
     let account = null;
@@ -863,8 +842,6 @@ res.status(401).send("invalid session");
           displayName: me?.displayName || null,
           mail: me?.mail || null
         };
-      }
-    } catch(_) {}
 
     await upsertConnector(tenant_id, 'email', 'm365', {
       status: 'connected',
@@ -895,7 +872,6 @@ app.get("/auth/google/start", async (req, res) => {
       decoded = jwt.verify(tok, JWT_SECRET);
     } catch {
 res.status(401).json({ error: "Invalid token" });
-    }
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT) return res.status(500).json({ error: "google not configured" });
 
@@ -938,7 +914,6 @@ res.status(400).send("bad state");
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT) {
 res.status(500).send("google not configured");
-    }
 
     const body = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
@@ -958,7 +933,6 @@ res.status(500).send("google not configured");
       const txt = typeof tokens === 'string' ? tokens : JSON.stringify(tokens).slice(0,300);
       const to = `${FRONTEND_URL.replace(/\/$/,"")}/integrations?connected=google&ok=0&err=${encodeURIComponent('token exchange failed')}`;
       return res.redirect(to);
-    }
 
     // Fetch Gmail profile to capture the account email
     const profRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
@@ -967,7 +941,6 @@ res.status(500).send("google not configured");
     let profile = null;
     if (profRes.ok) {
       profile = await profRes.json().catch(()=>null);
-    }
 
     await upsertConnector(tenant_id, "email", "google", {
       status: "connected",
@@ -1012,7 +985,6 @@ app.post("/integrations/email/test", authMiddleware, async (req, res) => {
         return fetch("https://graph.microsoft.com/v1.0/me", {
           headers: { Authorization: `Bearer ${tok}` }
         });
-      }
 
       let r = await graphTiny(access);
       if (r.status === 401 && refresh) {
@@ -1035,7 +1007,6 @@ res.json({
           userPrincipalName: me?.userPrincipalName || null
         }
       });
-    }
 
     if (c.provider === "google") {
       const details = c.details || {};
@@ -1074,7 +1045,6 @@ res.json({ ok:true, connected:false, provider:'google', reason:`gmail ${profRes.
       }
       const prof = await profRes.json().catch(()=>({}));
 res.json({ ok:true, connected:true, provider:'google', account:{ emailAddress: prof?.emailAddress||null } });
-    }
 
     const hasToken = !!(c?.details?.tokens?.access_token || c?.details?.tokens?.refresh_token);
 res.json({ ok:true, connected: hasToken, provider: c.provider });
@@ -1244,7 +1214,6 @@ const ingestLimiter=rateLimit({windowMs:60*1000,max:180,standardHeaders:true,leg
 app.use("/auth",authLimiter);
 app.use(["/email/scan","/edr/ingest","/dns/ingest","/logs/ingest","/cloud/ingest"],ingestLimiter);
 
-
 // ---------- health ----------
 app.get("/",(_req,res)=>res.json({ok:true,service:BRAND,version:"2.3.0"}));
 app.get("/health",async (_req,res)=>{
@@ -1258,7 +1227,6 @@ app.post("/auth/login", async (req, res) => {
     let { email, password } = req.body || {};
     if (!email || !password) {
 res.status(400).json({ error: "missing email or password" });
-    }
 
     email = String(email).toLowerCase().trim();
 
@@ -1276,7 +1244,6 @@ res.status(401).json({ error: "invalid credentials" });
     const ok = await bcrypt.compare(String(password), user.password_hash || "");
     if (!ok) {
 res.status(401).json({ error: "invalid credentials" });
-    }
 
     // Issue JWT
     const is_super = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
@@ -1320,9 +1287,6 @@ app.post("/auth/register",async (req,res)=>{
   }catch(e){ res.status(500).json({error:"register failed"}); }
 });
 
-
-
-
 app.get("/trial/status", authMiddleware, async (req,res)=>{
   try{
     const t = await getEffectivePlan(req.user.tenant_id, req);
@@ -1345,7 +1309,6 @@ app.get("/trial/status", authMiddleware, async (req,res)=>{
   }
 });
 
-
 // ---- Admin: start trial (Basic/Pro only) ----
 app.post('/admin/trial/start', authMiddleware, requireSuper, async (req, res) => {
   try{
@@ -1361,7 +1324,6 @@ app.post('/admin/trial/start', authMiddleware, requireSuper, async (req, res) =>
     const basePlan = String(trow.plan || 'basic').toLowerCase();
     if (!(basePlan === 'basic' || basePlan === 'pro')) {
 res.status(400).json({ ok:false, error: 'trial only available for Basic/Pro tenants' });
-    }
 
     await q(
       `UPDATE tenants
@@ -1528,7 +1490,6 @@ app.post("/billing/activate",authMiddleware,async (req,res)=>{
   }catch(e){ res.status(500).json({error:"activate failed"}); }
 });
 
-
 // ---- Stripe Billing (modern endpoints) ----
 import Stripe from "stripe";
 
@@ -1558,8 +1519,6 @@ function planToPrice(plan) {
   if (canonical === "pro") return STRIPE_PRICE_PRO;
   if (canonical === "pro_plus") return STRIPE_PRICE_PROPLUS;
   return null;
-}
-
 
 function canonicalPlan(plan){
   const raw = String(plan ?? "").trim().toLowerCase();
@@ -1568,7 +1527,6 @@ function canonicalPlan(plan){
   if (compact === "pro") return "pro";
   if (compact === "proplus" || compact === "pro+") return "pro_plus";
   return null;
-}
 
 // --- Stripe plan/tenant helpers ---
 function resolvePlanFromPriceId(priceId) {
@@ -1579,7 +1537,6 @@ function resolvePlanFromPriceId(priceId) {
     [STRIPE_PRICE_PROPLUS]: 'pro_plus'
   };
   return map[priceId] || null;
-}
 
 async function resolveTenantIdFromEvent(obj) {
   try {
@@ -1592,10 +1549,8 @@ async function resolveTenantIdFromEvent(obj) {
     if (customerId) {
       const rows = await q(`select id from tenants where stripe_customer_id = $1 limit 1`, [String(customerId)]);
       if (rows && rows[0] && rows[0].id) return rows[0].id;
-    }
-  } catch (_e) {}
+
   return null;
-}
 
 async function setTenantPlan(tenantId, plan, opts = {}) {
   const endTrial = !!opts.endTrial;
@@ -1617,7 +1572,6 @@ async function setTenantPlan(tenantId, plan, opts = {}) {
     await recordOpsRun('stripe_plan_set_error', { tenant_id: tenantId, plan: key, msg: e.message || String(e) });
     throw e;
   }
-}
 
 // Debug endpoint: test canonicalization of plan input
 app.get('/billing/_debug', authMiddleware, requireSuper, (req, res) => {
@@ -1643,7 +1597,6 @@ async function getOrCreateStripeCustomer(tenant_id) {
     } catch (_) {
       customerId = null;
     }
-  }
 
   // Create if missing
   if (!customerId) {
@@ -1660,10 +1613,8 @@ async function getOrCreateStripeCustomer(tenant_id) {
        WHERE tenant_id = $1`,
       [tenant_id, customerId]
     );
-  }
 
   return customerId;
-}
 
 // --- Billing helpers: idempotency + plan sync + auditing ---
 async function hasStripeEvent(id){
@@ -1677,7 +1628,7 @@ async function markStripeEvent(id, type, raw){
        VALUES($1,$2,$3,EXTRACT(EPOCH FROM NOW())) ON CONFLICT DO NOTHING`,
       [id, String(type||''), raw||{}]
     );
-  }catch(_e){}
+
 }
 function mapPriceToPlan(priceId){
   if (!priceId) return null;
@@ -1721,8 +1672,6 @@ async function setTenantPlanFromPrice(opts){
 async function logStripeRun(kind, details){
   try{
     await recordOpsRun(kind, details || {});
-  }catch(_e){}
-}
 
 // Probe endpoint for config
 app.get("/billing/_config", (req, res) => {
@@ -1737,7 +1686,6 @@ app.get("/billing/_config", (req, res) => {
   });
 });
 
-
 // Ensure Stripe webhook receives raw Buffer body for signature verification
 app.use('/billing/webhook', express.raw({ type: '*/*' }));
 // --- keep a copy of the raw body for Stripe signature verification ---
@@ -1751,7 +1699,6 @@ const rawSaver = (req, res, buf) => {
 app.post("/billing/webhook", async (req, res) => {
   if (!stripe || !STRIPE_WEBHOOK_SECRET) {
 res.status(501).json({ ok:false, error:"webhook not configured" });
-  }
 
   // Use Buffer body for signature validation (express.raw is mounted earlier)
   const sig = req.headers['stripe-signature'];
@@ -1762,7 +1709,6 @@ res.status(501).json({ ok:false, error:"webhook not configured" });
   if (!bodyForSig) {
     await recordOpsRun('stripe_bad_sig', { error: 'no buffer body' });
 res.status(400).send('Webhook Error: Raw Buffer body required for signature verification');
-  }
 
   let event;
   try {
@@ -1770,7 +1716,6 @@ res.status(400).send('Webhook Error: Raw Buffer body required for signature veri
   } catch (e) {
     await recordOpsRun('stripe_bad_sig', { error: e.message || String(e) });
 res.status(400).send(`Webhook Error: ${e.message}`);
-  }
 
   const etype = String(event.type || '');
   const eid   = String(event.id || '');
@@ -1794,7 +1739,6 @@ res.status(400).send(`Webhook Error: ${e.message}`);
           await recordOpsRun('stripe_plan_unresolved', { event: etype, tenantId, priceId, metaPlan: sess?.metadata?.plan || null });
         }
         break;
-      }
 
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
@@ -1818,7 +1762,6 @@ res.status(400).send(`Webhook Error: ${e.message}`);
           }
         }
         break;
-      }
 
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
@@ -1829,7 +1772,6 @@ res.status(400).send(`Webhook Error: ${e.message}`);
           await recordOpsRun('stripe_plan_unresolved', { event: etype, reason: 'no tenant_id', customer: sub?.customer || null });
         }
         break;
-      }
 
       case 'invoice.payment_succeeded':
       case 'invoice.paid': {
@@ -1849,7 +1791,6 @@ res.status(400).send(`Webhook Error: ${e.message}`);
           await setTenantBillingStatus(tenantId, null);
         }
         break;
-      }
 
       case 'invoice.payment_failed': {
         const inv = event.data.object;
@@ -1860,12 +1801,10 @@ res.status(400).send(`Webhook Error: ${e.message}`);
           await setTenantBillingStatus(tenantId, 'payment_failed');
         }
         break;
-      }
 
       default:
         // Acknowledge unhandled events to prevent Stripe retries
         break;
-    }
 
     try { await recordOpsRun('stripe_webhook', { type: etype, event_id: eid }); } catch(_e) {}
 res.json({ received: true });
@@ -2015,7 +1954,6 @@ async function ensureApikeysSchema(){
       ALTER TABLE apikeys ALTER COLUMN id TYPE TEXT USING id::text;
     END IF;
   END $$;`);
-}
 
 async function withApikeysRetry(op){
   try { return await op(); }
@@ -2039,7 +1977,7 @@ async function requirePaidPlan(req, res, next) {
     if (!ok) {
       try {
         await recordOpsRun('paid_plan_denied', { tenant_id: req.user?.tenant_id || null, plan, route: req.path });
-      } catch (_e) {}
+
 res.status(402).json({ error: 'Paid plan required', plan });
     }
     next();
@@ -2260,7 +2198,6 @@ app.post('/email/poll', authMiddleware, enforceActive, async (req,res)=>{
     const conn = await getEmailConnector(req.user.tenant_id);
     if(!conn || conn.status!=='connected'){
 res.status(400).json({ ok:false, error:'no connected email provider' });
-    }
 
     let items = [];
     if(conn.provider === 'm365'){
@@ -2274,12 +2211,10 @@ res.status(400).json({ ok:false, error:'no connected email provider' });
       items = await gmailList(req.user.tenant_id, 'newer_than:1d', Math.max(1, Math.min(50, max)));
     }else{
 res.status(400).json({ ok:false, error:`unsupported provider: ${conn.provider}` });
-    }
 
     // Normalize Graph messages so writeAlert can denormalize into from/subject/preview
     if (conn.provider === 'm365' && Array.isArray(items)) {
       items = items.map(normalizeGraphMessage);
-    }
 
     const created = await scanAndRecordEmails(req.user.tenant_id, items);
     await saveUsage(req.user.tenant_id, 'email_poll');
@@ -2544,13 +2479,11 @@ const RETAIN_USAGE_DAYS = Number(process.env.RETAIN_USAGE_DAYS || 180);
 function cutoffEpoch(days){
   const d = Math.max(1, Number(days || 1));
   return Math.floor(Date.now()/1000) - (d * 24 * 3600);
-}
 
 async function retentionPreview(){
   const a = await q(`SELECT COUNT(*)::int AS n FROM alerts WHERE created_at < $1`, [cutoffEpoch(RETAIN_ALERT_DAYS)]);
   const u = await q(`SELECT COUNT(*)::int AS n FROM usage_events WHERE created_at < $1`, [cutoffEpoch(RETAIN_USAGE_DAYS)]);
   return { alerts: a.rows[0]?.n || 0, usage_events: u.rows[0]?.n || 0 };
-}
 
 async function retentionRun(){
   const a = await q(`
@@ -2658,7 +2591,6 @@ app.get('/admin/ops/runs', authMiddleware, requireSuper, async (req, res) => {
     } else if (!showBadSig) {
       // Hide noisy bad-sig logs by default unless explicitly requested
       whereClauses.push(`run_type <> 'stripe_bad_sig'`);
-    }
 
     let sql = `SELECT id, run_type, details, created_at FROM ops_runs`;
     if (whereClauses.length) sql += ` WHERE ` + whereClauses.join(' AND ');
@@ -2700,7 +2632,6 @@ res.status(403).json({ ok:false, error: 'disabled in this environment' });
         [uuidv4(), req.user.tenant_id, 'email', ts]
       );
       inserted++;
-    }
 
     // audit trail
     try { await recordOpsRun('seed_usage', { days_ago: daysAgo, count: inserted }); } catch(_e) {}
@@ -2836,7 +2767,6 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
 
     if (!setParts.length) {
 res.status(500).json({ ok:false, error:'no resettable columns found' });
-    }
 
     const sql = `UPDATE connectors SET ${setParts.join(', ')} WHERE tenant_id=$1 AND type=$2 AND provider=$4`;
     await q(sql, [tid, type, now(), provider]);
@@ -2905,7 +2835,6 @@ app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) =
           );
           results.push({ provider: r.provider, ok:false, error:'unsupported' });
           continue;
-        }
 
         const created = await scanAndRecordEmails(r.tenant_id, items);
         await q(
@@ -2969,7 +2898,7 @@ setInterval(async ()=>{
       FROM alerts WHERE created_at>(EXTRACT(EPOCH FROM NOW())-24*3600)
       GROUP BY tenant_id ORDER BY alerts_24 DESC LIMIT 20`);
     if(rows.length) console.log("[daily-summary]",new Date().toISOString(),rows);
-  }catch(_e){}
+
 }, 6*60*60*1000);
 
 // ---------- background email poller (provider-aware: M365 delta + Gmail) ----------
@@ -3009,7 +2938,6 @@ setInterval(async ()=>{
             [r.tenant_id, now(), 'unsupported provider', r.provider]
           );
           continue;
-        }
 
         const created = await scanAndRecordEmails(r.tenant_id, items);
 
@@ -3036,7 +2964,6 @@ async function ensureAlertDetailColumns() {
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS anomaly BOOLEAN`); } catch(_) {}
   // score already exists in most schemas; keep optional add for safety
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS score NUMERIC`); } catch(_) {}
-}
 
 // Best-effort denormalization from legacy JSONB `event` into flat columns
 async function denormalizeAlertsForTenant(tenantId) {
@@ -3054,7 +2981,6 @@ async function denormalizeAlertsForTenant(tenantId) {
          AND event IS NOT NULL
     `, [tenantId]);
   } catch (_) { /* if event column doesn't exist, ignore */ }
-}
 
 // Periodic background denormalization (lightweight)
 setInterval(async ()=>{
@@ -3143,7 +3069,6 @@ res.status(500).json({ ok:false, error: 'status failed' });
   }
 });
 
-
 // ====== AI Autonomy Backend Patch ======
 // --- SQL helpers for ai_policies, ai_actions, ai_jobs ---
 async function ensureAIAutonomySchema() {
@@ -3199,13 +3124,11 @@ async function isProPlus(tenant_id) {
   // Allow trial users to access Pro+ features if trial_status is active
   if (rows[0].trial_status === 'active' && Number(rows[0].trial_ends_at || 0) > now()) return true;
   return false;
-}
 
 // --- Helper: withinRateLimit (stub) ---
 async function withinRateLimit(tenant_id, action) {
   // TODO: implement actual rate limiting if needed
   return true;
-}
 
 // --- Helper: proposeActions (stub) ---
 async function proposeActions(tenant_id, context) {
@@ -3218,13 +3141,11 @@ async function proposeActions(tenant_id, context) {
       reason: "Suspicious activity detected"
     }
   ];
-}
 
 // --- Helper: executeAction (stub) ---
 async function executeAction(ai_action) {
   // Simulate action execution
   return { ok: true, executed: true, action: ai_action.action, params: ai_action.params, ts: now() };
-}
 
 // --- Middleware: requireProPlus ---
 async function requireProPlus(req, res, next) {
@@ -3232,7 +3153,6 @@ async function requireProPlus(req, res, next) {
 res.status(402).json({ ok:false, error: "Requires Pro+ plan" });
   }
   next();
-}
 
 // --- GET /ai/policies ---
 app.get('/ai/policies', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
@@ -3393,7 +3313,6 @@ setInterval(async ()=>{
 async function setTenantBillingStatus(tenantId, status) {
   try { await ensureBillingStatusColumn(); } catch(_e) {}
   await q(`UPDATE tenants SET billing_status=$2 WHERE tenant_id=$1`, [tenantId, status ?? null]);
-}
 
 // Map Stripe price IDs to internal plan codes
 const PRICE_TO_PLAN = (() => {
@@ -3421,14 +3340,12 @@ async function setTenantStripeCustomerId(tenantId, customerId){
 async function tenantIdByStripeCustomerId(customerId){
   const r = await q(`SELECT tenant_id FROM tenants WHERE stripe_customer_id=$1`, [customerId]);
   return r.rows && r.rows[0] ? r.rows[0].tenant_id : null;
-}
 
 // -- Ensure billing_status column exists (safe, idempotent)
 async function ensureBillingStatusColumn() {
   try {
     await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`);
   } catch (_e) { /* ignore */ }
-}
 
 // -- Check if billing_status column exists (with simple in-memory cache)
 let _billingStatusColumnKnown = false;
@@ -3452,11 +3369,8 @@ async function ensureConnectorHealthColumns() {
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch (_e) {}
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
-}
-
 
 // ---------- /me route ----------
-} catch (_e) {}
 
       // Fetch tenant row (same shape as /me_dbg)
       try { await recordOpsRun('me_stage', { s: 'before_select', tid: req.user?.tenant_id || null }); } catch (_e) {}
@@ -3580,7 +3494,6 @@ if (process.env.NODE_ENV !== 'production') {
       res.status(500).json({ ok: false, error: String(e.message || e) });
     }
   });
-}
 
 // ---------- Stripe Billing endpoints ----------
 
@@ -3601,7 +3514,6 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
       });
       customer = c.id;
       await setTenantStripeCustomerId(req.user.tenant_id, customer);
-    }
 
     const success = (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing/success';
     const cancel  = (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing/cancel';
@@ -3631,13 +3543,11 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
   } catch (err) {
     try { await recordOpsRun('stripe_bad_sig', { error: String(err?.message||err) }); } catch(_e) {}
 res.status(400).send('bad signature');
-  }
 
   try {
     // Helper to safely set billing status (ignores missing column silently)
     async function safeSetBilling(tenantId, status){
       try { await setTenantBillingStatus(tenantId, status); } catch(_e) {}
-    }
 
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -3666,9 +3576,8 @@ res.status(400).send('bad signature');
             tenant_id: tenantId || null,
             had_metadata: !!tenantId
           });
-        } catch(_e) {}
+
         break;
-      }
 
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
@@ -3692,7 +3601,6 @@ res.status(400).send('bad signature');
         }
         try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'customer.subscription.updated', event_id: event.id, plan, tenant_id: tenantId }); } catch(_e) {}
         break;
-      }
 
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
@@ -3703,7 +3611,6 @@ res.status(400).send('bad signature');
         }
         try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'customer.subscription.deleted', event_id: event.id, tenant_id: tenantId }); } catch(_e) {}
         break;
-      }
 
       case 'invoice.payment_failed': {
         const inv = event.data.object;
@@ -3718,9 +3625,8 @@ res.status(400).send('bad signature');
             customer_id: customerId || null,
             tenant_id: tenantId || null
           });
-        } catch(_e) {}
+
         break;
-      }
 
       case 'invoice.paid': {
         const inv = event.data.object;
@@ -3735,9 +3641,8 @@ res.status(400).send('bad signature');
             customer_id: customerId || null,
             tenant_id: tenantId || null
           });
-        } catch(_e) {}
+
         break;
-      }
 
       default: {
         // benign: log and continue
@@ -3846,7 +3751,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
         RETURNING a.id;
       `, [tid]);
       stats.from_addr = r1.rowCount || (r1.rows ? r1.rows.length : 0) || 0;
-    } catch (_e) {}
 
     try {
       const r2 = await q(`
@@ -3880,7 +3784,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
         RETURNING a.id;
       `, [tid]);
       stats.subject = r2.rowCount || (r2.rows ? r2.rows.length : 0) || 0;
-    } catch (_e) {}
 
     try {
       const r3 = await q(`
@@ -3916,7 +3819,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
         RETURNING a.id;
       `, [tid]);
       stats.preview = r3.rowCount || (r3.rows ? r3.rows.length : 0) || 0;
-    } catch (_e) {}
 
     try {
       const r4 = await q(`
@@ -3951,7 +3853,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
         RETURNING a.id;
       `, [tid]);
       stats.type = r4.rowCount || (r4.rows ? r4.rows.length : 0) || 0;
-    } catch (_e) {}
 
     try {
       const r5 = await q(`
@@ -3985,7 +3886,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
         RETURNING a.id;
       `, [tid]);
       stats.anomaly = r5.rowCount || (r5.rows ? r5.rows.length : 0) || 0;
-    } catch (_e) {}
 
     try { await recordOpsRun('alerts_denormalize', { tenant_id: tid, ...stats }); } catch (_e) {}
 res.json({ ok: true, updated: stats });
@@ -4027,7 +3927,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
     if (dry) {
       try { await recordOpsRun('alerts_prune_blank_dry', { tenant_id: tid, count: n, days: cutoff ? days : null }); } catch (_e) {}
 res.json({ ok: true, dry: true, would_delete: n, days: cutoff ? days : null });
-    }
 
     // Delete
     const del = await q(`DELETE FROM alerts WHERE ${WHERE}`, params);
@@ -4094,7 +3993,6 @@ res.status(500).json({ ok:false, error: 'poll failed' });
     if (clearCols.length === 0) {
       // guarantee we at least clear health
       ['status','last_error','last_sync_at'].forEach(c => { if (!clearCols.includes(c)) clearCols.push(c); });
-    }
 
     // Build dynamic UPDATE SET list
     const setParts = clearCols.map(c => (c === 'status' ? `status='new'` : `${c}=NULL`));
@@ -4130,7 +4028,6 @@ res.status(500).json({ ok:false, error: 'reset failed', step:'fallback', detail:
         }
 res.status(500).json({ ok:false, error: 'reset failed' });
       }
-    }
 
     // 2) If we have JSON/JSONB blobs (common names), surgically remove token keys
     const JSON_CANDIDATES = ['data','config','meta','settings','auth_json','details'];
@@ -4154,7 +4051,6 @@ res.status(500).json({ ok:false, error: 'reset failed' });
           } catch(_e) { /* ignore per-key issues */ }
         }
       }
-    }
 
     // If JSON casts failed (e.g., TEXT column), as a last resort null out obvious secrets by text match
     try {
@@ -4224,7 +4120,6 @@ res.status(500).json({ ok:false, error: 'reset failed' });
              )
         `, [tid, provider]);
       } catch(_e) { /* best-effort */ }
-    }
 
     // Optional hard clear of details when explicitly requested via ?force=1
     const force = (req.query && (req.query.force === '1' || req.query.force === 'true'));
@@ -4233,7 +4128,6 @@ res.status(500).json({ ok:false, error: 'reset failed' });
         await q(`UPDATE connectors SET details=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
         try { await recordOpsRun('connector_reset_force_details', { tenant_id: tid, provider }); } catch(_e) {}
       } catch(_e) { /* non-fatal */ }
-    }
 
     // 3) As a last resort, if there is a single row for this tenant/provider and it still has credentials,
     // offer an optional hard delete via query flag `?purge=1` (super only, explicit opt-in)
@@ -4241,7 +4135,6 @@ res.status(500).json({ ok:false, error: 'reset failed' });
     if (purge) {
       try { await q(`DELETE FROM connectors WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); }
       catch(_e) { /* best effort */ }
-    }
 
     try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch(_e) {}
 
@@ -4254,8 +4147,7 @@ res.status(500).json({ ok:false, error: 'reset failed' });
           const dtext = r.rows[0].details != null ? String(r.rows[0].details) : '';
           details_has_tokens = /access_token|refresh_token|id_token|\"tokens\"/i.test(dtext);
           details_sample = dtext.slice(0, 200);
-        }
-      } catch(_e) {}
+
 res.json({
         ok: true,
         cleared: clearCols,
@@ -4325,7 +4217,6 @@ async function runBackgroundPoll() {
   } catch (err) {
     console.error('[bg-poll] failed to run background poll', err?.message || err);
   }
-}
 
 function startBackgroundPoller() {
   if (!BG_ENABLED) {
@@ -4342,7 +4233,6 @@ function startBackgroundPoller() {
       setTimeout(runBackgroundPoll, jitter);
     }, 5 * 60 * 1000);
   }, firstJitter);
-}
 
 // start the background poller (no-op if disabled)
 startBackgroundPoller();
@@ -4534,12 +4424,10 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
           }
         }
       }
-    }
 
     // Optional debug: quickly inspect shape without running mapping
     if (String(req.query?.debug || '') === '1') {
 res.json({ ok: true, mode: fmt, rows: rows.length, sample_keys: rows[0] ? Object.keys(rows[0]) : null });
-    }
 
     if (fmt === 'csv') {
       // Minimal CSV encoder (no external deps)
@@ -4570,7 +4458,6 @@ res.json({ ok: true, mode: fmt, rows: rows.length, sample_keys: rows[0] ? Object
       const fname = `alerts_${tid}_${days}d_${Date.now()}.csv`;
       res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
 res.status(200).send(csv);
-    }
 
     // default: JSON
     // Hardened: prevent odd values from breaking the export; truncate long strings (JSON only)
@@ -4618,7 +4505,6 @@ res.status(200).send(csv);
           try { await recordOpsRun('alerts_export_row_skip', { err: String(rowErr?.message || rowErr) }); } catch(_e) {}
         }
       }
-    }
 
     // Some drivers may still surface BigInt somewhere; use a replacer just in case
     const safeStringify = (obj) => JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? Number(v) : v));
@@ -4651,7 +4537,6 @@ app.post('/support/send', async (req, res) => {
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
 res.status(400).json({ ok:false, error:'invalid email' });
-    }
 
     const safeName = xss(name);
     const safeMsg  = xss(message);
@@ -4662,7 +4547,6 @@ res.status(400).json({ ok:false, error:'invalid email' });
 
     if (!process.env.SENDGRID_API_KEY) {
 res.status(500).json({ ok:false, error: 'SENDGRID_API_KEY not set' });
-    }
 
     await sgMail.send({
       to,
@@ -4724,7 +4608,6 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
       `, [tid, provider]);
     } catch (_e) {
       upd1 = null;
-    }
 
     // Guard rails: if status somehow remains not 'new', force it again explicitly
     try {
@@ -4734,7 +4617,6 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
          WHERE tenant_id=$1 AND provider=$2
            AND (status IS DISTINCT FROM 'new')
       `, [tid, provider]);
-    } catch (_e) {}
 
     // Also ensure last_error is NULL even if other triggers re-populated it
     try {
@@ -4744,13 +4626,11 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
          WHERE tenant_id=$1 AND provider=$2
            AND last_error IS NOT NULL
       `, [tid, provider]);
-    } catch (_e) {}
 
     // Also remove known token keys from other JSON-ish columns if they exist
     const extraCols = ['data','config','meta','settings','auth_json'];
     for (const c of extraCols) {
       try { await q(`UPDATE connectors SET ${c}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
-    }
 
     // Diagnostic readback to confirm final status and details are as expected
     let statusAfter = null, detailsAfterNull = null;
@@ -4759,8 +4639,6 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
       if (chk.rows && chk.rows[0]) {
         statusAfter = chk.rows[0].status || null;
         detailsAfterNull = (chk.rows[0].details === null);
-      }
-    } catch (_e) {}
 
     try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider, rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null, status_after: statusAfter, details_is_null: detailsAfterNull }); } catch(_e) {}
 res.json({
