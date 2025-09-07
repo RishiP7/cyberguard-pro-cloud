@@ -34,7 +34,9 @@ function BrandLogo(){
       if (e?.target) { e.target.src = "/brand/logo.png"; }
     } catch(_){} }}
   />
-  <h2 style={{ margin: 0, fontSize: 18 }}>Cyber Guard Pro</h2>
+  <div data-cgp-brand style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+  <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:36,width:"auto"}} />
+</div>
 </div>
 </div>
   </div>;
@@ -1034,9 +1036,9 @@ function Layout({ children }) {
         `}</style>
 
 {/* CGP brand (autoinserted) */}
-<div data-cgp-brand style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-    <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:24,width:"auto"}} />
-  </div>}
+<div data-cgp-brand style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+  <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:36,width:"auto"}} />
+</div>}
         <div style={{marginTop:10, opacity:.9}}>
           New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
         </div>
@@ -3021,7 +3023,6 @@ function RequireAuth({ children }){
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
-
 function LiveStatusTicker({ inline=false }){
   const [msgs, setMsgs] = React.useState([]);
 
