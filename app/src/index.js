@@ -1293,11 +1293,23 @@ app.post("/auth/register",async (req,res)=>{
 });
 
 // ---------- me / usage ----------
-app.get("/me",authMiddleware,async (req,res)=>{
-  try{
-const {rows}=await q(`SELECT * FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
-    if(!rows.length) return res.status(404).json({error:"tenant not found"});
-    const me = rows[0];
+app.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const { sub, email, role = 'owner', plan = 'pro_plus', tenant_id = 'tenant_admin' } = req.user || {};
+    if (!email && !sub) return res.status(401).json({ error: 'not authed' });
+
+    // Temporary no-DB tenant info so the web app can load
+    return res.json({
+      ok: true,
+      user: { email: email || sub, role, plan, tenant_id },
+      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
+    });
+  } catch (e) {
+    console.error('/me error', e);
+    return res.status(500).json({ ok:false, error:'server error' });
+  }
+});
+const me = rows[0];
     const eff = await getEffectivePlan(req.user.tenant_id, req);
     me.effective_plan = eff.effective;
     me.trial_active   = eff.trial_active;
@@ -3524,10 +3536,22 @@ async function ensureConnectorHealthColumns() {
 
 // ---------- /me route ----------
 app.get('/me', authMiddleware, async (req, res) => {
-  {
-    try {
-      // breadcrumbs for debugging
-      try { await recordOpsRun('me_stage', { s: 'start', tid: req.user?.tenant_id || null }); } catch (_e) {}
+  try {
+    const { sub, email, role = 'owner', plan = 'pro_plus', tenant_id = 'tenant_admin' } = req.user || {};
+    if (!email && !sub) return res.status(401).json({ error: 'not authed' });
+
+    // Temporary no-DB tenant info so the web app can load
+    return res.json({
+      ok: true,
+      user: { email: email || sub, role, plan, tenant_id },
+      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
+    });
+  } catch (e) {
+    console.error('/me error', e);
+    return res.status(500).json({ ok:false, error:'server error' });
+  }
+});
+} catch (_e) {}
 
       // Fetch tenant row (same shape as /me_dbg)
       try { await recordOpsRun('me_stage', { s: 'before_select', tid: req.user?.tenant_id || null }); } catch (_e) {}
