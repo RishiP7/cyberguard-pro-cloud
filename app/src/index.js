@@ -3646,8 +3646,11 @@ app.get('/me', authMiddleware, async (req, res) => {
       const role = req.user?.role || 'member';
       const is_super = !!req.user?.is_super;
 
-      const payload = {
-        ok: true,
+      // Back-compat: expose both flat fields AND nested { user, tenant }
+      const email = req.user?.email || req.user?.sub || null;
+
+      const tenantObj = {
+        id: t.tenant_id || t.id || req.user.tenant_id,
         tenant_id: t.tenant_id || t.id || req.user.tenant_id,
         name: t.name || null,
         plan: t.plan || null,
@@ -3657,12 +3660,44 @@ app.get('/me', authMiddleware, async (req, res) => {
         trial_status: t.trial_status ?? null,
         created_at: t.created_at ?? null,
         updated_at: t.updated_at ?? null,
-        billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status),
-        effective_plan: t.plan || null,
+        billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status)
+      };
+
+      const userObj = {
+        email,
+        role,
+        plan: tenantObj.plan,
+        tenant_id: tenantObj.tenant_id,
+        is_super
+      };
+
+      const payload = {
+        ok: true,
+
+        // ---- flat fields (legacy callers) ----
+        id: tenantObj.id,
+        tenant_id: tenantObj.tenant_id,
+        name: tenantObj.name,
+        plan: tenantObj.plan,
+        contact_email: tenantObj.contact_email,
+        trial_started_at: tenantObj.trial_started_at,
+        trial_ends_at: tenantObj.trial_ends_at,
+        trial_status: tenantObj.trial_status,
+        created_at: tenantObj.created_at,
+        updated_at: tenantObj.updated_at,
+        billing_status: tenantObj.billing_status,
+        effective_plan: tenantObj.plan,
         trial_active: trialActive,
-        plan_actual: t.plan || null,
+        plan_actual: tenantObj.plan,
         role,
         is_super,
+        email,
+
+        // ---- nested objects (new callers) ----
+        user: userObj,
+        tenant: tenantObj,
+
+        // normalized trial view for UI
         trial: {
           active: trialActive,
           days_left: trialActive ? Math.max(0, Math.floor((trialEndsNum - nowEpoch) / 86400)) : 0,
