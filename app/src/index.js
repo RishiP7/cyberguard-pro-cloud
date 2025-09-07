@@ -2878,7 +2878,6 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 });
 
 // Create Express app
-const app = express();
 
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
