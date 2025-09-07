@@ -2889,20 +2889,31 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
 
+/* ===== NO-DB /me (forced) ===== */
+app.get('/me', authMiddleware, (req, res) => {
+  try {
+    const u = req.user || {};
+    const email = u.email || u.sub || 'owner@cyberguardpro.com';
+    const plan = u.plan || 'pro_plus';
+    const tenant_id = u.tenant_id || 'tenant_admin';
+    const role = u.role || 'owner';
+    return res.json({
+      ok: true,
+      user: { email, role, plan, tenant_id },
+      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
+    });
+  } catch (e) {
+    console.error('me error', e);
+    return res.status(500).json({ ok:false, error:'me failed' });
+  }
+});
+/* ===== /me end ===== */
+
+
+
 
 
 /* ==== NO-DB /me (forced) ==== */
-app.get('/me', authMiddleware, (req, res) => {
-  const u = req.user || {};
-  const email = u.email || u.sub || 'owner@cyberguardpro.com';
-  const plan = u.plan || 'pro_plus';
-  const tenant_id = u.tenant_id || 'tenant_admin';
-  const role = u.role || 'owner';
-  return res.json({
-    ok: true,
-    user: { email, role, plan, tenant_id },
-    tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
-  });
 });
 /* ==== /me end ==== */
 
