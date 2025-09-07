@@ -37,19 +37,34 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .map(s => s.toLowerCase());
 const app = express();
 app.use(express.json());
-/* ---- /me (JWT only, no DB) ---- */
-app.get('/me', authMiddleware, (req, res) => {
+/* ---------- /me (JWT only) ---------- */
+app.get('/me', authMiddleware, async (req, res) => {
   try {
     const u = req.user || {};
     const email = u.email || u.sub || 'owner@cyberguardpro.com';
+    const role = u.role || 'owner';
     const plan = u.plan || 'pro_plus';
     const tenant_id = u.tenant_id || 'tenant_admin';
-    const role = u.role || 'owner';
+
+    // If you later want DB-backed plan/usage, do it here safely.
+    const effective_plan = plan;
+    const trial_active = false;
+
     return res.json({
       ok: true,
-      user: { email, role, plan, tenant_id },
-      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
-    });app.use((req, res, next) => {
+      user: { email, role, plan: effective_plan, tenant_id, is_super: !!u.is_super },
+      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan: effective_plan },
+      usage: {}
+    });
+  } catch (e) {
+    console.error('GET /me error', e);
+    return res.status(500).json({ ok:false, error: 'me failed' });
+  }
+});
+/* ---------- /me end ---------- */
+
+/* ---- /me (JWT only, no DB) ---- */
+app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
   return express.urlencoded({ extended: true })(req, res, next);
 });
@@ -1305,33 +1320,8 @@ app.post("/auth/register",async (req,res)=>{
   }catch(e){ res.status(500).json({error:"register failed"}); }
 });
 
-// ---------- me / usage ----------
 
-    const me = rows[0];
-    const eff = await getEffectivePlan(req.user.tenant_id, req);
-    me.effective_plan = eff.effective;
-    me.trial_active   = eff.trial_active;
-    me.plan_actual = eff.plan || me.plan;
-    me.role = req.user.role || 'member';
-    me.is_super = !!req.user.is_super;
-    // --- normalized trial object for frontend ---
-    const nowEpoch = now();
-    const endsEpoch = (me.trial_ends_at ? Number(me.trial_ends_at) : null) ?? (eff.trial_ends_at ? Number(eff.trial_ends_at) : null);
-    const days_left = endsEpoch ? Math.max(0, Math.ceil((endsEpoch - nowEpoch) / (24 * 3600))) : 0;
-    me.trial = {
-      active: !!(eff.trial_active),
-      days_left,
-      ends_at: endsEpoch ? new Date(endsEpoch * 1000).toISOString() : null
-    };
-    // Only Basic/Pro can have an active Pro+ trial
-    const basePlanNow = String(me.plan || '').toLowerCase();
-    const trialEligibleNow = (basePlanNow === 'basic' || basePlanNow === 'pro');
-    if (!trialEligibleNow) {
-      me.trial = { active:false, days_left:0, ends_at:null };
-    }
-    res.json({ ok: true, ...me });
-  }catch(e){ res.status(500).json({error:"me failed"}); }
-});
+
 
 app.get("/trial/status", authMiddleware, async (req,res)=>{
   try{
