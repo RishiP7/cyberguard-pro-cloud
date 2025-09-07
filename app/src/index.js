@@ -2977,6 +2977,63 @@ app.post('/admin/bootstrap-tenant', authMiddleware, async (req, res) => {
   }
 });
 
+// One-time bootstrap (schema-safe): creates/repairs tenants schema before upsert
+app.post('/admin/bootstrap-tenant-safe', authMiddleware, async (req, res) => {
+  try {
+    if (!req.user?.is_super) {
+      return res.status(403).json({ ok:false, error: 'forbidden' });
+    }
+    const tid = req.user?.tenant_id;
+    if (!tid) return res.status(400).json({ ok:false, error:'no tenant_id in token' });
+
+    // Ensure tenants table and required columns exist (idempotent)
+    try {
+      await q(`
+        CREATE TABLE IF NOT EXISTS tenants (
+          tenant_id TEXT PRIMARY KEY,
+          name TEXT,
+          plan TEXT,
+          trial_status TEXT,
+          trial_ends_at BIGINT,
+          contact_email TEXT,
+          stripe_customer_id TEXT,
+          billing_status TEXT,
+          created_at BIGINT,
+          updated_at BIGINT
+        );
+      `);
+    } catch(_) {}
+
+    // Column-by-column safety (older schemas)
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS name TEXT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan TEXT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_status TEXT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trial_ends_at BIGINT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS contact_email TEXT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS created_at BIGINT`); } catch(_) {}
+    try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS updated_at BIGINT`); } catch(_) {}
+
+    // Upsert the default tenant
+    await q(
+      `INSERT INTO tenants(tenant_id, name, plan, trial_status, trial_ends_at, created_at, updated_at)
+       VALUES($1,$2,'pro_plus','active', EXTRACT(EPOCH FROM NOW()) + 14*24*3600,
+              EXTRACT(EPOCH FROM NOW()), EXTRACT(EPOCH FROM NOW()))
+       ON CONFLICT (tenant_id) DO UPDATE SET
+         name=EXCLUDED.name,
+         plan=EXCLUDED.plan,
+         updated_at=EXCLUDED.updated_at`,
+      [tid, 'Cyber Guard Pro']
+    );
+
+    return res.json({ ok:true, tenant_id: tid, ensured: true });
+  } catch (e) {
+    console.error('bootstrap-tenant-safe error', e);
+    return res.status(500).json({ ok:false, error:'bootstrap failed', detail: String(e?.message||e) });
+  }
+});
+
 // Super Admin: run a one-shot poll now for this tenant (email connectors)
 // POST /admin/ops/poll/now  { limit?: number }
 app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
