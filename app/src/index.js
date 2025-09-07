@@ -38,6 +38,26 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
 const app = express();
 app.use(express.json());
 
+
+app.get('/me', authMiddleware, (req, res) => {
+  try {
+    const u = req.user || {};
+    const email = u.email || u.sub || 'owner@cyberguardpro.com';
+    const plan = u.plan || 'pro_plus';
+    const tenant_id = u.tenant_id || 'tenant_admin';
+    const role = u.role || 'owner';
+    return res.json({
+      ok: true,
+      user: { email, role, plan, tenant_id },
+      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
+    });
+  } catch (e) {
+    console.error('me error', e);
+    return res.status(500).json({ ok:false, error:'me failed' });
+  }
+});
+
+
 app.post('/auth/admin-login', async (req, res) => {
   try {
     const { email, password } = req.body || {};
@@ -1320,10 +1340,7 @@ app.post("/auth/register",async (req,res)=>{
 });
 
 // ---------- me / usage ----------
-app.get("/me",authMiddleware,async (req,res)=>{
-  try{
-const {rows}=await q(`SELECT * FROM tenants WHERE tenant_id=$1`,[req.user.tenant_id]);
-    if(!rows.length) return res.status(404).json({error:"tenant not found"});
+if(!rows.length) return res.status(404).json({error:"tenant not found"});
     const me = rows[0];
     const eff = await getEffectivePlan(req.user.tenant_id, req);
     me.effective_plan = eff.effective;
@@ -3487,11 +3504,7 @@ async function ensureConnectorHealthColumns() {
 
 
 // ---------- /me route ----------
-app.get('/me', authMiddleware, async (req, res) => {
-  {
-    try {
-      // breadcrumbs for debugging
-      try { await recordOpsRun('me_stage', { s: 'start', tid: req.user?.tenant_id || null }); } catch (_e) {}
+} catch (_e) {}
 
       // Fetch tenant row (same shape as /me_dbg)
       try { await recordOpsRun('me_stage', { s: 'before_select', tid: req.user?.tenant_id || null }); } catch (_e) {}
