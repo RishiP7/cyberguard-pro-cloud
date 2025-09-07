@@ -2886,32 +2886,30 @@ app.use(express.json());
 // POST /auth/admin-login  { email, password }
 app.post('/auth/admin-login', async (req, res) => {
   try {
-    const email = (req.body && req.body.email) || '';
-    const password = (req.body && req.body.password) || '';
-
-    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@cyberguardpro.com';
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMeNow!';
-
-    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-      return res.status(401).json({ ok:false, error: 'invalid credentials' });
+    const { email, password } = req.body || {};
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@cyberguardpro.com';
+    const adminPass  = process.env.ADMIN_PASSWORD || 'ChangeMeNow!';
+    if (email === adminEmail && password === adminPass) {
+      const token = jwt.sign(
+        {
+          sub: email,
+          email,
+          role: 'owner',
+          plan: 'pro_plus',
+          tenant_id: 'tenant_admin',
+          is_super: true
+        },
+        process.env.JWT_SECRET || 'dev-secret',
+        { expiresIn: '12h' }
+      );
+      return res.json({ ok: true, token });
     }
-
-    // dynamic import to avoid touching top-level imports
-    const jwtMod = await import('jsonwebtoken');
-    const jwt = jwtMod.default || jwtMod;
-
-    const token = jwt.sign(
-      { sub: email, role: 'owner', plan: 'pro_plus' },
-      process.env.JWT_SECRET || 'dev-secret',
-      { expiresIn: '12h' }
-    );
-    return res.json({ ok:true, token });
+    return res.status(401).json({ ok:false, error:'invalid credentials' });
   } catch (e) {
     console.error('auth/admin-login error', e);
-    return res.status(500).json({ ok:false, error: 'server error' });
+    return res.status(500).json({ ok:false, error:'server error' });
   }
 });
-
 // Backward-compat login endpoint (same logic)
 app.post('/auth/login', async (req, res) => {
   try {
@@ -2928,9 +2926,11 @@ app.post('/auth/login', async (req, res) => {
     const jwtMod = await import('jsonwebtoken');
     const jwt = jwtMod.default || jwtMod;
 
-    const token = jwt.sign(
-      { sub: email, role: 'owner', plan: 'pro_plus' },
-      process.env.JWT_SECRET || 'dev-secret',
+    const token = jwt.sign({
+    sub: email, role: 'owner', plan: 'pro_plus',
+    tenant_id: 'tenant_admin',
+    is_super: true
+  }, process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '12h' }
     );
     return res.json({ ok:true, token });
@@ -4712,6 +4712,28 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
+app.post('/admin/bootstrap-tenant', authMiddleware, async (req, res) => {
+  try {
+    if (!req.user?.is_super) {
+      return res.status(403).json({ ok:false, error: 'forbidden' });
+    }
+    const tid = req.user?.tenant_id;
+    if (!tid) return res.status(400).json({ ok:false, error:'no tenant_id in token' });
+
+    await q(
+      `INSERT INTO tenants(tenant_id, name, plan, created_at, updated_at)
+       VALUES($1,$2,'pro_plus',EXTRACT(EPOCH FROM NOW()),EXTRACT(EPOCH FROM NOW()))
+       ON CONFLICT (tenant_id) DO NOTHING`,
+      [tid, 'Cyber Guard Pro']
+    );
+
+    return res.json({ ok:true, tenant_id: tid });
+  } catch (e) {
+    console.error('bootstrap-tenant error', e);
+    return res.status(500).json({ ok:false, error:'bootstrap failed' });
+  }
+});
+
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
 // ---------- Super Admin DB diagnostics ----------
