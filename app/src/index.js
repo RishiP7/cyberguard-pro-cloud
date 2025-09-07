@@ -655,7 +655,6 @@ await q(`
 app.get('/integrations/status', authMiddleware, async (req,res)=>{
   try{
     const { rows } = await q(`SELECT type,provider,status,details,updated_at FROM connectors WHERE tenant_id=$1`, [req.user.tenant_id]);
-    return res.json({ ok:true, items: rows });
   }catch(e){ return res.status(500).json({ error:'status failed' }); }
 });
 
@@ -663,7 +662,6 @@ app.get('/integrations/status', authMiddleware, async (req,res)=>{
 app.get('/integrations/email/status', authMiddleware, async (req,res)=>{
   try{
     const conn = await getEmailConnector(req.user.tenant_id);
-    return res.json({ ok:true, connector: conn ? { provider: conn.provider, status: conn.status, details: maskTokens(conn.details), updated_at: conn.updated_at } : null });
   }catch(e){ return res.status(500).json({ error: 'status failed' }); }
 });
 app.post('/integrations/email/connect', authMiddleware, enforceActive, async (req,res)=>{
@@ -671,7 +669,6 @@ app.post('/integrations/email/connect', authMiddleware, enforceActive, async (re
     const { provider, settings } = req.body||{};
     if(!provider) return res.status(400).json({ error:'missing provider' });
     await upsertConnector(req.user.tenant_id, 'email', provider, { status:'connected', details: settings||{} });
-    return res.json({ ok:true });
   }catch(e){ return res.status(500).json({ error:'connect failed' }); }
 });
 
@@ -993,20 +990,8 @@ app.post("/integrations/email/test", authMiddleware, async (req, res) => {
       }
       if (!r.ok) {
         const t = await r.text().catch(()=>"");
-        return res.json({ ok:true, connected:false, provider:'m365', reason:`graph ${r.status}`, detail:t.slice(0,160) });
       }
       const me = await r.json().catch(()=> ({}));
-      return res.json({
-        ok: true,
-        connected: true,
-        provider: 'm365',
-        account: {
-          id: me?.id || null,
-          displayName: me?.displayName || null,
-          mail: me?.mail || null,
-          userPrincipalName: me?.userPrincipalName || null
-        }
-      });
     }
 
     if (c.provider === "google") {
@@ -1042,14 +1027,11 @@ app.post("/integrations/email/test", authMiddleware, async (req, res) => {
       }
       if (!profRes.ok) {
         const t = await profRes.text().catch(()=>"");
-        return res.json({ ok:true, connected:false, provider:'google', reason:`gmail ${profRes.status}`, detail:t.slice(0,160) });
       }
       const prof = await profRes.json().catch(()=>({}));
-      return res.json({ ok:true, connected:true, provider:'google', account:{ emailAddress: prof?.emailAddress||null } });
     }
 
     const hasToken = !!(c?.details?.tokens?.access_token || c?.details?.tokens?.refresh_token);
-    return res.json({ ok:true, connected: hasToken, provider: c.provider });
   } catch (e) {
     console.error("email test failed", e);
     return res.status(500).json({ error: "test failed" });
@@ -1076,7 +1058,6 @@ app.post('/auth/google/refresh', authMiddleware, async (req,res)=>{
     if(!r.ok) return res.status(500).json({ ok:false, error:'refresh failed', detail: j });
 
     await upsertConnector(req.user.tenant_id, 'email', 'google', { status:'connected', details: { ...(c.details||{}), tokens: { ...(c.details?.tokens||{}), ...j } } });
-    return res.json({ ok:true });
   }catch(e){ return res.status(500).json({ error:'refresh failed' }); }
 });
 
@@ -1114,7 +1095,6 @@ app.post('/auth/m365/refresh', authMiddleware, async (req,res)=>{
           status:'connected',
           details: { ...(details||{}), tenant_used: ten, tokens: { ...(details?.tokens||{}), ...j } }
         });
-        return res.json({ ok:true, tenant_used: ten });
       }
       last = j;
     }
@@ -1127,7 +1107,6 @@ app.get('/integrations/email/debug', authMiddleware, async (req,res)=>{
   try{
     const c = await getEmailConnector(req.user.tenant_id);
     if(!c) return res.json({ ok:true, connector:null });
-    return res.json({ ok:true, connector: { id:c.id, provider:c.provider, status:c.status, details: maskTokens(c.details), updated_at:c.updated_at } });
   }catch(e){ return res.status(500).json({ error:'debug failed' }); }
 });
 
@@ -1135,7 +1114,6 @@ app.get('/integrations/email/debug', authMiddleware, async (req,res)=>{
 app.get('/integrations/edr/status', authMiddleware, async (req,res)=>{
   try{
     const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='edr'`,[req.user.tenant_id]);
-    return res.json({ ok:true, connector: rows[0]||null });
   }catch(e){ return res.status(500).json({ error: 'status failed' }); }
 });
 app.post('/integrations/edr/enrollment-token', authMiddleware, enforceActive, async (req,res)=>{
@@ -1146,7 +1124,6 @@ app.post('/integrations/edr/enrollment-token', authMiddleware, enforceActive, as
              VALUES($1,$2,$3,EXTRACT(EPOCH FROM NOW()))
              ON CONFLICT (id) DO NOTHING`,
             ['tok:'+enroll, req.user.tenant_id, enroll]);
-    return res.json({ ok:true, token: enroll });
   }catch(e){ return res.status(500).json({ error:'token failed' }); }
 });
 app.post('/edr/enroll', async (req,res)=>{
@@ -1158,7 +1135,6 @@ app.post('/edr/enroll', async (req,res)=>{
     const agent_id = 'agt_' + uuidv4().replace(/-/g,'');
     await q(`UPDATE edr_agents SET id=$1, hostname=$2, platform=$3, enroll_token=NULL, last_seen=EXTRACT(EPOCH FROM NOW()) WHERE id=$4`,
             [agent_id, hostname||null, platform||null, 'tok:'+token]);
-    return res.json({ ok:true, agent_id });
   }catch(e){ return res.status(500).json({ error:'enroll failed' }); }
 });
 
@@ -1166,7 +1142,6 @@ app.post('/edr/enroll', async (req,res)=>{
 app.get('/integrations/dns/status', authMiddleware, async (req,res)=>{
   try{
     const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='dns'`,[req.user.tenant_id]);
-    return res.json({ ok:true, connector: rows[0]||null });
   }catch(e){ return res.status(500).json({ error: 'status failed' }); }
 });
 app.get('/integrations/dns/bootstrap', authMiddleware, enforceActive, async (req,res)=>{
@@ -1174,7 +1149,6 @@ app.get('/integrations/dns/bootstrap', authMiddleware, enforceActive, async (req
     await upsertConnector(req.user.tenant_id, 'dns', 'resolver', { status:'connected' });
     const resolver_ips = ['9.9.9.9', '149.112.112.112'];
     const token = 'dns_' + uuidv4().slice(0,8);
-    return res.json({ ok:true, resolver_ips, token });
   }catch(e){ return res.status(500).json({ error:'bootstrap failed' }); }
 });
 
@@ -1182,7 +1156,6 @@ app.get('/integrations/dns/bootstrap', authMiddleware, enforceActive, async (req
 app.get('/integrations/ueba/status', authMiddleware, async (req,res)=>{
   try{
     const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='ueba'`,[req.user.tenant_id]);
-    return res.json({ ok:true, connector: rows[0]||null });
   }catch(e){ return res.status(500).json({ error: 'status failed' }); }
 });
 app.post('/integrations/ueba/connect', authMiddleware, enforceActive, async (req,res)=>{
@@ -1190,7 +1163,6 @@ app.post('/integrations/ueba/connect', authMiddleware, enforceActive, async (req
     const { provider, settings } = req.body||{}; // 'm365'|'gworkspace'
     if(!provider) return res.status(400).json({ error:'missing provider' });
     await upsertConnector(req.user.tenant_id, 'ueba', provider, { status:'connected', details: settings||{} });
-    return res.json({ ok:true });
   }catch(e){ return res.status(500).json({ error:'connect failed' }); }
 });
 
@@ -1198,7 +1170,6 @@ app.post('/integrations/ueba/connect', authMiddleware, enforceActive, async (req
 app.get('/integrations/cloud/status', authMiddleware, async (req,res)=>{
   try{
     const { rows } = await q(`SELECT provider,status,details,updated_at FROM connectors WHERE tenant_id=$1 AND type='cloud'`,[req.user.tenant_id]);
-    return res.json({ ok:true, connector: rows[0]||null });
   }catch(e){ return res.status(500).json({ error: 'status failed' }); }
 });
 app.post('/integrations/cloud/connect', authMiddleware, enforceActive, async (req,res)=>{
@@ -1206,7 +1177,6 @@ app.post('/integrations/cloud/connect', authMiddleware, enforceActive, async (re
     const { provider, settings } = req.body||{}; // 'aws'|'gcp'|'azure'
     if(!provider) return res.status(400).json({ error:'missing provider' });
     await upsertConnector(req.user.tenant_id, 'cloud', provider, { status:'connected', details: settings||{} });
-    return res.json({ ok:true });
   }catch(e){ return res.status(500).json({ error:'connect failed' }); }
 });
 
@@ -1257,7 +1227,6 @@ const token = jwt.sign(
   JWT_SECRET,
   { expiresIn: "7d" }
 );
-return res.json({ ok: true, token, role: user.role || 'member', is_super });
   } catch (e) {
     return res.status(500).json({ error: "login failed" });
   }
@@ -1294,11 +1263,6 @@ app.post("/auth/register",async (req,res)=>{
 
 // ---------- me / usage ----------
 // Temporary no-DB tenant info so the web app can load
-    return res.json({
-      ok: true,
-      user: { email: email || sub, role, plan, tenant_id },
-      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
-    });
   } catch (e) {
     console.error('/me error', e);
     return res.status(500).json({ ok:false, error:'server error' });
@@ -1381,11 +1345,6 @@ app.post('/admin/trial/start', authMiddleware, requireSuper, async (req, res) =>
     );
 
     const days_left = Math.max(0, Math.ceil((ends - nowEpoch) / 86400));
-    return res.json({
-      ok: true,
-      tenant_id: tid,
-      trial: { active: true, days_left, ends_at: new Date(ends * 1000).toISOString() }
-    });
   }catch(e){
     console.error('admin trial start failed', e);
     return res.status(500).json({ ok:false, error: 'trial start failed' });
@@ -1410,7 +1369,6 @@ app.post('/admin/trial/end', authMiddleware, requireSuper, async (req, res) => {
     );
 
     if (!r.rowCount) return res.status(404).json({ ok:false, error: 'tenant not found' });
-    return res.json({ ok:true, tenant_id: tid, trial: { active:false, days_left:0, ends_at: new Date(nowEpoch * 1000).toISOString() } });
   }catch(e){
     console.error('admin trial end failed', e);
     return res.status(500).json({ ok:false, error: 'trial end failed' });
@@ -1442,8 +1400,6 @@ app.post('/admin/impersonate', authMiddleware, requireSuper, async (req,res)=>{
 
     // Audit trail
     try { await recordOpsRun('admin_impersonate', { admin: req.user.email || null, tenant_id }); } catch(_e){}
-
-    return res.json({ ok:true, token });
   }catch(e){
     return res.status(500).json({ ok:false, error:'impersonate failed' });
   }
@@ -1929,7 +1885,6 @@ app.post("/billing/checkout", authMiddleware, async (req, res) => {
         metadata: { tenant_id, plan: canonicalPlan(incomingPlan) || String(incomingPlan || "") }
       }
     });
-    return res.json({ ok: true, url: session.url });
   } catch (e) {
     console.error("billing/checkout failed", e);
     return res.status(500).json({ ok: false, error: "checkout failed", detail: String(e.message || e) });
@@ -1945,7 +1900,6 @@ app.post("/billing/portal", authMiddleware, async (req, res) => {
     const base = process.env.FRONTEND_URL || STRIPE_DOMAIN || req.headers.origin || "https://cyberguard-pro-cloud.onrender.com";
     const returnUrl = base.replace(/\/$/, "");
     const portal = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
-    return res.json({ ok: true, url: portal.url });
   } catch (e) {
     console.error("billing/portal failed", e);
     return res.status(500).json({ ok: false, error: "portal failed", detail: String(e.message || e) });
@@ -1961,7 +1915,6 @@ app.get("/billing/portal", authMiddleware, async (req, res) => {
     const base = process.env.FRONTEND_URL || STRIPE_DOMAIN || req.headers.origin || "https://cyberguard-pro-cloud.onrender.com";
     const returnUrl = base.replace(/\/$/, "");
     const portal = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
-    return res.json({ ok: true, url: portal.url });
   } catch (e) {
     console.error("billing/portal failed (GET)", e);
     return res.status(500).json({ ok: false, error: "portal failed", detail: String(e.message || e) });
@@ -1972,19 +1925,7 @@ app.get("/policy",authMiddleware,async (req,res)=>{
   const {rows}=await q(`SELECT tenant_id,enabled,threshold,allow_quarantine,allow_dns_deny,allow_disable_account,dry_run,feeds FROM policy WHERE tenant_id=$1`,[req.user.tenant_id]);
   if(!rows.length){
     await q(`INSERT INTO policy(tenant_id) VALUES($1) ON CONFLICT DO NOTHING`,[req.user.tenant_id]);
-    return res.json({
-      ok:true,
-      tenant_id: req.user.tenant_id,
-      enabled:true,
-      threshold:-0.6,
-      allow_quarantine:true,
-      allow_dns_deny:true,
-      allow_disable_account:true,
-      dry_run:false,
-      feeds:{email:true,edr:true,dns:true,ueba:true,cloud:true}
-    });
   }
-  return res.json({ ok:true, ...rows[0] });
 });
 app.post("/policy",authMiddleware,async (req,res)=>{
   const p=req.body||{};
@@ -2091,7 +2032,6 @@ app.post('/apikeys', authMiddleware, attachFreshTenantPlan, requirePaidPlan, asy
        VALUES($1,$2,false,EXTRACT(EPOCH FROM NOW()))`,
       [key, req.user.tenant_id]
     ));
-    return res.json({ ok:true, api_key: key });
   }catch(e){
     console.error('apikeys create failed', e);
     if (req.user?.is_super) {
@@ -2118,7 +2058,6 @@ app.post('/apikeys/create', authMiddleware, attachFreshTenantPlan, requirePaidPl
        VALUES($1,$2,false,EXTRACT(EPOCH FROM NOW()))`,
       [key, req.user.tenant_id]
     ));
-    return res.json({ ok:true, api_key: key });
   }catch(e){
     console.error('apikeys create (alias) failed', e);
     if (req.user?.is_super) {
@@ -2227,7 +2166,6 @@ app.get('/email/stream', async (req, res) => {
 // Recent scans for initial UI fill (non-persistent; in-memory ring buffer)
 app.get('/email/recent-scans', authMiddleware, async (req,res)=>{
   try{
-    return res.json({ ok:true, items: getRecentScans(req.user.tenant_id) });
   }catch(e){
     return res.status(500).json({ ok:false, error: 'recent scans failed' });
   }
@@ -2294,7 +2232,6 @@ app.post('/email/poll', authMiddleware, enforceActive, async (req,res)=>{
 
     // Include a little status echo back
     const account = (conn.details && conn.details.account) ? conn.details.account : null;
-    return res.json({ ok:true, provider: conn.provider, fetched: items.length, alerts_created: created, account });
   }catch(e){
     console.error('email poll failed', e);
     return res.status(500).json({ ok:false, error: 'poll failed', detail: String(e.message||e) });
@@ -2502,7 +2439,6 @@ app.get("/alerts/summary", authMiddleware, async (req,res)=>{
       FROM alerts WHERE tenant_id=$1 AND created_at >= $2
     `,[req.user.tenant_id, since]);
     const r = rows[0] || { total:0, high:0, medium:0, low:0 };
-    return res.json({ ok:true, window_days:7, ...r });
   }catch(e){
     console.error('alerts summary failed', e);
     return res.status(500).json({ ok:false, error:'summary failed' });
@@ -2673,7 +2609,6 @@ app.get('/admin/ops/runs', authMiddleware, requireSuper, async (req, res) => {
     sql += ` ORDER BY created_at DESC LIMIT ${limit}`;
 
     const { rows } = await q(sql, params);
-    return res.json({ ok: true, runs: rows });
   } catch (e) {
     console.error('ops runs failed', e);
     return res.status(500).json({ ok: false, error: 'ops runs failed' });
@@ -2712,12 +2647,6 @@ app.post('/admin/ops/seed/usage', authMiddleware, requireSuper, async (req, res)
 
     // audit trail
     try { await recordOpsRun('seed_usage', { days_ago: daysAgo, count: inserted }); } catch(_e) {}
-
-    return res.json({
-      ok: true,
-      seeded: { count: inserted, days_ago: daysAgo },
-      hint: 'Use /admin/ops/retention/preview and /admin/ops/retention/run to verify purge.'
-    });
   } catch (e) {
     console.error('seed usage failed', e);
     return res.status(500).json({ ok:false, error: 'seed failed' });
@@ -2751,16 +2680,6 @@ app.get('/admin/ops/usage/buckets', authMiddleware, requireSuper, async (req, re
         WHERE tenant_id=$1 AND created_at < $2`,
       [tid, cut180]
     );
-
-    return res.json({
-      ok: true,
-      buckets: {
-        "<90d": lt90.rows[0]?.n || 0,
-        "90-180d": d90_180.rows[0]?.n || 0,
-        ">180d": gt180.rows[0]?.n || 0
-      },
-      keep: { alerts_days: RETAIN_ALERT_DAYS, usage_days: RETAIN_USAGE_DAYS }
-    });
   } catch (e) {
     console.error('usage buckets failed', e);
     return res.status(500).json({ ok: false, error: 'buckets failed' });
@@ -2790,12 +2709,6 @@ app.get('/admin/ops/usage/counts', authMiddleware, requireSuper, async (req, res
       "90-180d":  r.rows[0]?.d90_180  || 0,
       ">180d":    r.rows[0]?.gt180    || 0
     };
-
-    return res.json({
-      ok: true,
-      counts,
-      keep: { alerts_days: RETAIN_ALERT_DAYS, usage_days: RETAIN_USAGE_DAYS }
-    });
   } catch (e) {
     console.error('usage counts failed', e);
     return res.status(500).json({ ok: false, error: 'counts failed' });
@@ -2809,7 +2722,6 @@ app.post('/admin/ops/ensure_connectors', authMiddleware, requireSuper, async (_r
       return res.status(500).json({ ok:false, error: 'ensureConnectorHealthColumns not available' });
     }
     await ensureConnectorHealthColumns();
-    return res.json({ ok:true, ensured: ['status','last_error','last_sync_at'] });
   } catch (e) {
     console.error('ensure_connectors failed', e);
     return res.status(500).json({ ok:false, error: 'ensure_connectors failed' });
@@ -2853,7 +2765,6 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
     await q(sql, [tid, type, now(), provider]);
 
     try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, type }); } catch(_e) {}
-    return res.json({ ok:true, tenant_id: tid, provider, type, cleared: Array.from(have).filter(c => setParts.join(' ').includes(c)) });
   } catch (e) {
     console.error('connector/reset failed', e);
     return res.status(500).json({ ok:false, error:'reset failed' });
@@ -2877,7 +2788,6 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
       [tid, type, now(), provider]
     );
     try { await recordOpsRun('connector_clear_error', { tenant_id: tid, provider, type }); } catch(_e) {}
-    return res.json({ ok:true });
   } catch (e) {
     console.error('connector/clear_error failed', e);
     return res.status(500).json({ ok:false, error:'clear_error failed' });
@@ -2888,6 +2798,7 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
+
 /* ===== NO-DB /me (clean) ===== */
 app.get('/me', authMiddleware, (req, res) => {
   try {
@@ -2902,6 +2813,14 @@ app.get('/me', authMiddleware, (req, res) => {
       tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
     });
   } catch (e) {
+    console.error('me error', e);
+    res.status(500).json({ ok:false, error:'me failed' });
+  }
+});
+/* ===== /me end ===== */
+
+/* ===== NO-DB /me (clean) ===== */
+} catch (e) {
     console.error('me error', e);
     res.status(500).json({ ok:false, error:'me failed' });
   }
@@ -2945,7 +2864,6 @@ app.post('/auth/admin-login', async (req, res) => {
         process.env.JWT_SECRET || 'dev-secret',
         { expiresIn: '12h' }
       );
-      return res.json({ ok: true, token });
     }
     return res.status(401).json({ ok:false, error:'invalid credentials' });
   } catch (e) {
@@ -2976,7 +2894,6 @@ app.post('/auth/login', async (req, res) => {
   }, process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '12h' }
     );
-    return res.json({ ok:true, token });
   } catch (e) {
     console.error('auth/login error', e);
     return res.status(500).json({ ok:false, error: 'server error' });
@@ -3036,7 +2953,6 @@ app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) =
       }
     }
     try { await recordOpsRun('poll_now', { tenant_id: tid, results }); } catch(_e) {}
-    return res.json({ ok:true, results });
   } catch (e) {
     console.error('poll/now failed', e);
     return res.status(500).json({ ok:false, error:'poll failed' });
@@ -3213,7 +3129,6 @@ app.get('/connectors/status', authMiddleware, async (req, res) => {
          WHERE tenant_id=$1 AND type='email'
          ORDER BY updated_at DESC
       `, [tid]);
-      return res.json({ ok:true, connectors: rows });
     } catch (_e1) {
       // Fallback: older schema without status/last_sync_at/last_error
       try {
@@ -3227,7 +3142,6 @@ app.get('/connectors/status', authMiddleware, async (req, res) => {
            WHERE tenant_id=$1 AND type='email'
            ORDER BY updated_at DESC
         `, [tid]);
-        return res.json({ ok:true, connectors: rows, note: 'partial schema' });
       } catch (_e2) {
         // Final fallback: minimal columns
         const { rows } = await q(`
@@ -3244,7 +3158,6 @@ app.get('/connectors/status', authMiddleware, async (req, res) => {
           last_sync_at: null,
           updated_at: r.updated_at
         }));
-        return res.json({ ok:true, connectors: mapped, note: 'minimal schema' });
       }
     }
   } catch (e) {
@@ -3567,11 +3480,6 @@ async function ensureConnectorHealthColumns() {
 
 // ---------- /me route ----------
 // Temporary no-DB tenant info so the web app can load
-    return res.json({
-      ok: true,
-      user: { email: email || sub, role, plan, tenant_id },
-      tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
-    });
   } catch (e) {
     console.error('/me error', e);
     return res.status(500).json({ ok:false, error:'server error' });
@@ -3668,7 +3576,6 @@ app.get('/me_dbg', authMiddleware, async (req, res) => {
     const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
     if (!rows.length) return res.status(404).json({ error: 'not found' });
     const t = rows[0];
-    return res.json({ ok: true, tenant: t });
   } catch (e) {
     const msg = e?.message || String(e);
     const stack = e?.stack || null;
@@ -3735,8 +3642,6 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
       line_items: [{ price: priceId, quantity: 1 }],
       metadata: { tenant_id: req.user.tenant_id, plan: planReq }
     });
-
-    return res.json({ ok:true, url: session.url });
   }catch(e){
     console.error('checkout failed', e);
     return res.status(500).json({ ok:false, error: 'checkout failed' });
@@ -3886,7 +3791,6 @@ app.get('/billing/portal', authMiddleware, async (req,res)=>{
       await setTenantStripeCustomerId(req.user.tenant_id, customer);
     }
     const sess = await stripe.billingPortal.sessions.create({ customer, return_url: (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing' });
-    return res.json({ ok:true, url: sess.url });
   }catch(e){
     console.error('portal failed', e);
     return res.status(500).json({ ok:false, error: 'portal failed' });
@@ -3906,7 +3810,6 @@ app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) =
     const subs = await stripe.subscriptions.list({ customer, status: 'all', limit: 1 });
     if (!subs.data || subs.data.length === 0) {
       await setTenantBillingStatus(tid, null);
-      return res.json({ ok:true, updated: false, note: 'no subscriptions found' });
     }
     const sub = subs.data[0];
     const status = sub.status || null; // active, trialing, past_due, canceled, unpaid
@@ -3919,7 +3822,6 @@ app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) =
     try { await setTenantBillingStatus(tid, status); } catch(_e) {}
 
     try { await recordOpsRun('billing_sync', { tenant_id: tid, customer_id: customer, status, price_id: priceId, plan }); } catch(_e) {}
-    return res.json({ ok:true, plan: plan || null, billing_status: status || null });
   } catch (e) {
     console.error('admin billing sync failed', e);
     return res.status(500).json({ ok:false, error: 'sync failed' });
@@ -4110,7 +4012,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
     } catch (_e) {}
 
     try { await recordOpsRun('alerts_denormalize', { tenant_id: tid, ...stats }); } catch (_e) {}
-    return res.json({ ok: true, updated: stats });
   } catch (e) {
     console.error('alerts/denormalize failed', e);
     return res.status(500).json({ ok: false, error: 'denormalize failed' });
@@ -4148,7 +4049,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
 
     if (dry) {
       try { await recordOpsRun('alerts_prune_blank_dry', { tenant_id: tid, count: n, days: cutoff ? days : null }); } catch (_e) {}
-      return res.json({ ok: true, dry: true, would_delete: n, days: cutoff ? days : null });
     }
 
     // Delete
@@ -4156,7 +4056,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
     const deleted = typeof del.rowCount === 'number' ? del.rowCount : (del.rows ? del.rows.length : 0);
 
     try { await recordOpsRun('alerts_prune_blank', { tenant_id: tid, deleted, days: cutoff ? days : null }); } catch (_e) {}
-    return res.json({ ok: true, deleted, days: cutoff ? days : null });
   } catch (e) {
     console.error('alerts/prune_blank failed', e);
     return res.status(500).json({ ok: false, error: 'prune failed' });
@@ -4176,7 +4075,6 @@ app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) =
     const { provider } = req.body || {};
     if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
     await runPollForTenant(req.user.tenant_id, provider, { limit: 25 });
-    return res.json({ ok:true });
   } catch (e) {
     console.error('admin/ops/poll/now failed', e);
     return res.status(500).json({ ok:false, error: 'poll failed' });
@@ -4378,19 +4276,7 @@ app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) =
           details_sample = dtext.slice(0, 200);
         }
       } catch(_e) {}
-      return res.json({
-        ok: true,
-        cleared: clearCols,
-        json_candidates: JSON_CANDIDATES.filter(has),
-        columns: cols.map(c=>c.name),
-        after_keys: after,
-        details_has_tokens,
-        details_sample,
-        first_update_error: firstUpdateErr || null
-      });
     }
-
-    return res.json({ ok:true });
   } catch (e) {
     console.error('connector/reset failed', e);
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch(_e) {}
@@ -4408,7 +4294,6 @@ app.get('/admin/ops/connector/show', authMiddleware, requireSuper, async (req, r
     if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
     const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [req.user.tenant_id, provider]);
     if (!r.rows || r.rows.length === 0) return res.json({ ok:true, found:false });
-    return res.json({ ok:true, found:true, row: r.rows[0] });
   } catch(e) {
     return res.status(500).json({ ok:false, error:'show failed', detail: String(e?.message||e) });
   }
@@ -4661,7 +4546,6 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 
     // Optional debug: quickly inspect shape without running mapping
     if (String(req.query?.debug || '') === '1') {
-      return res.json({ ok: true, mode: fmt, rows: rows.length, sample_keys: rows[0] ? Object.keys(rows[0]) : null });
     }
 
     if (fmt === 'csv') {
@@ -4776,8 +4660,6 @@ app.post('/admin/bootstrap-tenant', authMiddleware, async (req, res) => {
        ON CONFLICT (tenant_id) DO NOTHING`,
       [tid, 'Cyber Guard Pro']
     );
-
-    return res.json({ ok:true, tenant_id: tid });
   } catch (e) {
     console.error('bootstrap-tenant error', e);
     return res.status(500).json({ ok:false, error:'bootstrap failed' });
@@ -4791,7 +4673,6 @@ app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
   try{
     const t = await q(`SELECT to_regclass('public.apikeys') IS NOT NULL AS apikeys_exists`);
     const c = await q(`SELECT COUNT(*)::int AS cnt FROM apikeys`);
-    return res.json({ ok:true, apikeys_table: t.rows[0]?.apikeys_exists===true, apikey_count: c.rows[0]?.cnt||0 });
   }catch(e){
     console.error('db diag failed', e);
     return res.status(500).json({ ok:false, error: String(e.message||e) });
@@ -4867,13 +4748,6 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async
     } catch (_e) {}
 
     try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider, rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null, status_after: statusAfter, details_is_null: detailsAfterNull }); } catch(_e) {}
-    return res.json({
-      ok: true,
-      forced: true,
-      rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null,
-      status_after: statusAfter,
-      details_is_null: detailsAfterNull
-    });
   } catch(e) {
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
     if (dbg) {
