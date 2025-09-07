@@ -57,12 +57,6 @@ app.get('/me', authMiddleware, (req, res) => {
 });
 
 
-} catch (e) {
-    console.error('me error', e);
-    res.status(500).json({ ok:false, error:'me failed' });
-  }
-});
-
 
 
 
