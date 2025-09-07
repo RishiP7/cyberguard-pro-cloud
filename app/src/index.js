@@ -3665,10 +3665,14 @@ app.get('/me', authMiddleware, async (req, res) => {
 
       const userObj = {
         email,
-        role,
+        role: is_super ? 'super_admin' : role,
         plan: tenantObj.plan,
         tenant_id: tenantObj.tenant_id,
-        is_super
+        is_super,
+        // UI-friendly aliases (keep both snake & camel just in case)
+        isSuper: is_super,
+        superAdmin: is_super,
+        flags: { superAdmin: is_super }
       };
 
       const payload = {
@@ -3691,11 +3695,17 @@ app.get('/me', authMiddleware, async (req, res) => {
         plan_actual: tenantObj.plan,
         role,
         is_super,
+        isSuper: is_super,
+        superAdmin: is_super,
         email,
 
         // ---- nested objects (new callers) ----
         user: userObj,
         tenant: tenantObj,
+        // Legacy/session compatibility for UI components that expect a session container
+        session: { user: userObj, tenant: tenantObj, loggedIn: true },
+        auth: { loggedIn: true, email, role: userObj.role, is_super, isSuper: is_super },
+        showAdmin: is_super,
 
         // normalized trial view for UI
         trial: {
