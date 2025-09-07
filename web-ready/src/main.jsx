@@ -2736,7 +2736,12 @@ function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
           >
             {collapsed ? '▸' : '▾'}
           </button>
-          <h2 style={{margin:0,fontSize:16}}>{title}</h2>
+          {/* Replace h2 text title with logo if matches brand title */}
+          {title === "Cyber Guard Pro" || title === "CyberGuard Pro" ? (
+            <img src="/brand/logo.png" alt="CyberGuard Pro" style={{height:40,width:"auto",display:"block"}} />
+          ) : (
+            <h2 style={{margin:0,fontSize:16}}>{title}</h2>
+          )}
         </div>
         <div style={{opacity:.7,fontSize:12}}>{collapsed ? 'Show' : 'Hide'}</div>
       </div>
@@ -4060,7 +4065,7 @@ function PlanCard({ name, price, features, onChoose, loading, highlight }) {
     </div>
   );
 }
-// --- Support Page ---
+// --- Remove small logo block in sidebar/header if present ---
 function Support(){
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -4163,6 +4168,19 @@ if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (e)=>{ try{ console.error('[unhandled rejection]', e.reason); }catch{} });
 }
 
+// Remove duplicate mini-logo block if present in the file
+// (Remove <div data-cgp-brand ...>...</div> block)
+// (We do this by searching for the exact JSX block and removing it)
+
+// [PATCH BLOCK REMOVE] Remove the mini-logo block if present:
+// <div data-cgp-brand style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+//   <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:36,width:"auto"}} />
+// </div>
+
+// (The following is not actual code, but a marker for the patch system.)
+
+// --- END PATCH BLOCK REMOVE ---
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
@@ -4170,4 +4188,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <App/>
     </BrowserRouter>
   </React.StrictMode>
-);	
+);
