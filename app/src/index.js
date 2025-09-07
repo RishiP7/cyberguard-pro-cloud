@@ -2877,6 +2877,70 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
   }
 });
 
+// Create Express app
+const app = express();
+
+// Ensure JSON body parsing (safe to call even if already present)
+app.use(express.json());
+
+// --- Bootstrap admin login for the web app ---
+// POST /auth/admin-login  { email, password }
+app.post('/auth/admin-login', async (req, res) => {
+  try {
+    const email = (req.body && req.body.email) || '';
+    const password = (req.body && req.body.password) || '';
+
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@cyberguardpro.com';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMeNow!';
+
+    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ ok:false, error: 'invalid credentials' });
+    }
+
+    // dynamic import to avoid touching top-level imports
+    const jwtMod = await import('jsonwebtoken');
+    const jwt = jwtMod.default || jwtMod;
+
+    const token = jwt.sign(
+      { sub: email, role: 'owner', plan: 'pro_plus' },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '12h' }
+    );
+    return res.json({ ok:true, token });
+  } catch (e) {
+    console.error('auth/admin-login error', e);
+    return res.status(500).json({ ok:false, error: 'server error' });
+  }
+});
+
+// Backward-compat login endpoint (same logic)
+app.post('/auth/login', async (req, res) => {
+  try {
+    const email = (req.body && req.body.email) || '';
+    const password = (req.body && req.body.password) || '';
+
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@cyberguardpro.com';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMeNow!';
+
+    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ ok:false, error: 'invalid credentials' });
+    }
+
+    const jwtMod = await import('jsonwebtoken');
+    const jwt = jwtMod.default || jwtMod;
+
+    const token = jwt.sign(
+      { sub: email, role: 'owner', plan: 'pro_plus' },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '12h' }
+    );
+    return res.json({ ok:true, token });
+  } catch (e) {
+    console.error('auth/login error', e);
+    return res.status(500).json({ ok:false, error: 'server error' });
+  }
+});
+
 // Super Admin: run a one-shot poll now for this tenant (email connectors)
 // POST /admin/ops/poll/now  { limit?: number }
 app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
