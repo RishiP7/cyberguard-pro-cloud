@@ -978,21 +978,6 @@ function TopBadges(){
     </div>
   );
 }
-
-
-function BrandLogo(){
-  const candidates=["/brand/logo.png","/brand/logo.svg"]; // png first, svg fallback
-  const [src,setSrc]=React.useState(candidates[0]);
-  return (
-    <img
-      src={src}
-      alt="Cyber Guard Pro"
-      style={{height:44,width:"auto",objectFit:"contain",display:"block"}}
-      onError={()=>{ const i=candidates.indexOf(src); if(i<candidates.length-1) setSrc(candidates[i+1]); }}
-    />
-  );
-}
-
 function Layout({ children }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#090b10', color: '#e6e9ef' }}>
