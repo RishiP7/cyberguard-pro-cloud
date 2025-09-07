@@ -120,7 +120,7 @@ function KeysCard() {
       <div style={{ fontWeight: 700, marginBottom: 8 }}>API Keys</div>
       <button style={btn} onClick={createKey} disabled={loading}>{loading ? 'Please wait…' : 'Create API Key'}</button>
       <div style={{ marginTop: 10 }}>
-        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</div>}
+        {err && <div style={{marginTop:8,padding:'8px 10px',border:'1px solid #ff7a7a88',background:'#ff7a7a22',borderRadius:8}}>{String(err)}</div>
         {msg && <div style={successBox}>{String(msg)}</div>}
         <div>
           {(keys || []).length === 0 && <div style={{ opacity: .7 }}>No keys yet.</div>}
