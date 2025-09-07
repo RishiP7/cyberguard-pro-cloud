@@ -1019,9 +1019,7 @@ function Layout({ children }) {
           height: '100vh'
         }}
       >
-        <h2 style={{ margin: 0, fontSize: 18 }}>
-          Cyber <span style={{ color: '#7bd88f' }}>Guard</span> Pro
-        </h2>
+        <img src="/brand/logo.png" alt="CyberGuard Pro" style={{height:28, width:'auto', display:'block'}} />
 
         <style>{`
           .side-link {
@@ -1045,8 +1043,6 @@ function Layout({ children }) {
           }
         `}</style>
 
-{/* CGP brand (autoinserted) */}
-<img src="/brand/logo.png" alt="CyberGuard Pro" style={{height:28, width:'auto', display:'block'}} />
         <div style={{marginTop:10, opacity:.9}}>
           New here? <a href="/register" style={{color:"#7db2ff",textDecoration:"none"}}>Create an account</a>
         </div>
