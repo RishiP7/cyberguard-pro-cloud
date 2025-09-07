@@ -87,20 +87,6 @@ app.use(cors({
   ]
 }));
 
-// Preflight
-app.options('/:rest(.*)', cors({
-  origin: corsOrigin,
-  credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: [
-    "Origin","X-Requested-With","Content-Type","Accept","Authorization",
-    "x-api-key","x-admin-key","x-plan-preview","x-admin-override"
-  ],
-  exposedHeaders: [
-    "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
-  ],
-  optionsSuccessStatus: 204
-}));
 app.use(helmet());
 
 // redacted request logging
