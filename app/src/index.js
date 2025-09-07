@@ -72,8 +72,6 @@ function corsOrigin(origin, cb){
   const norm = String(origin).trim().toLowerCase().replace(/\/$/, '');
   const allowed = ALLOWED_ORIGINS.includes(norm);
   return cb(null, allowed);
-}
-
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
@@ -140,7 +138,6 @@ function readAdminFlags(req){
   const preview = req.headers['x-plan-preview']; // 'trial'|'basic'|'pro'|'pro+'
   const override = req.headers['x-admin-override'] === '1';
   return { preview, override };
-}
 
 async function getEffectivePlan(tenant_id, req){
   const { rows } = await q(`SELECT plan, trial_started_at, trial_ends_at, trial_status FROM tenants WHERE tenant_id=$1`, [tenant_id]);
@@ -168,7 +165,6 @@ async function getEffectivePlan(tenant_id, req){
     effective,
     trial_active: trialActive
   };
-}
 
 async function aiReply(tenant_id, prompt){
   try{
@@ -198,8 +194,6 @@ async function aiReply(tenant_id, prompt){
     console.error('aiReply error', e);
     return 'Assistant is unavailable right now. An admin will reply shortly.';
   }
-}
-
 // ---- API key based auth for integrations & connector upsert helper ----
 async function tenantIdFromApiKey(key){
   if(!key) return null;
@@ -227,8 +221,6 @@ async function upsertConnector(tenant_id, type, provider, patch){
              details=COALESCE(connectors.details,'{}'::jsonb) || COALESCE(EXCLUDED.details,'{}'::jsonb),
              updated_at=EXTRACT(EPOCH FROM NOW())`,
            [id, tenant_id, type, provider||null, patch?.status||'connected', patch?.details? JSON.stringify(patch.details) : '{}']);
-}
-
 // ====== Email connector helpers ======
 async function getEmailConnector(tenant_id){
   // Prefer deterministic id for single-email-connector design
@@ -238,7 +230,6 @@ async function getEmailConnector(tenant_id){
   // Fallback: latest email connector if schema was older
   const latest = await q(`SELECT id, tenant_id, type, provider, status, details, updated_at FROM connectors WHERE tenant_id=$1 AND type='email' ORDER BY updated_at DESC LIMIT 1`, [tenant_id]);
   return latest.rows[0] || null;
-}
 
 function maskTokens(details){
   try{
@@ -249,8 +240,6 @@ function maskTokens(details){
     }
     return d;
   }catch(_){ return details || {}; }
-}
-
 // ===== M365 email polling helpers =====
 async function getM365AccessTokenForTenant(tenant_id){
   const conn = await getEmailConnector(tenant_id);
@@ -295,7 +284,6 @@ async function getM365AccessTokenForTenant(tenant_id){
     } catch (e) { lastErr = e; }
   }
   return { ok:false, reason:'refresh_failed', detail:lastErr };
-}
 
 async function graphGet(tenant_id, path){
   const conn = await getEmailConnector(tenant_id);
@@ -320,7 +308,6 @@ async function graphGet(tenant_id, path){
     resp = await doGet(access);
   }
   return resp;
-}
 
 function classifyEmail(subject, bodyPreview){
   const txt = ((subject||'') + ' ' + (bodyPreview||''))
@@ -340,8 +327,6 @@ function classifyEmail(subject, bodyPreview){
   if (hasUrl && score > -1.0) score = Math.min(score, -0.6);
 
   return score;
-}
-
 // ---- Realtime scans ring buffer (per-tenant, in-memory) ----
 const recentScans = new Map(); // tenant_id -> [{subject,from,when,severity,score}, ...]
 function pushRecentScan(tenant_id, row){
@@ -387,7 +372,6 @@ async function scanAndRecordEmails(tenant_id, items){
     if(alert) alertsCreated++;
   }
   return alertsCreated;
-}
 
 async function fetchM365Inbox(tenant_id, maxCount=10){
   const sel = '$select=receivedDateTime,from,subject,bodyPreview,webLink';
@@ -401,8 +385,6 @@ async function fetchM365Inbox(tenant_id, maxCount=10){
   }
   const j = await r.json();
   return Array.isArray(j?.value) ? j.value : [];
-}
-
 // ===== M365 delta polling (only new/changed messages) =====
 async function fetchM365Delta(tenant_id, pageTop = 25) {
   const sel  = '$select=receivedDateTime,from,subject,bodyPreview,webLink';
@@ -435,8 +417,6 @@ async function fetchM365Delta(tenant_id, pageTop = 25) {
     break;
   }
   return items;
-}
-
 // ===== Gmail helpers (refresh + list) =====
 async function getGoogleAccessTokenForTenant(tenant_id){
   const conn = await getEmailConnector(tenant_id);
@@ -459,7 +439,6 @@ async function getGoogleAccessTokenForTenant(tenant_id){
   if(!r.ok || !j.access_token) return { ok:false };
   await upsertConnector(tenant_id, 'email', 'google', { status:'connected', details: { ...(details||{}), tokens: { ...(details?.tokens||{}), ...j } } });
   return { ok:true, access: j.access_token };
-}
 
 async function gmailList(tenant_id, qStr = 'newer_than:1d', max = 25){
   const conn = await getEmailConnector(tenant_id);
@@ -494,7 +473,6 @@ async function gmailList(tenant_id, qStr = 'newer_than:1d', max = 25){
     }
   }
   return out;
-}
 // ---------- DB bootstrap (idempotent) ----------
 (async ()=>{
   await q(`
@@ -679,8 +657,6 @@ function extractBearer(req) {
   const h = req.headers?.authorization || req.headers?.Authorization || "";
   const m = /^Bearer\s+(.+)$/i.exec(h || "");
   return qTok || (m ? m[1] : "");
-}
-
 // --- M365 OAuth start (robust) ---
 app.get("/auth/m365/start", async (req, res) => {
   try {
@@ -1522,8 +1498,6 @@ function planToPrice(plan) {
   if (canonical === "pro") return STRIPE_PRICE_PRO;
   if (canonical === "pro_plus") return STRIPE_PRICE_PROPLUS;
   return null;
-}
-
 
 function canonicalPlan(plan){
   const raw = String(plan ?? "").trim().toLowerCase();
@@ -1532,8 +1506,6 @@ function canonicalPlan(plan){
   if (compact === "pro") return "pro";
   if (compact === "proplus" || compact === "pro+") return "pro_plus";
   return null;
-}
-
 // --- Stripe plan/tenant helpers ---
 function resolvePlanFromPriceId(priceId) {
   if (!priceId) return null;
@@ -1543,7 +1515,6 @@ function resolvePlanFromPriceId(priceId) {
     [STRIPE_PRICE_PROPLUS]: 'pro_plus'
   };
   return map[priceId] || null;
-}
 
 async function resolveTenantIdFromEvent(obj) {
   try {
@@ -1559,7 +1530,6 @@ async function resolveTenantIdFromEvent(obj) {
     }
   } catch (_e) {}
   return null;
-}
 
 async function setTenantPlan(tenantId, plan, opts = {}) {
   const endTrial = !!opts.endTrial;
@@ -1581,8 +1551,6 @@ async function setTenantPlan(tenantId, plan, opts = {}) {
     await recordOpsRun('stripe_plan_set_error', { tenant_id: tenantId, plan: key, msg: e.message || String(e) });
     throw e;
   }
-}
-
 // Debug endpoint: test canonicalization of plan input
 app.get('/billing/_debug', authMiddleware, requireSuper, (req, res) => {
   const plan = req.query?.plan || '';
@@ -1627,8 +1595,6 @@ async function getOrCreateStripeCustomer(tenant_id) {
   }
 
   return customerId;
-}
-
 // --- Billing helpers: idempotency + plan sync + auditing ---
 async function hasStripeEvent(id){
   const r = await q(`SELECT 1 FROM stripe_events WHERE id=$1 LIMIT 1`, [id]);
@@ -1686,8 +1652,6 @@ async function logStripeRun(kind, details){
   try{
     await recordOpsRun(kind, details || {});
   }catch(_e){}
-}
-
 // Probe endpoint for config
 app.get("/billing/_config", (req, res) => {
   res.json({
@@ -1964,7 +1928,6 @@ async function ensureApikeysSchema(){
       ALTER TABLE apikeys ALTER COLUMN id TYPE TEXT USING id::text;
     END IF;
   END $$;`);
-}
 
 async function withApikeysRetry(op){
   try { return await op(); }
@@ -1976,7 +1939,6 @@ async function withApikeysRetry(op){
     }
     throw e;
   }
-}
 // --- Paid plan guard (applies to API key routes) ---
 async function requirePaidPlan(req, res, next) {
   try {
@@ -1995,7 +1957,6 @@ async function requirePaidPlan(req, res, next) {
   } catch (_e) {
     return res.status(402).json({ error: 'Paid plan required' });
   }
-}
 // Ensures we always use fresh plan info from DB (not what's baked into old JWTs)
 async function attachFreshTenantPlan(req, res, next) {
   try {
@@ -2011,7 +1972,6 @@ async function attachFreshTenantPlan(req, res, next) {
     // non-fatal; fall back to token values
   }
   next();
-}
 // ---------- apikeys ----------
 // New API key endpoints (string keys)
 import crypto from "crypto";
@@ -2197,7 +2157,6 @@ function normalizeGraphMessage(m) {
     // keep original around in case you need it later
     _raw: { provider: 'm365', message: m }
   };
-}
 // ---------- ingest helpers ----------
 // ===== Email: on-demand poll & scan (provider-aware: M365 delta or Gmail) =====
 app.post('/email/poll', authMiddleware, enforceActive, async (req,res)=>{
@@ -2243,7 +2202,6 @@ async function checkKey(req){
   const {rows}=await q(`SELECT tenant_id,revoked FROM apikeys WHERE id=$1`,[key]);
   if(!rows.length||rows[0].revoked) return null;
   return rows[0].tenant_id;
-}
 const saveUsage=(tenant_id,kind)=>q(`INSERT INTO usage_events(id,tenant_id,kind,created_at) VALUES($1,$2,$3,$4)`,[uuidv4(),tenant_id,kind,now()]);
 const scoreOf=ev=>{
   if(ev.type==="dns" && (ev.verdict==="dns-tunnel"||ev.newly_registered)) return -1;
@@ -2322,7 +2280,6 @@ const alert = { id, tenant_id, event_json: ev, score, status: 'new', created_at:
   await maybeAct(tenant_id,alert,p);
   try { bus.emit('alert', { tenant_id, alert }); } catch(_e) {}
   return alert;
-}
 // ---------- ingest (plan-gated) ----------
 app.post("/email/scan",async (req,res)=>{
   try{
@@ -2488,13 +2445,11 @@ const RETAIN_USAGE_DAYS = Number(process.env.RETAIN_USAGE_DAYS || 180);
 function cutoffEpoch(days){
   const d = Math.max(1, Number(days || 1));
   return Math.floor(Date.now()/1000) - (d * 24 * 3600);
-}
 
 async function retentionPreview(){
   const a = await q(`SELECT COUNT(*)::int AS n FROM alerts WHERE created_at < $1`, [cutoffEpoch(RETAIN_ALERT_DAYS)]);
   const u = await q(`SELECT COUNT(*)::int AS n FROM usage_events WHERE created_at < $1`, [cutoffEpoch(RETAIN_USAGE_DAYS)]);
   return { alerts: a.rows[0]?.n || 0, usage_events: u.rows[0]?.n || 0 };
-}
 
 async function retentionRun(){
   const a = await q(`
@@ -2514,7 +2469,6 @@ async function retentionRun(){
     SELECT COUNT(*)::int AS n FROM del
   `, [cutoffEpoch(RETAIN_USAGE_DAYS)]);
   return { alerts_deleted: a.rows[0]?.n || 0, usage_events_deleted: u.rows[0]?.n || 0 };
-}
 // Record administrative ops runs (auditing) with throttle for noisy types
 const _badSigWindowMs = 60 * 1000; // 1 minute window
 const _badSigMaxPerWindow = Math.max(1, Number(process.env.STRIPE_BAD_SIG_MAX || 5));
@@ -2798,7 +2752,6 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
-
 /* ===== NO-DB /me (clean) ===== */
 app.get('/me', authMiddleware, (req, res) => {
   try {
@@ -2808,17 +2761,26 @@ app.get('/me', authMiddleware, (req, res) => {
     const tenant_id = u.tenant_id || 'tenant_admin';
     const role = u.role || 'owner';
 
-    res.json({
+    return res.json({
       ok: true,
       user: { email, role, plan, tenant_id },
       tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
     });
   } catch (e) {
     console.error('me error', e);
-    res.status(500).json({ ok:false, error:'me failed' });
+    return res.status(500).json({ ok:false, error:'me failed' });
   }
 });
 /* ===== /me end ===== */
+
+
+
+} catch (e) {
+    console.error('me error', e);
+    res.status(500).json({ ok:false, error:'me failed' });
+  }
+});
+
 
 
 
@@ -3057,8 +3019,6 @@ async function ensureAlertDetailColumns() {
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS anomaly BOOLEAN`); } catch(_) {}
   // score already exists in most schemas; keep optional add for safety
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS score NUMERIC`); } catch(_) {}
-}
-
 // Best-effort denormalization from legacy JSONB `event` into flat columns
 async function denormalizeAlertsForTenant(tenantId) {
   try {
@@ -3075,8 +3035,6 @@ async function denormalizeAlertsForTenant(tenantId) {
          AND event IS NOT NULL
     `, [tenantId]);
   } catch (_) { /* if event column doesn't exist, ignore */ }
-}
-
 // Periodic background denormalization (lightweight)
 setInterval(async ()=>{
   try {
@@ -3217,14 +3175,10 @@ async function isProPlus(tenant_id) {
   // Allow trial users to access Pro+ features if trial_status is active
   if (rows[0].trial_status === 'active' && Number(rows[0].trial_ends_at || 0) > now()) return true;
   return false;
-}
-
 // --- Helper: withinRateLimit (stub) ---
 async function withinRateLimit(tenant_id, action) {
   // TODO: implement actual rate limiting if needed
   return true;
-}
-
 // --- Helper: proposeActions (stub) ---
 async function proposeActions(tenant_id, context) {
   // TODO: Use LLM or rules engine to propose actions.
@@ -3236,22 +3190,16 @@ async function proposeActions(tenant_id, context) {
       reason: "Suspicious activity detected"
     }
   ];
-}
-
 // --- Helper: executeAction (stub) ---
 async function executeAction(ai_action) {
   // Simulate action execution
   return { ok: true, executed: true, action: ai_action.action, params: ai_action.params, ts: now() };
-}
-
 // --- Middleware: requireProPlus ---
 async function requireProPlus(req, res, next) {
   if (!(await isProPlus(req.user.tenant_id))) {
     return res.status(402).json({ ok:false, error: "Requires Pro+ plan" });
   }
   next();
-}
-
 // --- GET /ai/policies ---
 app.get('/ai/policies', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
   try {
@@ -3411,8 +3359,6 @@ setInterval(async ()=>{
 async function setTenantBillingStatus(tenantId, status) {
   try { await ensureBillingStatusColumn(); } catch(_e) {}
   await q(`UPDATE tenants SET billing_status=$2 WHERE tenant_id=$1`, [tenantId, status ?? null]);
-}
-
 // Map Stripe price IDs to internal plan codes
 const PRICE_TO_PLAN = (() => {
   const m = new Map();
@@ -3429,25 +3375,19 @@ function normalizePlan(p){
   const v = String(p||'').toLowerCase();
   if(['pro','pro_plus'].includes(v)) return v;
   return null;
-}
 // Link a Stripe customer to a tenant (idempotent)
 async function setTenantStripeCustomerId(tenantId, customerId){
   if(!tenantId || !customerId) return;
   await q(`UPDATE tenants SET stripe_customer_id=$2 WHERE tenant_id=$1`, [tenantId, customerId]);
-}
 // Resolve tenant_id by Stripe customer id
 async function tenantIdByStripeCustomerId(customerId){
   const r = await q(`SELECT tenant_id FROM tenants WHERE stripe_customer_id=$1`, [customerId]);
   return r.rows && r.rows[0] ? r.rows[0].tenant_id : null;
-}
-
 // -- Ensure billing_status column exists (safe, idempotent)
 async function ensureBillingStatusColumn() {
   try {
     await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`);
   } catch (_e) { /* ignore */ }
-}
-
 // -- Check if billing_status column exists (with simple in-memory cache)
 let _billingStatusColumnKnown = false;
 let _billingStatusColumnHas = false;
@@ -3464,15 +3404,11 @@ async function hasBillingStatusColumn() {
     _billingStatusColumnHas = false;
     return false;
   }
-}
 // -- Ensure connectors health columns exist (safe, idempotent)
 async function ensureConnectorHealthColumns() {
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch (_e) {}
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
-}
-
-
 // ---------- /me route ----------
 // Temporary no-DB tenant info so the web app can load
   } catch (e) {
@@ -3603,8 +3539,6 @@ if (process.env.NODE_ENV !== 'production') {
       res.status(500).json({ ok: false, error: String(e.message || e) });
     }
   });
-}
-
 // ---------- Stripe Billing endpoints ----------
 
 // Create Stripe Checkout session for subscription
@@ -4328,7 +4262,6 @@ async function runBackgroundPoll() {
   } catch (err) {
     console.error('[bg-poll] failed to run background poll', err?.message || err);
   }
-}
 
 function startBackgroundPoller() {
   if (!BG_ENABLED) {
@@ -4345,8 +4278,6 @@ function startBackgroundPoller() {
       setTimeout(runBackgroundPoll, jitter);
     }, 5 * 60 * 1000);
   }, firstJitter);
-}
-
 // start the background poller (no-op if disabled)
 startBackgroundPoller();
 // Ensure M365 access token is fresh before polling
@@ -4360,7 +4291,6 @@ async function ensureM365TokenFresh(tenantId) {
   } catch (e) {
     console.error('[token-refresh] failed', e?.message || e);
   }
-}
 // ---------- Alerts export (JSON/CSV) ----------
 // GET /alerts/export?format=json|csv&days=7&limit=1000
 // - format: json (default) or csv
