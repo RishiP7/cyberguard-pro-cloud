@@ -1,0 +1,50 @@
+name: Repository Backups
+
+on:
+  schedule:
+    - cron: "5 1 * * *"     # nightly tag @ 01:05 UTC
+    - cron: "10 1 * * 0"    # weekly branch @ 01:10 UTC on Sundays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly-tag:
+    if: github.event.schedule == '5 1 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create nightly tag
+        run: |
+          DATE=$(date -u +'%Y-%m-%d')
+          TAG="backup-${DATE}"
+          # Only tag if it doesn't exist
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists; skipping."
+          else
+            git tag -a "${TAG}" -m "Automated nightly backup ${DATE}"
+            git push origin "${TAG}"
+          fi
+
+  weekly-branch:
+    if: github.event.schedule == '10 1 * * 0' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create/update weekly branch
+        run: |
+          WEEK=$(date -u +'%G-%V')   # ISO week
+          BR="weekly-backup-${WEEK}"
+          # Create or fast-forward the backup branch to latest main
+          git fetch origin main
+          if git show-ref --verify --quiet "refs/heads/${BR}"; then
+            git branch -f "${BR}" origin/main
+          else
+            git branch "${BR}" origin/main
+          fi
+          git push -f origin "${BR}"
