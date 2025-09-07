@@ -2738,7 +2738,7 @@ function CollapsibleSection({ id, title, defaultCollapsed=false, children }) {
           </button>
           {/* Replace h2 text title with logo if matches brand title */}
           {title === "Cyber Guard Pro" || title === "CyberGuard Pro" ? (
-            <img src="/brand/logo.png" alt="CyberGuard Pro" style={{height:40,width:"auto",display:"block"}} />
+            <img src="/brand/logo.png" alt="CyberGuard Pro" style={{height:54,width:"auto",display:"block",objectFit:"contain"}} />
           ) : (
             <h2 style={{margin:0,fontSize:16}}>{title}</h2>
           )}
@@ -4168,18 +4168,14 @@ if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (e)=>{ try{ console.error('[unhandled rejection]', e.reason); }catch{} });
 }
 
-// Remove duplicate mini-logo block if present in the file
-// (Remove <div data-cgp-brand ...>...</div> block)
-// (We do this by searching for the exact JSX block and removing it)
 
-// [PATCH BLOCK REMOVE] Remove the mini-logo block if present:
-// <div data-cgp-brand style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-//   <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:36,width:"auto"}} />
-// </div>
+// --- Sidebar/header brand logo (replace text with larger logo, prevent stretching) ---
+// (Look for where we previously injected the brand logo in the sidebar/header)
+// (Update to use the new style: height 54, objectFit: contain)
 
-// (The following is not actual code, but a marker for the patch system.)
-
-// --- END PATCH BLOCK REMOVE ---
+// Example: <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:36,width:"auto"}} />
+// Replace with:
+// <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:54,width:"auto",display:"block",objectFit:"contain"}} />
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
