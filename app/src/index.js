@@ -1293,12 +1293,7 @@ app.post("/auth/register",async (req,res)=>{
 });
 
 // ---------- me / usage ----------
-app.get('/me', authMiddleware, async (req, res) => {
-  try {
-    const { sub, email, role = 'owner', plan = 'pro_plus', tenant_id = 'tenant_admin' } = req.user || {};
-    if (!email && !sub) return res.status(401).json({ error: 'not authed' });
-
-    // Temporary no-DB tenant info so the web app can load
+// Temporary no-DB tenant info so the web app can load
     return res.json({
       ok: true,
       user: { email: email || sub, role, plan, tenant_id },
@@ -2894,6 +2889,23 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
 
+
+
+/* ==== NO-DB /me (forced) ==== */
+app.get('/me', authMiddleware, (req, res) => {
+  const u = req.user || {};
+  const email = u.email || u.sub || 'owner@cyberguardpro.com';
+  const plan = u.plan || 'pro_plus';
+  const tenant_id = u.tenant_id || 'tenant_admin';
+  const role = u.role || 'owner';
+  return res.json({
+    ok: true,
+    user: { email, role, plan, tenant_id },
+    tenant: { id: tenant_id, name: 'Cyber Guard Pro', plan }
+  });
+});
+/* ==== /me end ==== */
+
 // --- Bootstrap admin login for the web app ---
 // POST /auth/admin-login  { email, password }
 app.post('/auth/admin-login', async (req, res) => {
@@ -3535,12 +3547,7 @@ async function ensureConnectorHealthColumns() {
 
 
 // ---------- /me route ----------
-app.get('/me', authMiddleware, async (req, res) => {
-  try {
-    const { sub, email, role = 'owner', plan = 'pro_plus', tenant_id = 'tenant_admin' } = req.user || {};
-    if (!email && !sub) return res.status(401).json({ error: 'not authed' });
-
-    // Temporary no-DB tenant info so the web app can load
+// Temporary no-DB tenant info so the web app can load
     return res.json({
       ok: true,
       user: { email: email || sub, role, plan, tenant_id },
