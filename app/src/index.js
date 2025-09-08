@@ -4567,27 +4567,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
 
     try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch(_e) {}
 
-    if (dbg) {
-      let after = null, details_has_tokens = null, details_sample = null;
-      try {
-        const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [tid, provider]);
-        if (r.rows && r.rows[0]) {
-          after = Object.keys(r.rows[0]);
-          const dtext = r.rows[0].details != null ? String(r.rows[0].details) : '';
-          details_has_tokens = /access_token|refresh_token|id_token|\"tokens\"/i.test(dtext);
-          details_sample = dtext.slice(0, 200);
-        }
-      } catch(_e) {}
-      return res.json({
-        ok: true,
-        cleared: clearCols,
-        json_candidates: JSON_CANDIDATES.filter(has),
-        columns: cols.map(c=>c.name),
-        after_keys: after,
-        details_has_tokens,
-        details_sample,
-        first_update_error: firstUpdateErr || null
-      });
     }
 
     return res.json({ ok:true });
