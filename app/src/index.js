@@ -1300,6 +1300,10 @@ app.use(["/email/scan","/edr/ingest","/dns/ingest","/logs/ingest","/cloud/ingest
 // ---------- health ----------
 app.get("/",(_req,res)=>res.json({ok:true,service:BRAND,version:"2.3.0"}));
 app.get("/health",async (_req,res)=>{
+// ---- Sentry test endpoint (intentionally throws to verify Sentry)
+app.get("/debug-sentry", (_req, _res) => {
+  throw new Error("Sentry test error!");
+});
   try{ await q("SELECT 1"); res.json({ok:true,db:true,uptime:process.uptime()}); }
   catch(e){ res.status(500).json({ok:false,db:false}); }
 });
