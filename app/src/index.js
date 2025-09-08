@@ -4479,6 +4479,175 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
   }
 });
 
+async function ensureM365TokenFresh(tenantId) {
+  try {
+    await q(`
+      UPDATE connectors
+         SET access_token = access_token, last_sync_at = extract(epoch from now())
+       WHERE tenant_id=$1 AND provider='m365'
+    `, [tenantId]);
+  } catch (e) {
+    console.error('[token-refresh] failed', e?.message || e);
+  }
+}
+// ---------- Alerts export (JSON/CSV) ----------
+// GET /alerts/export?format=json|csv&days=7&limit=1000
+// - format: json (default) or csv
+// - days: lookback window (default 7, max 90)
+// - limit: max number of rows (default 1000, max 5000)
+app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
+  try {
+    const tid = req.user.tenant_id;
+    const fmt = String(req.query?.format || 'json').toLowerCase();
+    const days = Math.min(90, Math.max(1, parseInt(String(req.query?.days || '7'), 10) || 7));
+    const limit = Math.min(5000, Math.max(1, parseInt(String(req.query?.limit || '1000'), 10) || 1000));
+    const since = Math.floor(Date.now() / 1000) - (days * 86400);
+
+    // Probe multiple possible schemas for alerts (flat, alt, or legacy JSONB)
+    let rows = [];
+    // try #0: coalesce flat + legacy JSONB if both exist
+    try {
+      const r0 = await q(`
+        WITH base AS (
+          SELECT id,
+                 tenant_id,
+                 score,
+                 status,
+                 created_at,
+                 COALESCE(
+                   event::jsonb,
+                   data::jsonb,
+                   payload::jsonb,
+                   raw::jsonb,
+                   details::jsonb
+                 ) AS j,
+                 from_addr,
+                 type,
+                 subject,
+                 preview,
+                 anomaly
+            FROM alerts
+           WHERE tenant_id=$1 AND created_at > $2
+           ORDER BY created_at DESC
+           LIMIT $3
+        )
+        SELECT id,
+               tenant_id,
+               score,
+               status,
+               created_at,
+               COALESCE(
+                 from_addr,
+                 j->>'from',
+                 j->'from'->'emailAddress'->>'address',
+                 j->'sender'->'emailAddress'->>'address',
+                 j->'from'->>'address'
+               ) AS from_addr,
+               COALESCE(
+                 type,
+                 j->>'type',
+                 'email'
+               ) AS evt_type,
+               COALESCE(
+                 subject,
+                 j->>'subject'
+               ) AS subject,
+               COALESCE(
+                 preview,
+                 j->>'preview',
+                 j->>'bodyPreview',
+                 LEFT((j->'body'->>'content'), 280)
+               ) AS preview,
+               COALESCE(CAST(anomaly AS TEXT), j->>'anomaly') AS anomaly_txt
+          FROM base
+      `, [tid, since, limit]);
+      rows = r0.rows;
+    } catch(_e0) { /* fall through to other probes */ }
+    if (!rows || rows.length === 0) {
+      // try #1: flat schema with a column named "from" (quoted because it's a keyword)
+      try {
+        const r1 = await q(`
+          SELECT id,
+                 tenant_id,
+                 score,
+                 status,
+                 created_at,
+                 "from"   AS from_addr,
+                 type      AS evt_type,
+                 subject   AS subject,
+                 preview   AS preview,
+                 anomaly   AS anomaly_txt
+            FROM alerts
+           WHERE tenant_id=$1 AND created_at > $2
+           ORDER BY created_at DESC
+           LIMIT $3
+        `, [tid, since, limit]);
+        rows = r1.rows;
+      } catch (_e1) {
+        // try #2: flat schema but column named from_addr
+        try {
+          const r2 = await q(`
+            SELECT id,
+                   tenant_id,
+                   score,
+                   status,
+                   created_at,
+                   from_addr AS from_addr,
+                   type      AS evt_type,
+                   subject   AS subject,
+                   preview   AS preview,
+                   anomaly   AS anomaly_txt
+              FROM alerts
+             WHERE tenant_id=$1 AND created_at > $2
+             ORDER BY created_at DESC
+             LIMIT $3
+          `, [tid, since, limit]);
+          rows = r2.rows;
+        } catch (_e2) {
+          // try #3: flat schema but sender column named email_from
+          try {
+            const r3 = await q(`
+              SELECT id,
+                     tenant_id,
+                     score,
+                     status,
+                     created_at,
+                     email_from AS from_addr,
+                     type       AS evt_type,
+                     subject    AS subject,
+                     preview    AS preview,
+                     anomaly    AS anomaly_txt
+                FROM alerts
+               WHERE tenant_id=$1 AND created_at > $2
+               ORDER BY created_at DESC
+               LIMIT $3
+            `, [tid, since, limit]);
+            rows = r3.rows;
+          } catch (_e3) {
+            // try #4: legacy JSONB event column
+            try {
+              const r4 = await q(`
+                SELECT id,
+                       tenant_id,
+                       score,
+                       status,
+                       created_at,
+                       (event::jsonb)->>'from'    AS from_addr,
+                       (event::jsonb)->>'type'    AS evt_type,
+                       (event::jsonb)->>'subject' AS subject,
+                       (event::jsonb)->>'preview' AS preview,
+                       (event::jsonb)->>'anomaly' AS anomaly_txt
+                  FROM alerts
+                 WHERE tenant_id=$1 AND created_at > $2
+                 ORDER BY created_at DESC
+                 LIMIT $3
+              `, [tid, since, limit]);
+              rows = r4.rows;
+            } catch (_e4) {
+              // Final fallback: minimal columns (id and created_at only) so we always return something
+              const r5 = await q(`
+                SELECT id,
+                       tenant_id,
                        NULL::numeric AS score,
                        status,
                        created_at,
