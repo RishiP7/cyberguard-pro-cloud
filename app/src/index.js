@@ -4482,43 +4482,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
 // ---------- Admin: reset connector (wipe tokens/state) ----------
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
 // optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
-app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
-// ---------- Admin: trigger poll now (super only) ----------
-// POST /admin/ops/poll/now
-app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
-  // Best-effort: keep M365 token fresh before polling
-  try { await ensureM365TokenFresh(req.user.tenant_id); } catch (_e) {}
-  try {
-    const { provider } = req.body || {};
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
-    await runPollForTenant(req.user.tenant_id, provider, { limit: 25 });
-    return res.json({ ok:true });
-  } catch (e) {
-    console.error('admin/ops/poll/now failed', e);
-    return res.status(500).json({ ok:false, error: 'poll failed' });
-  }
-});
-  const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
-  try {
-    const { provider } = req.body || {};
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
-    const tid = req.user.tenant_id;
-
-    // Ensure baseline health columns exist (idempotent)
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
-
-    // Discover actual columns on connectors
-    let cols = [];
-    try {
-      const r = await q(`
-        SELECT column_name, data_type
-          FROM information_schema.columns
-         WHERE table_schema='public' AND table_name='connectors'
-      `);
-      cols = (r.rows || []).map(r => ({ name: String(r.column_name), type: String(r.data_type) }));
-    } catch(_e) { cols = []; }
     const has = (c) => cols.some(x => x.name === c);
     const colType = (c) => (cols.find(x => x.name === c)?.type || '').toLowerCase();
 
