@@ -109,11 +109,6 @@ app.use(cors({
 app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
 
-// --- Sentry request + tracing handlers (enabled only when DSN present) ---
-if (process.env.SENTRY_DSN) {
-  app.use(SentryExpress.expressRequestHandler());
-  app.use(SentryExpress.expressTracing());
-}
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
@@ -5081,7 +5076,7 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 // ---------- start ----------
 // Sentry error handler (must be before any other error middleware)
 if (process.env.SENTRY_DSN) {
-  app.use(SentryExpress.expressErrorHandler());
+  app.use(Sentry.setupExpressErrorHandler());
 }
 // Minimal fallback error handler to avoid leaking internals
 app.use((err, _req, res, _next) => {
