@@ -13,7 +13,7 @@ import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
 import querystring from "node:querystring";
 import * as Sentry from "@sentry/node";
-import "@sentry/tracing";
+import * as SentryExpress from "@sentry/node/express";
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -111,8 +111,8 @@ app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1
 
 // --- Sentry request + tracing handlers (enabled only when DSN present) ---
 if (process.env.SENTRY_DSN) {
-  app.use(Sentry.expressRequestHandler());
-  app.use(Sentry.expressTracing());
+  app.use(SentryExpress.expressRequestHandler());
+  app.use(SentryExpress.expressTracing());
 }
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
@@ -1300,10 +1300,6 @@ app.use(["/email/scan","/edr/ingest","/dns/ingest","/logs/ingest","/cloud/ingest
 // ---------- health ----------
 app.get("/",(_req,res)=>res.json({ok:true,service:BRAND,version:"2.3.0"}));
 app.get("/health",async (_req,res)=>{
-// ---- Sentry test endpoint (intentionally throws to verify Sentry)
-app.get("/debug-sentry", (_req, _res) => {
-  throw new Error("Sentry test error!");
-});
   try{ await q("SELECT 1"); res.json({ok:true,db:true,uptime:process.uptime()}); }
   catch(e){ res.status(500).json({ok:false,db:false}); }
 });
@@ -4483,6 +4479,314 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
   }
 });
 
+// ---------- Admin: reset connector (wipe tokens/state) ----------
+// Strong reset: dynamically null any token/secret/auth columns, clear health fields,
+// optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
+app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
+  const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
+  try {
+    const { provider } = req.body || {};
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    const tid = req.user.tenant_id;
+
+    // Ensure baseline health columns exist (idempotent)
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
+
+    // Discover actual columns on connectors
+    let cols = [];
+    try {
+      const r = await q(`
+        SELECT column_name, data_type
+          FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='connectors'
+      `);
+      cols = (r.rows || []).map(r => ({ name: String(r.column_name), type: String(r.data_type) }));
+    } catch(_e) { cols = []; }
+    const has = (c) => cols.some(x => x.name === c);
+    const colType = (c) => (cols.find(x => x.name === c)?.type || '').toLowerCase();
+
+    // 1) Null out obvious credential-ish columns if present
+    const CRED_COLS = [
+      'access_token','refresh_token','id_token','token','auth','authorization',
+      'client_secret','secret','password','expires_at',
+      'status','last_error','last_sync_at'
+    ];
+    const clearCols = CRED_COLS.filter(has);
+    if (clearCols.length === 0) {
+      // guarantee we at least clear health
+      ['status','last_error','last_sync_at'].forEach(c => { if (!clearCols.includes(c)) clearCols.push(c); });
+    }
+
+    // Build dynamic UPDATE SET list
+    const setParts = clearCols.map(c => (c === 'status' ? `status='new'` : `${c}=NULL`));
+
+    let firstUpdateOk = false;
+    let firstUpdateErr = null;
+    try {
+      await q(`UPDATE connectors SET ${setParts.join(', ')} WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
+      firstUpdateOk = true;
+    } catch (updErr) {
+      firstUpdateErr = String(updErr?.message || updErr);
+      // Try a broad, forceful fallback clearing common columns (details/data/config/meta/settings/auth_json)
+      try {
+        await q(`
+          UPDATE connectors
+             SET status='new',
+                 last_error=NULL,
+                 last_sync_at=NULL,
+                 details=NULL,
+                 data=CASE WHEN to_regclass('public.connectors') IS NOT NULL THEN NULL ELSE NULL END,
+                 config=NULL,
+                 meta=NULL,
+                 settings=NULL,
+                 auth_json=NULL
+           WHERE tenant_id=$1 AND provider=$2
+        `, [tid, provider]);
+        firstUpdateOk = true;
+        try { await recordOpsRun('connector_reset_fallback', { tenant_id: tid, provider, note: 'broad clear applied', err: firstUpdateErr }); } catch(_e) {}
+      } catch (fallbackErr) {
+        try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, step: 'clearCols+fallback', err: firstUpdateErr, fallback_err: String(fallbackErr?.message||fallbackErr) }); } catch(_e) {}
+        if (req.query && (req.query.debug === '1' || req.query.debug === 'true')) {
+          return res.status(500).json({ ok:false, error: 'reset failed', step:'fallback', detail:firstUpdateErr, fallback_detail: String(fallbackErr?.message||fallbackErr) });
+        }
+        return res.status(500).json({ ok:false, error: 'reset failed' });
+      }
+    }
+
+    // 2) If we have JSON/JSONB blobs (common names), surgically remove token keys
+    const JSON_CANDIDATES = ['data','config','meta','settings','auth_json','details'];
+    const TOKEN_KEYS = ['access_token','refresh_token','id_token','token','authorization','auth','secret','client_secret','password','expires_at'];
+    for (const jc of JSON_CANDIDATES) {
+      if (!has(jc)) continue;
+      const t = colType(jc); // should be 'json' or 'jsonb'
+      if (t.includes('json')) {
+        // Try to strip keys one-by-one so a missing key doesn't fail the whole update
+        for (const k of TOKEN_KEYS) {
+          try {
+            await q(`
+              UPDATE connectors
+                 SET ${jc} = (
+                      CASE WHEN ${jc}::text IS NULL THEN NULL
+                           WHEN ${jc}::text = 'null' THEN NULL
+                           ELSE (${jc}::jsonb - $3)::jsonb END
+                 )
+               WHERE tenant_id=$1 AND provider=$2
+            `, [tid, provider, k]);
+          } catch(_e) { /* ignore per-key issues */ }
+        }
+      }
+    }
+
+    // If JSON casts failed (e.g., TEXT column), as a last resort null out obvious secrets by text match
+    try {
+      await q(`
+        UPDATE connectors
+           SET details = NULL
+         WHERE tenant_id=$1 AND provider=$2
+           AND details IS NOT NULL
+           AND (
+             details::text ILIKE '%"access_token"%' OR
+             details::text ILIKE '%"refresh_token"%' OR
+             details::text ILIKE '%"id_token"%' OR
+             details::text ILIKE '%"tokens"%'
+           )
+      `, [tid, provider]);
+    } catch(_e) { /* best-effort */ }
+
+    // Deep-clean nested secrets inside details (tokens) using JSONB when possible
+    let detailsJsonbOk = false;
+    try {
+      await q(`
+        UPDATE connectors
+           SET details = (
+                CASE
+                  WHEN details::text IS NULL OR details::text = 'null' THEN NULL
+                  ELSE (details::jsonb #- '{tokens}')
+                END
+           )
+         WHERE tenant_id=$1 AND provider=$2
+      `, [tid, provider]);
+      detailsJsonbOk = true;
+    } catch(_e) { /* jsonb path may fail if details is TEXT or invalid JSON */ }
+
+    // Clear the M365 delta cursor path if JSONB worked
+    if (detailsJsonbOk) {
+      try {
+        await q(`
+          UPDATE connectors
+             SET details = (
+                  CASE
+                    WHEN details::text IS NULL OR details::text = 'null' THEN NULL
+                    ELSE jsonb_set(
+                           details::jsonb,
+                           '{delta}',
+                           COALESCE((details::jsonb->'delta')::jsonb, '{}'::jsonb) - 'm365',
+                           true
+                         )
+                  END
+             )
+           WHERE tenant_id=$1 AND provider=$2
+        `, [tid, provider]);
+      } catch(_e) { /* ignore */ }
+    } else {
+      // Fallback for TEXT/invalid JSON: if it still contains secrets or delta token, null it
+      try {
+        await q(`
+          UPDATE connectors
+             SET details = NULL
+           WHERE tenant_id=$1 AND provider=$2
+             AND details IS NOT NULL
+             AND (
+               details::text ILIKE '%"access_token"%' OR
+               details::text ILIKE '%"refresh_token"%' OR
+               details::text ILIKE '%"id_token"%' OR
+               details::text ILIKE '%"$deltatoken"%' OR
+               details::text ILIKE '%/messages/delta%'
+             )
+        `, [tid, provider]);
+      } catch(_e) { /* best-effort */ }
+    }
+
+    // Optional hard clear of details when explicitly requested via ?force=1
+    const force = (req.query && (req.query.force === '1' || req.query.force === 'true'));
+    if (force) {
+      try {
+        await q(`UPDATE connectors SET details=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
+        try { await recordOpsRun('connector_reset_force_details', { tenant_id: tid, provider }); } catch(_e) {}
+      } catch(_e) { /* non-fatal */ }
+    }
+
+    // 3) As a last resort, if there is a single row for this tenant/provider and it still has credentials,
+    // offer an optional hard delete via query flag `?purge=1` (super only, explicit opt-in)
+    const purge = (req.query && (req.query.purge === '1' || req.query.purge === 'true'));
+    if (purge) {
+      try { await q(`DELETE FROM connectors WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); }
+      catch(_e) { /* best effort */ }
+    }
+
+    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch(_e) {}
+
+    if (dbg) {
+      let after = null, details_has_tokens = null, details_sample = null;
+      try {
+        const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [tid, provider]);
+        if (r.rows && r.rows[0]) {
+          after = Object.keys(r.rows[0]);
+          const dtext = r.rows[0].details != null ? String(r.rows[0].details) : '';
+          details_has_tokens = /access_token|refresh_token|id_token|\"tokens\"/i.test(dtext);
+          details_sample = dtext.slice(0, 200);
+        }
+      } catch(_e) {}
+      return res.json({
+        ok: true,
+        cleared: clearCols,
+        json_candidates: JSON_CANDIDATES.filter(has),
+        columns: cols.map(c=>c.name),
+        after_keys: after,
+        details_has_tokens,
+        details_sample,
+        first_update_error: firstUpdateErr || null
+      });
+    }
+
+    return res.json({ ok:true });
+  } catch (e) {
+    console.error('connector/reset failed', e);
+    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch(_e) {}
+    if (dbg) {
+      return res.status(500).json({ ok:false, error: 'reset failed', detail: String(e?.message || e) });
+    }
+    return res.status(500).json({ ok:false, error: 'reset failed' });
+  }
+});
+
+// ---------- Admin: trigger poll now (super only) ----------
+// POST /admin/ops/poll/now
+app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
+  // Best-effort: keep M365 token fresh before polling
+  try { await ensureM365TokenFresh(req.user.tenant_id); } catch (_e) {}
+  try {
+    const { provider } = req.body || {};
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    await runPollForTenant(req.user.tenant_id, provider, { limit: 25 });
+    return res.json({ ok:true });
+  } catch (e) {
+    console.error('admin/ops/poll/now failed', e);
+    return res.status(500).json({ ok:false, error: 'poll failed' });
+  }
+});
+
+// Helper: show current connector row (super only) to debug schema & values
+app.get('/admin/ops/connector/show', authMiddleware, requireSuper, async (req, res) => {
+  try {
+    const provider = String(req.query?.provider || '').trim();
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [req.user.tenant_id, provider]);
+    if (!r.rows || r.rows.length === 0) return res.json({ ok:true, found:false });
+    return res.json({ ok:true, found:true, row: r.rows[0] });
+  } catch(e) {
+    return res.status(500).json({ ok:false, error:'show failed', detail: String(e?.message||e) });
+  }
+});
+
+// =====================
+// BACKGROUND POLLER (ESM-safe, no external scheduler)
+// =====================
+
+// Enable with ENABLE_BG_POLLER=1 (or true/yes/on)
+const BG_ENABLED = ['1','true','yes','on'].includes(
+  String(process.env.ENABLE_BG_POLLER || '').toLowerCase()
+);
+
+// helper: run poll for all tenants/providers every N minutes
+async function runBackgroundPoll() {
+  try {
+    console.log('[bg-poll] starting background poll cycle');
+    // fetch all connectors that are currently connected
+    const connectors = await db.any(
+      'SELECT tenant_id, provider, status FROM connectors WHERE status=$1',
+      ['connected']
+    );
+    for (const c of connectors) {
+      try {
+        console.log(`[bg-poll] polling ${c.tenant_id}:${c.provider}`);
+                // Pre-flight: refresh M365 tokens if near expiry
+        if (c.provider === 'm365') {
+          try { await ensureM365TokenFresh(c.tenant_id); } catch (_e) {}
+        }
+        await runPollForTenant(c.tenant_id, c.provider, { limit: 25 });
+      } catch (err) {
+        console.error(`[bg-poll] error polling ${c.tenant_id}:${c.provider}`, err?.message || err);
+      }
+    }
+    console.log('[bg-poll] cycle done');
+  } catch (err) {
+    console.error('[bg-poll] failed to run background poll', err?.message || err);
+  }
+}
+
+function startBackgroundPoller() {
+  if (!BG_ENABLED) {
+    console.log('[bg-poll] disabled (set ENABLE_BG_POLLER=1 to enable)');
+    return;
+  }
+  // initial jittered kickoff (up to 60s)
+  const firstJitter = Math.floor(Math.random() * 60000);
+  setTimeout(() => {
+    runBackgroundPoll();
+    // then every 5 minutes; each cycle gets its own 0–60s jitter
+    setInterval(() => {
+      const jitter = Math.floor(Math.random() * 60000);
+      setTimeout(runBackgroundPoll, jitter);
+    }, 5 * 60 * 1000);
+  }, firstJitter);
+}
+
+// start the background poller (no-op if disabled)
+startBackgroundPoller();
+// Ensure M365 access token is fresh before polling
 async function ensureM365TokenFresh(tenantId) {
   try {
     await q(`
@@ -4777,7 +5081,7 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 // ---------- start ----------
 // Sentry error handler (must be before any other error middleware)
 if (process.env.SENTRY_DSN) {
-  app.use(Sentry.expressErrorHandler());
+  app.use(SentryExpress.expressErrorHandler());
 }
 // Minimal fallback error handler to avoid leaking internals
 app.use((err, _req, res, _next) => {
