@@ -12,7 +12,17 @@ import OpenAI from "openai";
 import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
 import querystring from "node:querystring";
+import * as Sentry from "@sentry/node";
+import "@sentry/tracing";
 
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
+    environment: process.env.NODE_ENV || "development",
+    release: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || undefined,
+  });
+}
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY||"";
 const AI_MODEL=process.env.AI_MODEL||"gpt-4o-mini";
 const SLACK_WEBHOOK_URL=process.env.SLACK_WEBHOOK_URL||"";
@@ -79,6 +89,31 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
+// --- Security: CORS tightening (allowlist via env ALLOWED_ORIGINS) ---
+function parseAllowedOrigins() {
+  const raw = process.env.ALLOWED_ORIGINS || "";
+  return raw.split(",").map(s => s.trim()).filter(Boolean);
+}
+const ALLOWLIST = parseAllowedOrigins();
+app.use(cors({
+  origin: function (origin, cb) {
+    if (!origin) return cb(null, true);                // allow curl/postman
+    if (ALLOWLIST.length === 0) return cb(null, true); // permissive if not configured
+    if (ALLOWLIST.includes(origin)) return cb(null, true);
+    return cb(new Error("CORS blocked"), false);
+  },
+  credentials: true,
+}));
+
+// --- Body size limit defaults (defensive) ---
+app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
+
+// --- Sentry request + tracing handlers (enabled only when DSN present) ---
+if (process.env.SENTRY_DSN) {
+  app.use(Sentry.Handlers.requestHandler());
+  app.use(Sentry.Handlers.tracingHandler());
+}
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
@@ -5043,6 +5078,15 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
+// Sentry error handler (must be before any other error middleware)
+if (process.env.SENTRY_DSN) {
+  app.use(Sentry.Handlers.errorHandler());
+}
+// Minimal fallback error handler to avoid leaking internals
+app.use((err, _req, res, _next) => {
+  try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
+  res.status(500).json({ ok:false, error: "internal_error" });
+});
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
 // ---------- Super Admin DB diagnostics ----------
