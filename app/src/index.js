@@ -4567,7 +4567,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
 
     try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch(_e) {}
 
-    }
 
     return res.json({ ok:true });
   } catch (e) {
