@@ -13,14 +13,18 @@ import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
 import querystring from "node:querystring";
 import * as Sentry from "@sentry/node";
-import * as SentryExpress from "@sentry/node/express";
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
     environment: process.env.NODE_ENV || "development",
     release: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || undefined,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
+    integrations: [
+      Sentry.extraErrorDataIntegration(),
+      Sentry.httpIntegration(),
+      Sentry.expressIntegration(),
+    ],
   });
 }
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY||"";
@@ -89,6 +93,11 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
+
+// After app is defined, setup Sentry Express error handler (v8+)
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 // --- Security: CORS tightening (allowlist via env ALLOWED_ORIGINS) ---
 function parseAllowedOrigins() {
   const raw = process.env.ALLOWED_ORIGINS || "";
@@ -109,6 +118,7 @@ app.use(cors({
 app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
 
+// --- Sentry request + tracing handlers removed for Sentry v8+ ---
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
