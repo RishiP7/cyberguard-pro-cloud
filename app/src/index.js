@@ -3399,7 +3399,134 @@ async function ensureAIAutonomySchema() {
   `);
 }
 ensureAIAutonomySchema().catch(()=>{});
+// --- Core DB bootstrap: create/repair base tables for fresh deploys ---
+async function ensureBaseSchema(){
+  // tenants
+  await q(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      tenant_id TEXT PRIMARY KEY,
+      name TEXT,
+      plan TEXT,
+      trial_status TEXT,
+      trial_ends_at BIGINT,
+      contact_email TEXT,
+      stripe_customer_id TEXT,
+      billing_status TEXT,
+      created_at BIGINT,
+      updated_at BIGINT
+    );
+  `);
+  // columns for older schemas
+  try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`); } catch(_e) {}
 
+  // users (minimal)
+  await q(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      role TEXT,
+      created_at BIGINT,
+      updated_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS users_tenant_email ON users(tenant_id, email)`);
+
+  // alerts (flat columns used by UI)
+  await q(`
+    CREATE TABLE IF NOT EXISTS alerts (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      event_json JSONB,
+      score NUMERIC,
+      status TEXT,
+      created_at BIGINT,
+      from_addr TEXT,
+      type TEXT,
+      subject TEXT,
+      preview TEXT,
+      anomaly BOOLEAN
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_created ON alerts(tenant_id, created_at)`);
+
+  // actions (automated/approved actions)
+  await q(`
+    CREATE TABLE IF NOT EXISTS actions (
+      id TEXT PRIMARY KEY,
+      alert_id TEXT,
+      tenant_id TEXT NOT NULL,
+      action TEXT,
+      target_kind TEXT,
+      result_json JSONB,
+      created_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS actions_tenant_created ON actions(tenant_id, created_at)`);
+
+  // usage_events (billing/retention diagnostics)
+  await q(`
+    CREATE TABLE IF NOT EXISTS usage_events (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      kind TEXT,
+      created_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS usage_tenant_created ON usage_events(tenant_id, created_at)`);
+
+  // connectors (email providers etc.)
+  await q(`
+    CREATE TABLE IF NOT EXISTS connectors (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      type TEXT,
+      provider TEXT,
+      status TEXT,
+      last_error TEXT,
+      last_sync_at BIGINT,
+      updated_at BIGINT,
+      details JSONB
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS connectors_tenant_type ON connectors(tenant_id, type)`);
+
+  // apikeys (string keys)
+  await q(`
+    CREATE TABLE IF NOT EXISTS apikeys (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      revoked BOOLEAN NOT NULL DEFAULT false,
+      created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
+    );
+  `);
+  // normalize id column type if an older deploy used UUID
+  try { await q(`ALTER TABLE apikeys ADD COLUMN IF NOT EXISTS id TEXT`); } catch(_e) {}
+  try {
+    await q(`DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='apikeys' AND column_name='id' AND data_type='uuid'
+      ) THEN
+        ALTER TABLE apikeys ALTER COLUMN id TYPE TEXT USING id::text;
+      END IF;
+    END $$;`);
+  } catch(_e) {}
+
+  // ops_runs (audit log)
+  await q(`
+    CREATE TABLE IF NOT EXISTS ops_runs (
+      id TEXT PRIMARY KEY,
+      run_type TEXT,
+      details JSONB,
+      created_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS ops_runs_type_created ON ops_runs(run_type, created_at)`);
+}
+
+// Run base bootstrap on startup (no-throw)
+ensureBaseSchema().catch(()=>{});
 // --- Helper: isProPlus ---
 async function isProPlus(tenant_id) {
   const { rows } = await q(`SELECT plan,trial_status,trial_ends_at FROM tenants WHERE tenant_id=$1`, [tenant_id]);
