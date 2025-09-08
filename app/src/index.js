@@ -28,6 +28,51 @@ const pool = new pg.Pool({
   ssl: isRender ? { rejectUnauthorized: false } : false,
 });
 const q=(sql,vals=[])=>pool.query(sql,vals);
+// --- bootstrap: ensure minimal schema exists (safe for repeated runs) ---
+async function ensureSchema(){
+  try{
+    // tenants table
+    await q(`
+      CREATE TABLE IF NOT EXISTS public.tenants (
+        id TEXT DEFAULT uuid_generate_v4(),
+        tenant_id TEXT PRIMARY KEY,
+        name TEXT,
+        plan TEXT,
+        trial_status TEXT,
+        trial_started_at BIGINT,
+        trial_ends_at BIGINT,
+        contact_email TEXT,
+        stripe_customer_id TEXT,
+        billing_status TEXT,
+        created_at BIGINT,
+        updated_at BIGINT
+      );
+    `);
+
+    // make sure uuid extension exists (ignore if not supported/already there)
+    try { await q('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'); } catch(_e){}
+
+    // unique index (no-op if it already exists)
+    await q(`CREATE UNIQUE INDEX IF NOT EXISTS tenants_tenant_id_key ON public.tenants(tenant_id);`);
+
+    // users table (minimal fields the app expects)
+    await q(`
+      CREATE TABLE IF NOT EXISTS public.users (
+        id TEXT DEFAULT uuid_generate_v4(),
+        email TEXT PRIMARY KEY,
+        password_hash TEXT,
+        tenant_id TEXT REFERENCES public.tenants(tenant_id),
+        role TEXT,
+        created_at BIGINT
+      );
+    `);
+  }catch(e){
+    console.error('[ensureSchema] failed:', e?.detail || e?.message || e);
+  }
+}
+// fire-and-forget (TLA would work too, keeping it simple)
+ensureSchema();
+// --- end bootstrap ---
 const bus = new EventEmitter();
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .split(/[\s,]+/)
@@ -2881,6 +2926,10 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
+// healthcheck for uptime monitoring / readiness
+app.get('/health', (req,res) => {
+  res.json({ ok:true, uptime: process.uptime() });
+});
 
 // --- Bootstrap admin login for the web app ---
 // POST /auth/admin-login  { email, password }
