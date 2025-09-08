@@ -5086,7 +5086,7 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 // ---------- start ----------
 // Sentry error handler (must be before any other error middleware)
 if (process.env.SENTRY_DSN) {
-  app.use(Sentry.setupExpressErrorHandler());
+  Sentry.setupExpressErrorHandler(app);
 }
 // Minimal fallback error handler to avoid leaking internals
 app.use((err, _req, res, _next) => {
