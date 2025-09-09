@@ -3292,31 +3292,81 @@ setInterval(async ()=>{
         try { await ensureAlertDetailColumns(); await denormalizeAlertsForTenant(r.tenant_id); } catch(_) {}
 // ---------- Alerts detail schema helpers ----------
 async function ensureAlertDetailColumns() {
+  // Ensure denormalized columns exist
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS from_addr TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS type TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS subject TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS preview TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS anomaly BOOLEAN`); } catch(_) {}
-  // score already exists in most schemas; keep optional add for safety
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS score NUMERIC`); } catch(_) {}
+  // Helpful indexes used by list/detail screens
+  try { await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_status ON alerts(tenant_id, status)`); } catch(_) {}
+  try { await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_anomaly ON alerts(tenant_id, anomaly)`); } catch(_) {}
+  try { await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_from ON alerts(tenant_id, from_addr)`); } catch(_) {}
 }
 
-// Best-effort denormalization from legacy JSONB `event` into flat columns
+// Best-effort denormalization from legacy JSONB and other columns into flat columns
 async function denormalizeAlertsForTenant(tenantId) {
+  // Defensive limits (also mirrored in export)
+  const MAX_SUBJECT = 300;
+  const MAX_PREVIEW = 500;
+
   try {
-    // Only run updates where flat columns are NULL and event JSON exists
+    // Best-effort merge from a variety of legacy JSON locations
     await q(`
-      UPDATE alerts
-         SET from_addr = COALESCE(from_addr, event->>'from'),
-             type      = COALESCE(type,      event->>'type'),
-             subject   = COALESCE(subject,   event->>'subject'),
-             preview   = COALESCE(preview,   event->>'preview'),
-             anomaly   = COALESCE(anomaly,   NULLIF((event->>'anomaly')::text, '')::boolean)
-       WHERE tenant_id=$1
-         AND (from_addr IS NULL OR type IS NULL OR subject IS NULL OR preview IS NULL OR anomaly IS NULL)
-         AND event IS NOT NULL
+      WITH src AS (
+        SELECT id,
+               COALESCE(
+                 event::jsonb,
+                 data::jsonb,
+                 payload::jsonb,
+                 raw::jsonb,
+                 details::jsonb
+               ) AS j
+          FROM alerts
+         WHERE tenant_id = $1
+      )
+      UPDATE alerts a
+         SET from_addr = COALESCE(
+               NULLIF(a.from_addr, ''),
+               src.j->>'from',
+               src.j->'from'->>'address',
+               src.j->'from'->'emailAddress'->>'address',
+               src.j->'sender'->'emailAddress'->>'address',
+               src.j->'sender'->>'address',
+               src.j->'From'->>'Address'
+             ),
+             type = COALESCE(
+               NULLIF(a.type, ''),
+               src.j->>'type',
+               'email'
+             ),
+             subject = LEFT(COALESCE(
+               NULLIF(a.subject, ''),
+               src.j->>'subject',
+               src.j->'message'->>'subject',
+               src.j->'headers'->>'Subject'
+             ), ${MAX_SUBJECT}),
+             preview = LEFT(COALESCE(
+               NULLIF(a.preview, ''),
+               src.j->>'preview',
+               src.j->>'bodyPreview',
+               src.j->'message'->>'snippet',
+               src.j->'message'->'body'->>'content',
+               src.j->'body'->>'content'
+             ), ${MAX_PREVIEW}),
+             anomaly = COALESCE(
+               a.anomaly,
+               NULLIF((src.j->>'anomaly')::text, '')::boolean
+             ),
+             status = COALESCE(NULLIF(a.status, ''), 'new')
+        FROM src
+       WHERE a.id = src.id
+         AND a.tenant_id = $1
     `, [tenantId]);
-  } catch (_) { /* if event column doesn't exist, ignore */ }
+  } catch (_) {
+    // If any of the JSONB casts fail (missing columns), just skip silently
+  }
 }
 
 // Periodic background denormalization (lightweight)
@@ -3332,6 +3382,18 @@ setInterval(async ()=>{
     // non-fatal
   }
 }, 5*60*1000); // every 5 minutes
+
+// Opportunistic status normalization for recent rows (no-op if already set)
+setInterval(async () => {
+  try {
+    await q(`
+      UPDATE alerts
+         SET status = 'new'
+       WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM alerts ORDER BY created_at DESC LIMIT 50)
+         AND (status IS NULL OR status = '')
+    `);
+  } catch (_e) { /* ignore */ }
+}, 10 * 60 * 1000); // every 10 minutes
 
       } catch (inner) {
         // Mark connector as error on failure (do not throw)
@@ -3502,6 +3564,9 @@ async function ensureBaseSchema(){
     );
   `);
   await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_created ON alerts(tenant_id, created_at)`);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_status ON alerts(tenant_id, status)`);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_anomaly ON alerts(tenant_id, anomaly)`);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_from ON alerts(tenant_id, from_addr)`);
 
   // actions (automated/approved actions)
   await q(`
