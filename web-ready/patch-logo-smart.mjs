@@ -8,7 +8,7 @@ const before = s;
 const brandBlock = `
 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
   <img
-    src="/brand/logo.svg"
+    src="/brand/logo.png"
     alt="Cyber Guard Pro"
     style={{ height: 22, width: "auto" }}
     onError={(e)=>{ try {

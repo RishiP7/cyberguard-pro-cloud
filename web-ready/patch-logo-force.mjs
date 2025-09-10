@@ -9,7 +9,7 @@ const brandBlock = `
 {/* CGP brand (autoinserted) */}
 <div data-cgp-brand style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
   <img
-    src="/brand/logo.svg"
+    src="/brand/logo.png"
     alt="Cyber Guard Pro"
     style={{ height: 22, width: "auto" }}
     onError={(e)=>{ try { if (e?.target) e.target.src = "/brand/logo.png"; } catch(_){} }}

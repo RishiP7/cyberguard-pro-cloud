@@ -9,10 +9,10 @@ function BrandLogo(){
   const candidates = [
     override,
     '/brand/logo.png',
-    '/logo.svg',
+    '/logo.png',
     '/logo.png',
     '/logo192.png',
-    '/assets/logo.svg',
+    '/assets/logo.png',
     '/assets/logo.png'
   ].filter(Boolean);
 
