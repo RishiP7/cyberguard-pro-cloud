@@ -5246,28 +5246,4 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 });
 
 // ===== Express 5 catch-all route compatibility patch =====
-// Replace legacy catch-all routes with named parameter form for Express 5 compatibility.
-
-// --- PATCH: app.*('*', ...) and app.*('/(.*)', ...) ---
-// --- PATCH: router.*('*', ...) and router.*('/(.*)', ...) ---
-// --- PATCH: .use('*', ...) and .use('/(.*)', ...) ---
-
-// NOTE: Only literal replacements as per instructions.
-
-// Example transforms (for future reference):
-// app.get('/:rest(.*)', ...)      // replaces app.get('*', ...) and app.get("*", ...)
-// app.post('/:rest(.*)', ...)     // replaces app.post('*', ...) and app.post("*", ...)
-// app.put('/:rest(.*)', ...)      // replaces app.put('*', ...) and app.put("*", ...)
-// app.patch('/:rest(.*)', ...)    // replaces app.patch('*', ...) and app.patch("*", ...)
-// app.delete('/:rest(.*)', ...)   // replaces app.delete('*', ...) and app.delete("*", ...)
-// app.options('/:rest(.*)', ...)  // replaces app.options('*', ...) and app.options("*", ...)
-// app.all('/:rest(.*)', ...)      // replaces app.all('*', ...) and app.all("*", ...)
-// router.get('/:rest(.*)', ...)   // replaces router.get('*', ...) and router.get("*", ...)
-// router.post('/:rest(.*)', ...)  // replaces router.post('*', ...) and router.post("*", ...)
-// router.put('/:rest(.*)', ...)   // replaces router.put('*', ...) and router.put("*", ...)
-// router.patch('/:rest(.*)', ...) // replaces router.patch('*', ...) and router.patch("*", ...)
-// router.delete('/:rest(.*)', ...)// replaces router.delete('*', ...) and router.delete("*", ...)
-// router.options('/:rest(.*)', ...) // replaces router.options('*', ...) and router.options("*", ...)
-// router.all('/:rest(.*)', ...)   // replaces router.all('*', ...) and router.all("*", ...)
-// app.use(                        // replaces app.use('*', ...) and app.use("*", ...)
-// router.use(                     // replaces router.use('*', ...) and router.use("*", ...)
+// All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
