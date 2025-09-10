@@ -99,21 +99,6 @@ const app = express();
 if (process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
-// --- Security: CORS tightening (allowlist via env ALLOWED_ORIGINS) ---
-function parseAllowedOrigins() {
-  const raw = process.env.ALLOWED_ORIGINS || "";
-  return raw.split(",").map(s => s.trim()).filter(Boolean);
-}
-const ALLOWLIST = parseAllowedOrigins();
-app.use(cors({
-  origin: function (origin, cb) {
-    if (!origin) return cb(null, true);                // allow curl/postman
-    if (ALLOWLIST.length === 0) return cb(null, true); // permissive if not configured
-    if (ALLOWLIST.includes(origin)) return cb(null, true);
-    return cb(new Error("CORS blocked"), false);
-  },
-  credentials: true,
-}));
 
 // --- Body size limit defaults (defensive) ---
 app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
@@ -172,6 +157,8 @@ app.use(cors({
     "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
   ]
 }));
+// Ensure preflight requests are always handled (avoid 520s from proxy/CDN)
+app.options("*", cors());
 
 app.use(helmet());
 
