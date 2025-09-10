@@ -158,7 +158,7 @@ app.use(cors({
   ]
 }));
 // Ensure preflight requests are always handled (avoid 520s from proxy/CDN)
-app.options("*", cors());
+app.options('/:rest(.*)', cors());
 
 app.use(helmet());
 
