@@ -1,46 +1,79 @@
-// Attach JWT automatically to API requests, but **only** if we actually have a token.
-const API_BASE = import.meta.env?.VITE_API_URL || "";
+/**
+ * Global fetch wrapper: always attach Authorization: Bearer <token>
+ * for API calls, never send a blank Authorization, and make sure we
+ * run only once and as early as possible.
+ */
+(() => {
+  if (typeof window === "undefined") return;
+  if (window.__fetch_patched) return;
+  window.__fetch_patched = true;
 
-(function patchFetch() {
-  if (window.__CGP_FETCH_PATCHED__) return;
-  window.__CGP_FETCH_PATCHED__ = true;
-
-  // keep original bound to window
-  const orig = window.fetch.bind(window);
-
-  function getToken() {
+  // 1a) Migrate legacy keys -> single 'token'
+  try {
     const t =
+      localStorage.getItem("token") ||
       localStorage.getItem("auth_token") ||
       localStorage.getItem("cg_token") ||
-      localStorage.getItem("authToken");
-    return (t && t.trim()) || "";
+      localStorage.getItem("authToken") ||
+      "";
+    if (t && t.trim()) {
+      localStorage.setItem("token", t);
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("cg_token");
+      localStorage.removeItem("authToken");
+    }
+  } catch {}
+
+  const API_BASE =
+    (window.__API_BASE__) ||
+    (import.meta?.env?.VITE_API_BASE) ||
+    (window.location.hostname.endsWith("onrender.com")
+      ? "https://cyberguard-pro-cloud.onrender.com"
+      : "http://localhost:8080");
+
+  const orig = window.fetch;
+
+  function getToken() {
+    try {
+      const t = localStorage.getItem("token") || "";
+      return (t && t.trim()) || "";
+    } catch { return ""; }
   }
 
-  window.fetch = async (input, init = {}) => {
-    const url = typeof input === "string" ? input : input?.url || "";
-    const isApi =
-      (API_BASE && url.startsWith(API_BASE)) ||
-      url.startsWith("/api") ||
-      url.startsWith("https://cyberguard-pro-cloud.onrender.com");
+  window.fetch = async function patchedFetch(input, init = {}) {
+    try {
+      const url =
+        typeof input === "string"
+          ? input
+          : (input && input.url) || "";
 
-    if (isApi) {
-      const t = getToken();
-      const headers = new Headers(init.headers || {});
-      if (t) {
-        // set Authorization only when non-empty and not already set
-        if (!headers.has("Authorization")) {
-          headers.set("Authorization", `Bearer ${t}`);
+      const isApi =
+        url.startsWith(API_BASE) ||
+        url.startsWith("/api") ||
+        url.startsWith("https://cyberguard-pro-cloud.onrender.com");
+
+      if (isApi) {
+        const t = getToken();
+
+        // Normalize headers to a Headers object (handles plain objects too)
+        const hdrs = new Headers(init.headers || (typeof input !== "string" && input?.headers) || {});
+
+        if (t) {
+          if (!hdrs.has("Authorization")) {
+            hdrs.set("Authorization", `Bearer ${t}`);
+          }
+        } else {
+          // Ensure no blank Authorization header sneaks through
+          if (hdrs.get("Authorization") === "Bearer" || !hdrs.get("Authorization")) {
+            hdrs.delete("Authorization");
+          }
         }
-      } else {
-        // never send a blank Authorization header
-        headers.delete("Authorization");
+
+        init.headers = hdrs;
       }
-      init.headers = headers;
-
-      // opt-in: include cookies if your server needs them (CORS on server already allows credentials)
-      if (init.credentials === undefined) init.credentials = "include";
+    } catch {
+      // fail open to avoid breaking fetch
     }
-
     return orig(input, init);
   };
 })();
