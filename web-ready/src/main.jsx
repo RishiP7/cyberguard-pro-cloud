@@ -1,3 +1,4 @@
+import "./setupFetchAuth.js";
 // build: bump
 import ReactDOM from "react-dom/client";
 
