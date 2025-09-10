@@ -2,9 +2,9 @@
   "name": "cyberguard-pro-api",
   "version": "2.3.0",
   "private": true,
-  "main": "index.js",
+  "main": "app/src/index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node app/src/index.js",
     "prebuild": "npm --prefix web-ready run prebuild",
     "build": "npm --prefix web-ready run build",
     "preview": "npm --prefix web-ready run preview",
