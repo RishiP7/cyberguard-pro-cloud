@@ -157,8 +157,14 @@ app.use(cors({
     "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
   ]
 }));
-// Ensure preflight requests are always handled (avoid 520s from proxy/CDN)
-app.options('*', cors());
+// Global preflight handler (Express 5 safe)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    // CORS headers are already set by the cors() middleware above
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 app.use(helmet());
 
