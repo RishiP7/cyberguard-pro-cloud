@@ -1,4 +1,25 @@
 import "./setupFetchAuth.js";
+// Ensure the UI uses a single, consistent token key.
+// Migrate any older keys (auth_token, cg_token) -> token on startup.
+(() => {
+  try {
+    const t =
+      (typeof localStorage !== "undefined" && (
+        localStorage.getItem("token") ||
+        localStorage.getItem("auth_token") ||
+        localStorage.getItem("cg_token") ||
+        localStorage.getItem("authToken")
+      )) || "";
+    if (t && t.trim()) {
+      localStorage.setItem("token", t);
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("cg_token");
+      localStorage.removeItem("authToken");
+    }
+  } catch (_e) {
+    // ignore
+  }
+})();
 // build: bump
 import ReactDOM from "react-dom/client";
 
