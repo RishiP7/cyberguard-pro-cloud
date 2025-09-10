@@ -23,15 +23,18 @@ const API_BASE = import.meta.env.VITE_API_URL || "";
       url.startsWith("https://cyberguard-pro-cloud.onrender.com");
 
     if (isApi) {
-      const t = getToken();
-      if (t) {
-        const headers = new Headers(init?.headers || {});
-        if (!headers.has("Authorization")) {
-          headers.set("Authorization", `Bearer ${t}`);
-        }
-        init = { ...init, headers };
-      }
+  const t = getToken();
+  init.headers = new Headers(init.headers || {});
+  // Only set Authorization if token is non-empty
+  if (t && t.trim()) {
+    if (!init.headers.has("Authorization")) {
+      init.headers.set("Authorization", `Bearer ${t}`);
     }
+  } else {
+    // Explicitly remove any accidental Authorization header
+    init.headers.delete("Authorization");
+  }
+}
     return orig(input, init);
   };
 })();
