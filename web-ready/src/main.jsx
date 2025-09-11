@@ -20,6 +20,24 @@ import "./setupFetchAuth.js";
     // ignore
   }
 })();
+
+// Hard guard: if no token, don’t boot the app UI; send to login.
+// This prevents unauthenticated boots that spam 401s.
+(() => {
+  try {
+    const t = (typeof localStorage !== "undefined" && localStorage.getItem("token")) || "";
+    const path = (typeof window !== "undefined" && window.location && window.location.pathname) || "/";
+    const isAuthRoute =
+      /^\/(login|admin-login)$/.test(path) ||
+      path.startsWith("/auth/");
+    if (!t && !isAuthRoute) {
+      // Replace instead of push to avoid back button loops
+      window.location.replace("/login");
+    }
+  } catch (_e) {
+    // ignore; fail open (app may still render and show its own login)
+  }
+})();
 // build: bump
 import ReactDOM from "react-dom/client";
 
