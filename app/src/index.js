@@ -3051,33 +3051,7 @@ app.post('/auth/login', async (req, res) => {
       process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '12h' }
     );
-    return 
-  // Set httpOnly cookies alongside JSON token response
-  try {
-    const accessToken = (typeof token !== 'undefined') ? token : null;
-    let refreshToken;
-    if (!refreshToken && accessToken) {
-      let claims = null;
-      try {
-        const base = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'change-me';
-        claims = jwt.verify(accessToken, base);
-      } catch (_e1) {
-        try { claims = jwt.decode(accessToken) || null; } catch(_e2) {}
-      }
-      if (claims) {
-        refreshToken = signRefresh({
-          tenant_id: claims.tenant_id || claims.tid || claims.sub || claims.tenant || null,
-          email: claims.email || null,
-          role: claims.role || 'member',
-          is_super: !!claims.is_super
-        });
-      }
-    }
-    if (accessToken && refreshToken) {
-      setTokens(res, accessToken, refreshToken);
-    }
-  } catch(_) {}
-res.json({ ok:true, token });
+    return res.json({ ok:true, token });
   } catch (e) {
     console.error('auth/login error', e);
     return res.status(500).json({ ok:false, error: 'server error' });
@@ -3950,32 +3924,9 @@ async function ensureConnectorHealthColumns() {
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
 }
-app.post('/auth/refresh', async (req, res) => {
-  try {
-    const rtok = req.cookies?.[REFRESH_COOKIE];
-    if (!rtok) return res.status(401).json({ ok:false, error:'no refresh' });
-    const base = process.env.JWT_SECRET || process.env.SESSION_SECRET || "change-me";
-    const rPayload = jwt.verify(rtok, process.env.JWT_REFRESH_SECRET || base);
-    const { tenant_id, email, role, is_super } = rPayload || {};
-    if (!tenant_id) return res.status(401).json({ ok:false, error:'bad refresh' });
-    const access = signAccess({ tenant_id, email, role, is_super });
-    setTokens(res, access, rtok);
-    return res.json({ ok:true });
-  } catch (_) {
-    return res.status(401).json({ ok:false, error:'refresh failed' });
-  }
-});
-
-app.post('/auth/logout', (_req, res) => {
-  try { clearTokens(res); } catch(_){}
-  return res.json({ ok:true });
-});
-
-
 
 
 // ---------- /me route ----------
-
 app.get('/me', authMiddleware, async (req, res) => {
   {
     try {
@@ -5330,7 +5281,6 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
 
 import cors from "cors";
-import cookieParser from "cookie-parser";
 
 // ===== GLOBAL CORS (must be before any routes) =====
 // Handle all CORS & preflight centrally to avoid route-level mismatches.
@@ -5376,43 +5326,101 @@ app.use(
 );
 // ===== END GLOBAL CORS =====
 
-app.use(cookieParser());
-// If no Authorization header but we have cg_access cookie, synthesize it
-app.use((req, _res, next) => {
-  try {
-    if (!req.headers.authorization && req.cookies?.cg_access) {
-      req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
-    }
-  } catch (_) {}
-  next();
+// ===== Cookie-based session helpers (no external deps) =====
+// Minimal cookie parser so we don't depend on cookie-parser
+function parseCookiesFromHeader(cookieHeader) {
+  const out = {};
+  if (!cookieHeader || typeof cookieHeader !== "string") return out;
+  const parts = cookieHeader.split(/;\s*/g);
+  for (const p of parts) {
+    const i = p.indexOf("=");
+    if (i <= 0) continue;
+    const k = decodeURIComponent(p.slice(0, i).trim());
+    const v = decodeURIComponent(p.slice(i + 1));
+    if (k) out[k] = v;
+  }
+  return out;
+}
+
+// Sets httpOnly cookies for access and refresh
+function setTokens(res, access, refresh) {
+  // Render runs behind HTTPS + Cloudflare: Secure + SameSite=None is required for cross-site cookies
+  const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+  try { res.cookie("cg_access", access, { ...base, maxAge: 15 * 60 * 1000 }); } catch (_) {
+    // fallback if res.cookie is unavailable
+    res.setHeader("Set-Cookie", [
+      `cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+    ]);
+  }
+  try { res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_) {
+    // append (or set) header for refresh cookie
+    const prev = res.getHeader("Set-Cookie");
+    const next = (Array.isArray(prev) ? prev : (prev ? [prev] : []));
+    next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`);
+    res.setHeader("Set-Cookie", next);
+  }
+}
+
+// Middleware: parse cookies + promote cg_access → Authorization for downstream auth
+app.use((req, res, next) => {
+  // Attach parsed cookies (idempotent)
+  if (!req.cookies) {
+    req.cookies = parseCookiesFromHeader(req.headers.cookie);
+  }
+
+  // If there's no Authorization header but we have a cg_access cookie, inject a Bearer header
+  if (!req.headers.authorization && req.cookies && req.cookies.cg_access) {
+    req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
+  }
+
+  // If this is the login endpoint, monkey-patch res.json to also set cookies when a token is returned
+  if (req.method === "POST" && req.path === "/auth/login") {
+    const origJson = res.json.bind(res);
+    res.json = (obj) => {
+      try {
+        const token = obj && obj.token;
+        if (token) {
+          // Use the returned token for both access and refresh (simple & compatible).
+          // If you later add server-side refresh JWTs, this stays backwards-compatible.
+          setTokens(res, token, token);
+        }
+      } catch (_) { /* ignore */ }
+      return origJson(obj);
+    };
+  }
+
+  return next();
 });
 
-const ACCESS_COOKIE = "cg_access";
-const REFRESH_COOKIE = "cg_refresh";
-const ACCESS_TTL_SEC = 15 * 60;             // 15 minutes
-const REFRESH_TTL_SEC = 30 * 24 * 3600;     // 30 days
+// Refresh endpoint: if a refresh cookie exists, mint a new access cookie and return ok
+app.post("/auth/refresh", (req, res) => {
+  try {
+    const refresh = (req.cookies && req.cookies.cg_refresh) ||
+                    (parseCookiesFromHeader(req.headers.cookie || "").cg_refresh);
+    if (!refresh) {
+      return res.status(401).json({ ok: false, error: "no refresh" });
+    }
+    // For now, reuse the refresh token as the new access token.
+    // (When you promote to real refresh JWTs, verify & sign a fresh short-lived access here.)
+    setTokens(res, refresh, refresh);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(401).json({ ok: false, error: "invalid refresh" });
+  }
+});
 
-function signAccess(payload) {
-  return jwt.sign(
-    payload,
-    process.env.JWT_SECRET || process.env.SESSION_SECRET || "change-me",
-    { expiresIn: ACCESS_TTL_SEC }
-  );
-}
-function signRefresh(payload) {
-  return jwt.sign(
-    payload,
-    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "change-me-refresh",
-    { expiresIn: REFRESH_TTL_SEC }
-  );
-}
-function setTokens(res, access, refresh) {
-  const common = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
-  res.cookie(ACCESS_COOKIE, access,  { ...common, maxAge: ACCESS_TTL_SEC  * 1000 });
-  res.cookie(REFRESH_COOKIE, refresh,{ ...common, maxAge: REFRESH_TTL_SEC * 1000 });
-}
-function clearTokens(res) {
-  const common = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
-  res.clearCookie(ACCESS_COOKIE,  common);
-  res.clearCookie(REFRESH_COOKIE, common);
-}
+// Logout endpoint: clear cookies
+app.post("/auth/logout", (_req, res) => {
+  const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+  try {
+    res.cookie("cg_access", "", { ...base, maxAge: 0 });
+    res.cookie("cg_refresh", "", { ...base, maxAge: 0 });
+  } catch (_) {
+    res.setHeader("Set-Cookie", [
+      "cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None",
+      "cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
+    ]);
+  }
+  return res.json({ ok: true });
+});
+// ===== End cookie-based session helpers =====
