@@ -5396,101 +5396,132 @@ app.use(
 );
 // ===== END GLOBAL CORS =====
 
-// ===== Cookie-based session helpers (no external deps) =====
-// Minimal cookie parser so we don't depend on cookie-parser
-function parseCookiesFromHeader(cookieHeader) {
-  const out = {};
-  if (!cookieHeader || typeof cookieHeader !== "string") return out;
-  const parts = cookieHeader.split(/;\s*/g);
-  for (const p of parts) {
-    const i = p.indexOf("=");
-    if (i <= 0) continue;
-    const k = decodeURIComponent(p.slice(0, i).trim());
-    const v = decodeURIComponent(p.slice(i + 1));
-    if (k) out[k] = v;
-  }
-  return out;
-}
+// ===== Cookie-based session helpers (idempotent, no external deps) =====
+if (!globalThis.__cg_cookie_sessions__) {
+  globalThis.__cg_cookie_sessions__ = true;
 
-// Sets httpOnly cookies for access and refresh
-function setTokens(res, access, refresh) {
-  // Render runs behind HTTPS + Cloudflare: Secure + SameSite=None is required for cross-site cookies
-  const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
-  try { res.cookie("cg_access", access, { ...base, maxAge: 15 * 60 * 1000 }); } catch (_) {
-    // fallback if res.cookie is unavailable
-    res.setHeader("Set-Cookie", [
-      `cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
-    ]);
-  }
-  try { res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_) {
-    // append (or set) header for refresh cookie
-    const prev = res.getHeader("Set-Cookie");
-    const next = (Array.isArray(prev) ? prev : (prev ? [prev] : []));
-    next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`);
-    res.setHeader("Set-Cookie", next);
-  }
-}
-
-// Middleware: parse cookies + promote cg_access → Authorization for downstream auth
-app.use((req, res, next) => {
-  // Attach parsed cookies (idempotent)
-  if (!req.cookies) {
-    req.cookies = parseCookiesFromHeader(req.headers.cookie);
-  }
-
-  // If there's no Authorization header but we have a cg_access cookie, inject a Bearer header
-  if (!req.headers.authorization && req.cookies && req.cookies.cg_access) {
-    req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
-  }
-
-  // If this is the login endpoint, monkey-patch res.json to also set cookies when a token is returned
-  if (req.method === "POST" && req.path === "/auth/login") {
-    const origJson = res.json.bind(res);
-    res.json = (obj) => {
-      try {
-        const token = obj && obj.token;
-        if (token) {
-          // Use the returned token for both access and refresh (simple & compatible).
-          // If you later add server-side refresh JWTs, this stays backwards-compatible.
-          setTokens(res, token, token);
-        }
-      } catch (_) { /* ignore */ }
-      return origJson(obj);
+  // Minimal cookie parser (scoped name to avoid collisions)
+  const cgParseCookiesFromHeader =
+    globalThis.__cg_parseCookiesFromHeader__ ||
+    function cgParseCookiesFromHeader(cookieHeader) {
+      const out = {};
+      if (!cookieHeader || typeof cookieHeader !== "string") return out;
+      const parts = cookieHeader.split(/;\s*/g);
+      for (const p of parts) {
+        const i = p.indexOf("=");
+        if (i <= 0) continue;
+        const k = decodeURIComponent(p.slice(0, i).trim());
+        const v = decodeURIComponent(p.slice(i + 1));
+        if (k) out[k] = v;
+      }
+      return out;
     };
+  if (!globalThis.__cg_parseCookiesFromHeader__) {
+    globalThis.__cg_parseCookiesFromHeader__ = cgParseCookiesFromHeader;
   }
 
-  return next();
-});
-
-// Refresh endpoint: if a refresh cookie exists, mint a new access cookie and return ok
-app.post("/auth/refresh", (req, res) => {
-  try {
-    const refresh = (req.cookies && req.cookies.cg_refresh) ||
-                    (parseCookiesFromHeader(req.headers.cookie || "").cg_refresh);
-    if (!refresh) {
-      return res.status(401).json({ ok: false, error: "no refresh" });
-    }
-    // For now, reuse the refresh token as the new access token.
-    // (When you promote to real refresh JWTs, verify & sign a fresh short-lived access here.)
-    setTokens(res, refresh, refresh);
-    return res.json({ ok: true });
-  } catch (e) {
-    return res.status(401).json({ ok: false, error: "invalid refresh" });
+  // Sets httpOnly cookies for access and refresh (scoped name to avoid collisions)
+  const cgSetTokens =
+    globalThis.__cg_setTokens__ ||
+    function cgSetTokens(res, access, refresh) {
+      // Render runs behind HTTPS + Cloudflare: Secure + SameSite=None is required for cross-site cookies
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      try {
+        res.cookie("cg_access", access, { ...base, maxAge: 15 * 60 * 1000 });
+      } catch (_) {
+        // fallback if res.cookie is unavailable
+        res.setHeader("Set-Cookie", [
+          `cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+        ]);
+      }
+      try {
+        res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 });
+      } catch (_) {
+        // append (or set) header for refresh cookie
+        const prev = res.getHeader("Set-Cookie");
+        const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+        next.push(
+          `cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+        );
+        res.setHeader("Set-Cookie", next);
+      }
+    };
+  if (!globalThis.__cg_setTokens__) {
+    globalThis.__cg_setTokens__ = cgSetTokens;
   }
-});
 
-// Logout endpoint: clear cookies
-app.post("/auth/logout", (_req, res) => {
-  const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
-  try {
-    res.cookie("cg_access", "", { ...base, maxAge: 0 });
-    res.cookie("cg_refresh", "", { ...base, maxAge: 0 });
-  } catch (_) {
-    res.setHeader("Set-Cookie", [
-      "cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None",
-      "cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
-    ]);
+  // Middleware: parse cookies + promote cg_access → Authorization for downstream auth
+  if (!app._cg_cookie_mw_attached) {
+    app.use((req, res, next) => {
+      // Attach parsed cookies (idempotent)
+      if (!req.cookies) {
+        req.cookies = cgParseCookiesFromHeader(req.headers.cookie);
+      }
+
+      // If there's no Authorization header but we have a cg_access cookie, inject a Bearer header
+      if (!req.headers.authorization && req.cookies && req.cookies.cg_access) {
+        req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
+      }
+
+      // If this is the login endpoint, monkey-patch res.json to also set cookies when a token is returned
+      if (req.method === "POST" && req.path === "/auth/login") {
+        const origJson = res.json.bind(res);
+        res.json = (obj) => {
+          try {
+            const token = obj && obj.token;
+            if (token) {
+              // Use the returned token for both access and refresh (simple & compatible).
+              // If you later add server-side refresh JWTs, this stays backwards-compatible.
+              cgSetTokens(res, token, token);
+            }
+          } catch (_) {
+            /* ignore */
+          }
+          return origJson(obj);
+        };
+      }
+
+      return next();
+    });
+    app._cg_cookie_mw_attached = true;
   }
-  return res.json({ ok: true });
-});
+
+  // Refresh endpoint: if a refresh cookie exists, mint a new access cookie and return ok
+  if (!app._cg_refresh_route) {
+    app.post("/auth/refresh", (req, res) => {
+      try {
+        const cookieHeader = req.headers.cookie || "";
+        const cookies = req.cookies || cgParseCookiesFromHeader(cookieHeader);
+        const refresh = cookies && cookies.cg_refresh;
+        if (!refresh) {
+          return res.status(401).json({ ok: false, error: "no refresh" });
+        }
+        // For now, reuse the refresh token as the new access token.
+        cgSetTokens(res, refresh, refresh);
+        return res.json({ ok: true });
+      } catch (e) {
+        return res.status(401).json({ ok: false, error: "invalid refresh" });
+      }
+    });
+    app._cg_refresh_route = true;
+  }
+
+  // Logout endpoint: clear cookies
+  if (!app._cg_logout_route) {
+    app.post("/auth/logout", (_req, res) => {
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      try {
+        res.cookie("cg_access", "", { ...base, maxAge: 0 });
+        res.cookie("cg_refresh", "", { ...base, maxAge: 0 });
+      } catch (_) {
+        res.setHeader("Set-Cookie", [
+          "cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None",
+          "cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
+        ]);
+      }
+      return res.json({ ok: true });
+    });
+    app._cg_logout_route = true;
+  }
+}
 // ===== End cookie-based session helpers =====
