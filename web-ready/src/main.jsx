@@ -4296,6 +4296,54 @@ if (typeof window !== 'undefined') {
 // Replace with:
 // <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:54,width:"auto",display:"block",objectFit:"contain"}} />
 
+// --- SAFETY NET: global fetch shim to always attach Authorization and avoid stray preview header ---
+(() => {
+  if (typeof window === 'undefined' || window.__authFetchShim) return;
+  window.__authFetchShim = true;
+  const orig = window.fetch.bind(window);
+  const API_HOST = 'cyberguard-pro-cloud.onrender.com';
+  const API_HTTP = 'http://localhost:8080';
+  const API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
+
+  function getToken(){
+    try{ return (localStorage.getItem('token') || '').trim(); }catch{ return ''; }
+  }
+  function allowPreviewHeader(){
+    try{ return !!localStorage.getItem('admin_plan_preview'); }catch{ return false; }
+  }
+
+  window.fetch = (input, init = {}) => {
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const isApi = (
+        url.startsWith(API_HTTPS) ||
+        url.startsWith(API_HTTP) ||
+        url.startsWith('/api') ||
+        url.includes(API_HOST)
+      );
+      if (isApi) {
+        // Normalize headers from existing init or Request
+        const baseHeaders = (init && init.headers) || (typeof input !== 'string' ? input.headers : undefined) || {};
+        const headers = new Headers(baseHeaders);
+
+        const t = getToken();
+        if (t && !headers.has('Authorization')) {
+          headers.set('Authorization', `Bearer ${t}`);
+        }
+        // Do NOT send preview header unless admin explicitly set a local flag
+        if (!allowPreviewHeader()) {
+          headers.delete('x-admin-plan-preview');
+        }
+        // Never send a blank Authorization header
+        if (!t && (headers.get('Authorization') === 'Bearer' || !headers.get('Authorization'))) {
+          headers.delete('Authorization');
+        }
+        init = { ...init, headers };
+      }
+    } catch { /* no-op */ }
+    return orig(input, init);
+  };
+})();
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
