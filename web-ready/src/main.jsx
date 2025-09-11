@@ -1,3 +1,22 @@
+// --- Boot guard: ensure we never hit /me without a token ---
+(function guardTokenOnBoot(){
+  try {
+    // Allow auth-related pages to load without a token
+    var path = (typeof window !== 'undefined' && window.location && window.location.pathname) || '/';
+    var isAuthPage = /^\/(login|register|auth)(\b|\/|$)/.test(path);
+
+    // If no token and not already on an auth page, redirect to /login immediately
+    var token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token && !isAuthPage) {
+      if (typeof window !== 'undefined' && window.location) {
+        window.location.replace('/login');
+      }
+    }
+  } catch (e) {
+    // non-fatal: never block boot if guard fails
+    try { console.warn('[boot-guard] skipped', e && (e.message || e)); } catch(_e) {}
+  }
+})();
 import "./setupFetchAuth.js";
 // Ensure the UI uses a single, consistent token key.
 // Migrate any older keys (auth_token, cg_token) -> token on startup.
