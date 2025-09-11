@@ -69,6 +69,20 @@
           }
         }
 
+        // --- Super admin plan preview & bypass forwarding (client → API) ---
+        // If the Admin UI stores preview/bypass flags in localStorage, attach
+        // them as headers so the backend can honor them for super admins.
+        try {
+          const preview = (localStorage.getItem("admin_plan_preview") || "").toLowerCase();
+          const bypass  = localStorage.getItem("admin_bypass_paywall");
+          if (preview) {
+            hdrs.set("x-admin-plan-preview", preview); // e.g. "pro_plus"
+          }
+          if (bypass === "1" || bypass === "true") {
+            hdrs.set("x-admin-bypass", "1");
+          }
+        } catch {}
+
         init.headers = hdrs;
       }
     } catch {
