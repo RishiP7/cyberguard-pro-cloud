@@ -3094,7 +3094,12 @@ const API_ORIGIN =
       });
       const data = await res.json();
       if (!res.ok || !data?.token) throw new Error(data?.error || 'login failed');
-      if (typeof localStorage !== 'undefined') localStorage.setItem('token', data.token);
+      // Cookies are now set by the server; local token is optional for backward compatibility
+      if (data?.token) {
+        try {
+          localStorage.setItem('token', data.token);
+        } catch {}
+      }
       if (typeof window !== 'undefined') window.location.replace('/');
     }catch(e){
       setErr(String(e?.message || e));
@@ -4305,44 +4310,48 @@ if (typeof window !== 'undefined') {
   const API_HTTP = 'http://localhost:8080';
   const API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
 
-  function getToken(){
-    try{ return (localStorage.getItem('token') || '').trim(); }catch{ return ''; }
-  }
-  function allowPreviewHeader(){
-    try{ return !!localStorage.getItem('admin_plan_preview'); }catch{ return false; }
+  function looksLikeApi(u){
+    return u.startsWith(API_HTTP) || u.startsWith(API_HTTPS) || u.startsWith('/api') || u.includes(API_HOST);
   }
 
-  window.fetch = (input, init = {}) => {
+  async function refreshIfNeeded() {
     try {
-      const url = typeof input === 'string' ? input : (input && input.url) || '';
-      const isApi = (
-        url.startsWith(API_HTTPS) ||
-        url.startsWith(API_HTTP) ||
-        url.startsWith('/api') ||
-        url.includes(API_HOST)
-      );
-      if (isApi) {
-        // Normalize headers from existing init or Request
-        const baseHeaders = (init && init.headers) || (typeof input !== 'string' ? input.headers : undefined) || {};
-        const headers = new Headers(baseHeaders);
+      const r = await orig(API_HTTPS + '/auth/refresh', { method:'POST', credentials:'include' });
+      return r.ok;
+    } catch { return false; }
+  }
 
-        const t = getToken();
-        if (t && !headers.has('Authorization')) {
-          headers.set('Authorization', `Bearer ${t}`);
-        }
-        // Do NOT send preview header unless admin explicitly set a local flag
-        if (!allowPreviewHeader()) {
-          headers.delete('x-admin-plan-preview');
-        }
-        // Never send a blank Authorization header
-        if (!t && (headers.get('Authorization') === 'Bearer' || !headers.get('Authorization'))) {
-          headers.delete('Authorization');
-        }
-        init = { ...init, headers };
-      }
-    } catch { /* no-op */ }
-    return orig(input, init);
+  window.fetch = async (input, init = {}) => {
+    let url = typeof input === 'string' ? input : (input && input.url) || '';
+    const isApi = looksLikeApi(url);
+    if (isApi) {
+      // Ensure cookies are sent
+      init = { credentials: 'include', ...init };
+      if (!init.credentials) init.credentials = 'include';
+
+      // Keep backward-compat: if an explicit Bearer is provided by caller, leave it
+      // Otherwise, do not force Authorization here; the cookie should be enough
+    }
+
+    let res = await orig(input, init);
+    if (isApi && res.status === 401) {
+      // try silent refresh once and retry
+      const ok = await refreshIfNeeded();
+      if (ok) res = await orig(input, init);
+    }
+    return res;
   };
+})();
+
+// --- Silent session refresher to keep cookies alive ---
+(function startSilentRefresh(){
+  try {
+    const tick = async ()=>{
+      try { await fetch('https://cyberguard-pro-cloud.onrender.com/auth/refresh', { method:'POST', credentials:'include' }); } catch {}
+    };
+    tick();
+    setInterval(tick, 10 * 60 * 1000); // every 10 minutes
+  } catch {}
 })();
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

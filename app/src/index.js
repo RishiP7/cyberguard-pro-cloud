@@ -3051,7 +3051,33 @@ app.post('/auth/login', async (req, res) => {
       process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '12h' }
     );
-    return res.json({ ok:true, token });
+    return 
+  // Set httpOnly cookies alongside JSON token response
+  try {
+    const accessToken = (typeof token !== 'undefined') ? token : null;
+    let refreshToken;
+    if (!refreshToken && accessToken) {
+      let claims = null;
+      try {
+        const base = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'change-me';
+        claims = jwt.verify(accessToken, base);
+      } catch (_e1) {
+        try { claims = jwt.decode(accessToken) || null; } catch(_e2) {}
+      }
+      if (claims) {
+        refreshToken = signRefresh({
+          tenant_id: claims.tenant_id || claims.tid || claims.sub || claims.tenant || null,
+          email: claims.email || null,
+          role: claims.role || 'member',
+          is_super: !!claims.is_super
+        });
+      }
+    }
+    if (accessToken && refreshToken) {
+      setTokens(res, accessToken, refreshToken);
+    }
+  } catch(_) {}
+res.json({ ok:true, token });
   } catch (e) {
     console.error('auth/login error', e);
     return res.status(500).json({ ok:false, error: 'server error' });
@@ -3924,9 +3950,32 @@ async function ensureConnectorHealthColumns() {
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
   try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
 }
+app.post('/auth/refresh', async (req, res) => {
+  try {
+    const rtok = req.cookies?.[REFRESH_COOKIE];
+    if (!rtok) return res.status(401).json({ ok:false, error:'no refresh' });
+    const base = process.env.JWT_SECRET || process.env.SESSION_SECRET || "change-me";
+    const rPayload = jwt.verify(rtok, process.env.JWT_REFRESH_SECRET || base);
+    const { tenant_id, email, role, is_super } = rPayload || {};
+    if (!tenant_id) return res.status(401).json({ ok:false, error:'bad refresh' });
+    const access = signAccess({ tenant_id, email, role, is_super });
+    setTokens(res, access, rtok);
+    return res.json({ ok:true });
+  } catch (_) {
+    return res.status(401).json({ ok:false, error:'refresh failed' });
+  }
+});
+
+app.post('/auth/logout', (_req, res) => {
+  try { clearTokens(res); } catch(_){}
+  return res.json({ ok:true });
+});
+
+
 
 
 // ---------- /me route ----------
+
 app.get('/me', authMiddleware, async (req, res) => {
   {
     try {
@@ -5281,6 +5330,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
 
 import cors from "cors";
+import cookieParser from "cookie-parser";
 
 // ===== GLOBAL CORS (must be before any routes) =====
 // Handle all CORS & preflight centrally to avoid route-level mismatches.
@@ -5325,3 +5375,44 @@ app.use(
   })
 );
 // ===== END GLOBAL CORS =====
+
+app.use(cookieParser());
+// If no Authorization header but we have cg_access cookie, synthesize it
+app.use((req, _res, next) => {
+  try {
+    if (!req.headers.authorization && req.cookies?.cg_access) {
+      req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
+    }
+  } catch (_) {}
+  next();
+});
+
+const ACCESS_COOKIE = "cg_access";
+const REFRESH_COOKIE = "cg_refresh";
+const ACCESS_TTL_SEC = 15 * 60;             // 15 minutes
+const REFRESH_TTL_SEC = 30 * 24 * 3600;     // 30 days
+
+function signAccess(payload) {
+  return jwt.sign(
+    payload,
+    process.env.JWT_SECRET || process.env.SESSION_SECRET || "change-me",
+    { expiresIn: ACCESS_TTL_SEC }
+  );
+}
+function signRefresh(payload) {
+  return jwt.sign(
+    payload,
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "change-me-refresh",
+    { expiresIn: REFRESH_TTL_SEC }
+  );
+}
+function setTokens(res, access, refresh) {
+  const common = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+  res.cookie(ACCESS_COOKIE, access,  { ...common, maxAge: ACCESS_TTL_SEC  * 1000 });
+  res.cookie(REFRESH_COOKIE, refresh,{ ...common, maxAge: REFRESH_TTL_SEC * 1000 });
+}
+function clearTokens(res) {
+  const common = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+  res.clearCookie(ACCESS_COOKIE,  common);
+  res.clearCookie(REFRESH_COOKIE, common);
+}
