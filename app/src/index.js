@@ -5303,4 +5303,3 @@ app.use(cors(corsCfg));
 // if (req.method === "OPTIONS") return res.sendStatus(204);
 // (keep unchanged; headers are now correct)
 // generic CORS preflight
-app.options("/:rest(.*)", (_req,res)=>res.sendStatus(204));
