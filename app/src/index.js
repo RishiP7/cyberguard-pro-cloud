@@ -5272,34 +5272,28 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // ===== Express 5 catch-all route compatibility patch =====
 // All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
 
-// =========================
-// PATCH: CORS header updates for admin plan preview/bypass
-// =========================
+import cors from "cors";
 
-// Update CORS config allowedHeaders for x-admin-plan-preview and x-admin-bypass
-// Find the CORS config object and update allowedHeaders if present
-let corsCfg = {
-  // ... other config ...
-  // allowedHeaders: ["authorization","content-type"], // old
-  allowedHeaders: ["authorization","content-type","x-admin-plan-preview","x-admin-bypass"],
-  // ... rest of config ...
-};
+// ---- Global CORS config ----
+app.use(cors({
+  origin: (_origin, cb) => cb(null, true),
+  credentials: true,
+  methods: ["GET","HEAD","PUT","PATCH","POST","DELETE","OPTIONS"],
+  allowedHeaders: [
+    "authorization",
+    "content-type",
+    "x-admin-plan-preview",
+    "x-admin-bypass"
+  ],
+}));
 
-// Apply CORS middleware and ensure OPTIONS preflight uses updated headers
-app.use(cors(corsCfg));
-
-// Update manual CORS header block(s) for Access-Control-Allow-Headers
-// If using res.header:
-// res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
-// =>
-// res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
-
-// If using res.setHeader:
-// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
-// =>
-// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
-
-// If there is a manual OPTIONS handler:
-// if (req.method === "OPTIONS") return res.sendStatus(204);
-// (keep unchanged; headers are now correct)
-// generic CORS preflight
+// Handle OPTIONS centrally (no app.options('*')!)
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass");
+    return res.sendStatus(204);
+  }
+  next();
+});
