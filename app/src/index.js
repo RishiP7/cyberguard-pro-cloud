@@ -5271,3 +5271,35 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 
 // ===== Express 5 catch-all route compatibility patch =====
 // All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
+
+// =========================
+// PATCH: CORS header updates for admin plan preview/bypass
+// =========================
+
+// Update CORS config allowedHeaders for x-admin-plan-preview and x-admin-bypass
+// Find the CORS config object and update allowedHeaders if present
+let corsCfg = {
+  // ... other config ...
+  // allowedHeaders: ["authorization","content-type"], // old
+  allowedHeaders: ["authorization","content-type","x-admin-plan-preview","x-admin-bypass"],
+  // ... rest of config ...
+};
+
+// Apply CORS middleware and ensure OPTIONS preflight uses updated headers
+app.use(cors(corsCfg));
+app.options("/:rest(.*)", cors(corsCfg));
+
+// Update manual CORS header block(s) for Access-Control-Allow-Headers
+// If using res.header:
+// res.header("Access-Control-Allow-Headers", "authorization,content-type");
+// =>
+// res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass");
+
+// If using res.setHeader:
+// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type");
+// =>
+// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass");
+
+// If there is a manual OPTIONS handler:
+// if (req.method === "OPTIONS") return res.sendStatus(204);
+// (keep unchanged; headers are now correct)
