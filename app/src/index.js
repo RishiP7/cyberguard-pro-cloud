@@ -5287,7 +5287,6 @@ let corsCfg = {
 
 // Apply CORS middleware and ensure OPTIONS preflight uses updated headers
 app.use(cors(corsCfg));
-app.options("/:rest(.*)", cors(corsCfg));
 
 // Update manual CORS header block(s) for Access-Control-Allow-Headers
 // If using res.header:
