@@ -150,7 +150,10 @@ app.use(cors({
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   allowedHeaders: [
     "Origin","X-Requested-With","Content-Type","Accept","Authorization",
-    "x-api-key","x-admin-key","x-plan-preview","x-admin-override"
+    "x-api-key","x-admin-key",
+    // legacy + new admin preview/bypass headers
+    "x-plan-preview","x-admin-override",
+    "x-admin-plan-preview","x-admin-bypass"
   ],
   exposedHeaders: [
     "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
@@ -215,8 +218,9 @@ function requireSuper(req, res, next) { if (!req.user?.is_super) return res.stat
 function requireOwner(req, res, next) { if (!(req.user?.is_super || (req.user?.role === 'owner'))) return res.status(403).json({ error: 'forbidden' }); next(); }
 
 function readAdminFlags(req){
-  const preview = req.headers['x-plan-preview']; // 'trial'|'basic'|'pro'|'pro+'
-  const override = req.headers['x-admin-override'] === '1';
+  const h = (req && req.headers) || {};
+  const preview = h['x-admin-plan-preview'] || h['x-plan-preview'] || null; // new + legacy
+  const override = (h['x-admin-bypass'] === '1') || (h['x-admin-override'] === '1'); // new + legacy
   return { preview, override };
 }
 
@@ -230,12 +234,17 @@ async function getEffectivePlan(tenant_id, req){
   const trialEligible = (basePlan === 'basic' || basePlan === 'pro');
   const trialActive   = trialEligible && (t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : false);
 
-  // Super admin preview override (UI can pass x-plan-preview)
-  const flags = readAdminFlags(req||{headers:{}});
+  // Super admin preview override (accept both legacy and new headers)
+  const flags = readAdminFlags(req || { headers: {} });
   let effective = t.plan || 'basic';
   if (trialActive) effective = 'pro_plus';
   if (flags && flags.preview && (req?.user?.is_super)) {
-    effective = String(flags.preview).toLowerCase();
+    const raw = String(flags.preview || '').toLowerCase();
+    const compact = raw.replace(/\s+/g, '').replace(/_/g, '');
+    if (compact === 'proplus' || compact === 'pro+') effective = 'pro_plus';
+    else if (compact === 'basic') effective = 'basic';
+    else if (compact === 'pro') effective = 'pro';
+    else effective = raw; // fallback
   }
 
   return {
