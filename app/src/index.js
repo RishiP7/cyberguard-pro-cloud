@@ -3677,10 +3677,24 @@ async function executeAction(ai_action) {
 
 // --- Middleware: requireProPlus ---
 async function requireProPlus(req, res, next) {
-  if (!(await isProPlus(req.user.tenant_id))) {
-    return res.status(402).json({ ok:false, error: "Requires Pro+ plan" });
+  try {
+    // Super-admin preview/bypass overrides
+    if (req.user && req.user.is_super) {
+      const hdrPlan = String(req.get('x-admin-plan-preview') || '').toLowerCase().trim();
+      const bypass = String(req.get('x-admin-bypass') || '').toLowerCase();
+      const bypassOn = bypass === '1' || bypass === 'true' || bypass === 'yes';
+      if (bypassOn || hdrPlan === 'pro_plus') {
+        return next();
+      }
+    }
+
+    if (!(await isProPlus(req.user.tenant_id))) {
+      return res.status(402).json({ ok: false, error: 'Requires Pro+ plan' });
+    }
+    next();
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: 'plan check failed' });
   }
-  next();
 }
 
 // --- GET /ai/policies ---
@@ -3951,10 +3965,14 @@ app.get('/me', authMiddleware, async (req, res) => {
         billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status)
       };
 
+      // Super-admin preview plan override via headers (from Admin UI)
+      const adminHdrPlan = (is_super ? String(req.get('x-admin-plan-preview') || '').toLowerCase().trim() : '');
+      const effectivePlan = (adminHdrPlan === 'pro' || adminHdrPlan === 'pro_plus') ? adminHdrPlan : (tenantObj.plan || null);
+
       const userObj = {
         email,
         role: is_super ? 'super_admin' : role,
-        plan: tenantObj.plan,
+        plan: effectivePlan,
         tenant_id: tenantObj.tenant_id,
         is_super,
         // UI-friendly aliases (keep both snake & camel just in case)
@@ -3970,7 +3988,7 @@ app.get('/me', authMiddleware, async (req, res) => {
         id: tenantObj.id,
         tenant_id: tenantObj.tenant_id,
         name: tenantObj.name,
-        plan: tenantObj.plan,
+        plan: effectivePlan,
         contact_email: tenantObj.contact_email,
         trial_started_at: tenantObj.trial_started_at,
         trial_ends_at: tenantObj.trial_ends_at,
@@ -3978,7 +3996,7 @@ app.get('/me', authMiddleware, async (req, res) => {
         created_at: tenantObj.created_at,
         updated_at: tenantObj.updated_at,
         billing_status: tenantObj.billing_status,
-        effective_plan: tenantObj.plan,
+        effective_plan: effectivePlan,
         trial_active: trialActive,
         plan_actual: tenantObj.plan,
         role,
