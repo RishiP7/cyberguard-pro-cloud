@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import setupBilling from "./billing.js";
 import morgan from "morgan";
 // morgan import moved up
