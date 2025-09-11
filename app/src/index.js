@@ -13,6 +13,7 @@ import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
 import querystring from "node:querystring";
 import * as Sentry from "@sentry/node";
+import cookieParser from "cookie-parser";
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -102,6 +103,8 @@ if (process.env.SENTRY_DSN) {
 // --- Body size limit defaults (defensive) ---
 app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
+// Parse cookies (needed for httpOnly auth cookies)
+app.use(cookieParser());
 
 // --- Sentry request + tracing handlers removed for Sentry v8+ ---
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
@@ -178,20 +181,47 @@ morgan.token("body",req=>{
   return JSON.stringify(b).slice(0,400);
 });
 app.use(morgan(':method :url :status - :response-time ms :body'));
+// ---- cookie/JWT helpers ----
+function getBearer(req) {
+  const h = req.headers?.authorization || "";
+  const m = /^Bearer\s+(.+)$/.exec(h);
+  return m ? m[1] : null;
+}
+
+function setTokens(res, access, refresh) {
+  const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+  try {
+    res.cookie("cg_access", access,  { ...base, maxAge: 15 * 60 * 1000 });
+    res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 });
+  } catch {
+    const prev = res.getHeader("Set-Cookie");
+    const arr = Array.isArray(prev) ? prev : prev ? [prev] : [];
+    arr.push(
+      `cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+    );
+    arr.push(
+      `cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+    );
+    res.setHeader("Set-Cookie", arr);
+  }
+}
 
 // ---------- helpers ----------
 const now=()=>Math.floor(Date.now()/1000);
 const authMiddleware=async (req,res,next)=>{
   try{
-    const hdr=req.headers.authorization||"";
-    const tok=hdr.startsWith("Bearer ")?hdr.slice(7):"";
-    const dec=jwt.verify(tok,JWT_SECRET);
+    const hdr = req.headers.authorization || "";
+    let tok = hdr.startsWith("Bearer ") ? hdr.slice(7) : "";
+    if (!tok && req.cookies && req.cookies.cg_access) {
+      tok = req.cookies.cg_access;
+    }
+    const dec = jwt.verify(tok, JWT_SECRET);
     req.user = {
-  email: dec.email,
-  tenant_id: dec.tenant_id,
-  role: dec.role || 'member',
-  is_super: !!dec.is_super
-};
+      email: dec.email,
+      tenant_id: dec.tenant_id,
+      role: dec.role || 'member',
+      is_super: !!dec.is_super
+    };
     next();
   }catch(e){ return res.status(401).json({error:"Invalid token"}); }
 };
@@ -1339,14 +1369,54 @@ app.post("/auth/login", async (req, res) => {
 
     // Issue JWT
     const is_super = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-const token = jwt.sign(
-  { tenant_id: user.tenant_id, email: user.email, role: user.role || 'member', is_super },
-  JWT_SECRET,
-  { expiresIn: "7d" }
-);
-return res.json({ ok: true, token, role: user.role || 'member', is_super });
+    const token = jwt.sign(
+      { tenant_id: user.tenant_id, email: user.email, role: user.role || 'member', is_super },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    // set cookies for browser-based sessions (access + refresh)
+    try {
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      res.cookie("cg_access",  token, { ...base, maxAge: 15 * 60 * 1000 });
+      res.cookie("cg_refresh", token, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 });
+    } catch {}
+    return res.json({ ok: true, token, role: user.role || 'member', is_super });
   } catch (e) {
     return res.status(500).json({ error: "login failed" });
+  }
+});
+
+app.post("/auth/refresh", async (req, res) => {
+  try {
+    const refresh = (req.cookies && req.cookies.cg_refresh) || getBearer(req);
+    if (!refresh) return res.status(401).json({ ok:false, error: "no refresh" });
+
+    let claims = null;
+    try {
+      claims = jwt.verify(refresh, JWT_SECRET);
+    } catch {
+      try { claims = jwt.decode(refresh) || null; } catch {}
+    }
+    if (!claims) return res.status(401).json({ ok:false, error: "invalid refresh" });
+
+    // issue fresh short-lived access (15m)
+    const token = jwt.sign(
+      {
+        tenant_id: claims.tenant_id,
+        email: claims.email,
+        role: claims.role || 'member',
+        is_super: !!claims.is_super
+      },
+      JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    // keep refresh as-is (or rotate if you add a true refresh token)
+    setTokens(res, token, refresh);
+
+    return res.json({ ok: true, token });
+  } catch (e) {
+    return res.status(401).json({ ok:false, error: "refresh failed" });
   }
 });
 
