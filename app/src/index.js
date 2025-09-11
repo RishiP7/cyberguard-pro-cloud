@@ -100,7 +100,33 @@ if (process.env.SENTRY_DSN) {
 }
 
 // --- Body size limit defaults (defensive) ---
-app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
+app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" })
+
+// --- Cookie setter shim for /auth/login (must run BEFORE the route) ---
+app.use('/auth/login', (req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = (obj) => {
+    try {
+      const token = obj && obj.token;
+      if (token) {
+        const base = { httpOnly: true, secure: true, sameSite: 'none', path: '/' };
+        try {
+          res.cookie('cg_access', token, { ...base, maxAge: 15 * 60 * 1000 });           // 15 min
+          res.cookie('cg_refresh', token, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); // 30 days
+        } catch (_) {
+          const prev = res.getHeader('Set-Cookie');
+          const arr = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+          arr.push(`cg_access=${encodeURIComponent(token)}; Max-Age=${15*60}; Path=/; Secure; HttpOnly; SameSite=None`);
+          arr.push(`cg_refresh=${encodeURIComponent(token)}; Max-Age=${30*24*60*60}; Path=/; Secure; HttpOnly; SameSite=None`);
+          res.setHeader('Set-Cookie', arr);
+        }
+      }
+    } catch (_) {}
+    return origJson(obj);
+  };
+  next();
+});
+);
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
 
 // --- Sentry request + tracing handlers removed for Sentry v8+ ---
