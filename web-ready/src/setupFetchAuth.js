@@ -54,7 +54,18 @@
 
       if (isApi) {
         const t = getToken();
-
+init.headers = new Headers(init.headers || {});
+  if (t && t.trim()) {
+    if (!init.headers.has("Authorization")) {
+      init.headers.set("Authorization", `Bearer ${t}`);
+    }
+  } else {
+    init.headers.delete("Authorization");
+  }
+if (!init.credentials) {
+    init.credentials = "include";
+  }
+}
         // Normalize headers to a Headers object (handles plain objects too)
         const hdrs = new Headers(init.headers || (typeof input !== "string" && input?.headers) || {});
 
