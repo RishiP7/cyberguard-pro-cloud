@@ -5290,15 +5290,17 @@ app.use(cors(corsCfg));
 
 // Update manual CORS header block(s) for Access-Control-Allow-Headers
 // If using res.header:
-// res.header("Access-Control-Allow-Headers", "authorization,content-type");
+// res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
 // =>
-// res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass");
+// res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
 
 // If using res.setHeader:
-// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type");
+// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
 // =>
-// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass");
+// res.setHeader("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass,x-admin-plan-preview,x-admin-bypass");
 
 // If there is a manual OPTIONS handler:
 // if (req.method === "OPTIONS") return res.sendStatus(204);
 // (keep unchanged; headers are now correct)
+// generic CORS preflight
+app.options("*", (_req,res)=>res.sendStatus(204));
