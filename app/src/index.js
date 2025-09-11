@@ -5273,26 +5273,46 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 
 import cors from "cors";
 
-// ---- Global CORS config ----
-app.use(cors({
-  origin: (_origin, cb) => cb(null, true),
-  credentials: true,
-  methods: ["GET","HEAD","PUT","PATCH","POST","DELETE","OPTIONS"],
-  allowedHeaders: [
-    "authorization",
-    "content-type",
-    "x-admin-plan-preview",
-    "x-admin-bypass"
-  ],
-}));
-
-// Handle OPTIONS centrally (no app.options('*')!)
+// ===== GLOBAL CORS (must be before any routes) =====
+// Handle all CORS & preflight centrally to avoid route-level mismatches.
 app.use((req, res, next) => {
+  // Vary so caches don't confuse different origins/headers
+  res.header("Vary", "Origin, Access-Control-Request-Headers");
+  // Always reflect origin for simplicity (tighten to a list if needed)
+  if (req.headers.origin) {
+    res.header("Access-Control-Allow-Origin", req.headers.origin);
+  }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
+  // Allow our custom admin headers (both cases to satisfy some proxies)
+  res.header(
+    "Access-Control-Allow-Headers",
+    "authorization,content-type,x-admin-plan-preview,x-admin-bypass,Authorization,Content-Type,X-Admin-Plan-Preview,X-Admin-Bypass"
+  );
   if (req.method === "OPTIONS") {
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "authorization,content-type,x-admin-plan-preview,x-admin-bypass");
     return res.sendStatus(204);
   }
   next();
 });
+
+// Also register cors() so the library mirrors/validates as well.
+app.use(
+  cors({
+    origin: (_origin, cb) => cb(null, true),
+    credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "authorization",
+      "content-type",
+      "x-admin-plan-preview",
+      "x-admin-bypass",
+      "Authorization",
+      "Content-Type",
+      "X-Admin-Plan-Preview",
+      "X-Admin-Bypass"
+    ],
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+  })
+);
+// ===== END GLOBAL CORS =====
