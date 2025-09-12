@@ -3275,7 +3275,7 @@ function App(){
       <LayoutSafe>
         <>
           <Routes>
-            <Route path="/login" element={<AuthLogin/>}/>
+            <Route path="/login" element={<LoginGuard/>}/>
             <Route path="/register" element={<Register/>}/>
 
             <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
