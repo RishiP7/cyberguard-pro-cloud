@@ -3383,6 +3383,20 @@ function AccountSafe(props){
     </div>
   );
 }
+// SafeAlerts: fall back to a minimal placeholder if real AlertsPage component isn't available
+function AlertsPageSafe(props){
+  try {
+    if (typeof AlertsPage === 'function') {
+      return <AlertsPage {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Alerts</h1>
+      <div style={{ opacity: .8 }}>The Alerts page isn't available in this build. You can continue using the rest of the app.</div>
+    </div>
+  );
+}
 // SafeDashboard: fall back to Dashboard or a minimal placeholder if needed
 function SafeDashboard(props){
   try {
@@ -3414,7 +3428,7 @@ function App(){
             <Route path="/policy" element={protect(<PolicySafe api={API}/>)} />
             <Route path="/pricing" element={protect(<PricingPage/>)} />
             <Route path="/account" element={protect(<AccountSafe api={API}/>)} />
-            <Route path="/alerts" element={protect(<AlertsPage/>)} />
+            <Route path="/alerts" element={protect(<AlertsPageSafe/>)} />
             <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
             <Route path="/admin" element={protect(<Admin api={API}/>)} />
 
