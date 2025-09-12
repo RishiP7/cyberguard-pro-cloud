@@ -3251,6 +3251,12 @@ function RequireAuth({ children }){
   );
 }
 
+// Simple layout wrapper to avoid runtime ReferenceError when Layout is not defined.
+// Replace later with your real layout (header/sidebar) if desired.
+function Layout({ children }) {
+  return <div style={{ padding: 16 }}>{children}</div>;
+}
+
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
