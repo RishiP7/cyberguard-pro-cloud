@@ -3087,16 +3087,16 @@ const API_ORIGIN =
     setErr('');
     setLoading(true);
     try{
-      // Try super-admin endpoint first with cookies
+      // Try super-admin endpoint first with cookies (fallback on ANY non-OK)
       let res = await fetch(`${API_ORIGIN}/auth/admin-login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password })
-      });
+      }).catch(() => null);
 
-      // If not available or unauthorized, fall back to normal login
-      if (res.status === 404 || res.status === 401) {
+      // If admin-login is unavailable or unauthorized, fall back to normal login
+      if (!res || !res.ok) {
         res = await fetch(`${API_ORIGIN}/auth/login`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -3105,7 +3105,7 @@ const API_ORIGIN =
         });
       }
 
-      const data = await res.json();
+      const data = await (res ? res.json().catch(() => ({})) : Promise.resolve({}));
       if (!res.ok || !data?.token) throw new Error(data?.error || 'login failed');
       // Cookies are set by the server; store token for header-based calls as a backup
       try { localStorage.setItem('token', data.token); } catch {}
