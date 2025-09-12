@@ -3397,6 +3397,20 @@ function AlertsPageSafe(props){
     </div>
   );
 }
+// SafeAutonomy: fall back to a minimal placeholder if real AutonomyPage isn't available
+function AutonomySafe(props){
+  try {
+    if (typeof AutonomyPage === 'function') {
+      return <AutonomyPage {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Autonomy (beta)</h1>
+      <div style={{ opacity: .8 }}>The Autonomy page isn't available in this build. You can continue using the rest of the app.</div>
+    </div>
+  );
+}
 // SafeDashboard: fall back to Dashboard or a minimal placeholder if needed
 function SafeDashboard(props){
   try {
@@ -3429,7 +3443,7 @@ function App(){
             <Route path="/pricing" element={protect(<PricingPage/>)} />
             <Route path="/account" element={protect(<AccountSafe api={API}/>)} />
             <Route path="/alerts" element={protect(<AlertsPageSafe/>)} />
-            <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
+            <Route path="/autonomy" element={protect(<AutonomySafe/>)} />
             <Route path="/admin" element={protect(<Admin api={API}/>)} />
 
             <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
