@@ -3313,10 +3313,6 @@ function LayoutSafe({ children }) {
   } catch (_e) { /* ignore and fall back */ }
   return <div style={{ padding: 16 }}>{children}</div>;
 }
-// Replace later with your real layout (header/sidebar) if desired.
-function Layout({ children }) {
-  return <div style={{ padding: 16 }}>{children}</div>;
-}
 
 // Guard to avoid runtime ReferenceError if AuthLogin isn't defined yet
 function LoginGuard(){
