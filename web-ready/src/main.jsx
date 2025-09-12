@@ -750,6 +750,8 @@ function AdminTrialControl(){
 
   React.useEffect(()=>{ apiGet('/me').then(m=>setMe({...m, trial: trialInfo(m)})).catch(()=>setMe(null)); },[]);
 
+function LiveStatusTicker({ inline = false }) {
+  const [msgs, setMsgs] = React.useState([]);
   async function refresh(){
     setErr(""); setMsg(""); setLoading(true);
     try{ const m = await apiGet('/me'); setMe({...m, trial: trialInfo(m)}); }
@@ -3247,7 +3249,8 @@ function RequireAuth({ children }){
       </div>
     </div>
   );
- 
+}
+
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
