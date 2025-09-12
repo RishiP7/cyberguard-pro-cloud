@@ -3087,19 +3087,28 @@ const API_ORIGIN =
     setErr('');
     setLoading(true);
     try{
-      const res = await fetch(`${API_ORIGIN}/auth/admin-login`, {
+      // Try super-admin endpoint first with cookies
+      let res = await fetch(`${API_ORIGIN}/auth/admin-login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password })
       });
+
+      // If not available or unauthorized, fall back to normal login
+      if (res.status === 404 || res.status === 401) {
+        res = await fetch(`${API_ORIGIN}/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password })
+        });
+      }
+
       const data = await res.json();
       if (!res.ok || !data?.token) throw new Error(data?.error || 'login failed');
-      // Cookies are now set by the server; local token is optional for backward compatibility
-      if (data?.token) {
-        try {
-          localStorage.setItem('token', data.token);
-        } catch {}
-      }
+      // Cookies are set by the server; store token for header-based calls as a backup
+      try { localStorage.setItem('token', data.token); } catch {}
       if (typeof window !== 'undefined') window.location.replace('/');
     }catch(e){
       setErr(String(e?.message || e));
