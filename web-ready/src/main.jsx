@@ -3307,6 +3307,20 @@ function LoginGuard(){
   );
 }
 
+// SafePolicy: fall back to a minimal placeholder if real Policy component isn't available
+function PolicySafe(props){
+  try {
+    if (typeof Policy === 'function') {
+      return <Policy {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Policy</h1>
+      <div style={{ opacity: .8 }}>The Policy module isn't available in this build. You can continue using the rest of the app.</div>
+    </div>
+  );
+}
 // SafeDashboard: fall back to Dashboard or a minimal placeholder if needed
 function SafeDashboard(props){
   try {
@@ -3335,7 +3349,7 @@ function App(){
 
             <Route path="/" element={protect(<SafeDashboard api={API}/>)} />
             <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
-            <Route path="/policy" element={protect(<Policy api={API}/>)} />
+            <Route path="/policy" element={protect(<PolicySafe api={API}/>)} />
             <Route path="/pricing" element={protect(<PricingPage/>)} />
             <Route path="/account" element={protect(<Account api={API}/>)} />
             <Route path="/alerts" element={protect(<AlertsPage/>)} />
