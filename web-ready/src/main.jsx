@@ -3307,6 +3307,20 @@ function LoginGuard(){
   );
 }
 
+// SafeDashboard: fall back to Dashboard or a minimal placeholder if needed
+function SafeDashboard(props){
+  try {
+    if (typeof DashboardWithOnboarding === 'function') {
+      return <DashboardWithOnboarding {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  try {
+    if (typeof Dashboard === 'function') {
+      return <Dashboard {...props} />;
+    }
+  } catch (_e) { /* ignore */ }
+  return <div style={{ padding: 16 }}>Loading…</div>;
+}
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
@@ -3319,7 +3333,7 @@ function App(){
             <Route path="/login" element={<LoginGuard/>}/>
             <Route path="/register" element={<Register/>}/>
 
-            <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
+            <Route path="/" element={protect(<SafeDashboard api={API}/>)} />
             <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
             <Route path="/policy" element={protect(<Policy api={API}/>)} />
             <Route path="/pricing" element={protect(<PricingPage/>)} />
