@@ -1,3 +1,9 @@
+// Safe Policy fallback to avoid ReferenceError
+var Policy = (typeof Policy !== 'undefined')
+  ? Policy
+  : ((typeof window !== 'undefined' && window.Policy)
+      ? window.Policy
+      : function Policy(){ return null; });
 // --- Boot guard: ensure we never hit /me without a token ---
 (function guardTokenOnBoot(){
   try {
