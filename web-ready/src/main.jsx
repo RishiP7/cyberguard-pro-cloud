@@ -3397,6 +3397,43 @@ function AlertsPageSafe(props){
     </div>
   );
 }
+
+// SafeAdmin: try global Admin; else lazy-load from pages/Admin.jsx; else show placeholder
+function AdminSafe(props){
+  // 1) If a global Admin is available (defined earlier), use it
+  try {
+    if (typeof Admin === 'function') {
+      return <Admin {...props} />;
+    }
+  } catch (_e) { /* fall through to lazy import */ }
+
+  // 2) Lazy import the Admin page module if it exists on disk
+  const [{ Comp }, setState] = React.useState({ Comp: null });
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const mod = await import('./pages/Admin.jsx');
+        if (!alive) return;
+        const C = mod?.default || mod?.Admin || null;
+        if (C) setState({ Comp: C });
+      } catch (_err) {
+        // ignore — we'll render the placeholder below
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  if (Comp) return <Comp {...props} />;
+
+  // 3) Minimal placeholder so the route never crashes
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Admin</h1>
+      <div style={{ opacity: .8 }}>The Admin page is loading or not available in this build.</div>
+    </div>
+  );
+}
 // SafeAutonomy: fall back to a minimal placeholder if real AutonomyPage isn't available
 function AutonomySafe(props){
   try {
@@ -3444,7 +3481,7 @@ function App(){
             <Route path="/account" element={protect(<AccountSafe api={API}/>)} />
             <Route path="/alerts" element={protect(<AlertsPageSafe/>)} />
             <Route path="/autonomy" element={protect(<AutonomySafe/>)} />
-            <Route path="/admin" element={protect(<Admin api={API}/>)} />
+            <Route path="/admin" element={protect(<AdminSafe api={API}/>)} />
 
             <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
             <Route path="/admin/console/trial" element={protect(<AdminConsolePage page="trial" />)} />
