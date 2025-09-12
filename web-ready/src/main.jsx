@@ -3247,8 +3247,7 @@ function RequireAuth({ children }){
       </div>
     </div>
   );
-}
-
+ 
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
