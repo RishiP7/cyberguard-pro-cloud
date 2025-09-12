@@ -2621,7 +2621,7 @@ function AutonomyPage(){
   // Persist filter on change
   React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('autonomy:filter', String(statusFilter)); } }catch{} },[statusFilter]);
 
-  const caps = planCapabilities(me?.plan_actual || me?.plan || 'trial', me);
+  const caps = planCapabilities(me?.effective_plan || me?.plan_actual || me?.plan || 'trial', me);
   const proPlus = caps.ai; // same gating
 
   async function setMode(mode){
@@ -3121,25 +3121,29 @@ const API_ORIGIN =
   );
 }
 function RequireAuth({ children }){
-  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-  if (!token) return <Navigate to="/login" replace />;
+  const [ok, setOk] = React.useState(() => {
+    try { return !!(typeof localStorage !== 'undefined' && localStorage.getItem('token')); }
+    catch { return false; }
+  });
+
+  React.useEffect(() => {
+    if (ok) return;
+    const API_ORIGIN =
+      (import.meta?.env?.VITE_API_BASE)
+      || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+            ? 'https://cyberguard-pro-cloud.onrender.com'
+            : 'http://localhost:8080');
+    (async () => {
+      try {
+        const r = await fetch(`${API_ORIGIN}/me`, { credentials: 'include' });
+        if (r.ok) setOk(true);
+      } catch { /* ignore */ }
+    })();
+  }, [ok]);
+
+  if (!ok) return <Navigate to="/login" replace />;
   return children;
 }
-function LiveStatusTicker({ inline=false }){
-  const [msgs, setMsgs] = React.useState([]);
-
-  const API_ORIGIN = (import.meta?.env?.VITE_API_BASE)
-    || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
-
-  async function api(path){
-    const token = (typeof localStorage!=='undefined' && localStorage.getItem('token')) || '';
-    const url = `${API_ORIGIN}${path.startsWith('/')?path:'/'+path}`;
-    const r = await fetch(url, { headers:{ Authorization:`Bearer ${token}` }});
-    const t = await r.text();
-    try { return JSON.parse(t); } catch { return { ok:false, error:t }; }
-  }
 
   async function refresh(){
     try{
@@ -3320,7 +3324,7 @@ function Integrations({ api }) {
     } catch (_e) {}
     return () => { if (timer) try { clearTimeout(timer); } catch(_e){} };
   }, [meState?.trial?.ends_at, meState?.trial?.active, meState?.plan_actual, meState?.plan]);
-  const caps = planCapabilities(meState?.plan_actual || meState?.plan || 'trial', meState);
+  const caps = planCapabilities(meState?.effective_plan || meState?.plan_actual || meState?.plan || 'trial', meState);
   // --- Helper functions for email provider normalization and OAuth ---
   function normEmailProvider(p){
     p = (p||'').toLowerCase();
@@ -3696,7 +3700,7 @@ function Integrations({ api }) {
           <div style={{fontWeight:700}}>AI Security Assistant</div>
           <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</div>
           <div style={{marginTop:8}}>
-            {planCapabilities(meState?.plan || 'trial', meState).ai ? (
+            {planCapabilities(meState?.effective_plan || meState?.plan_actual || meState?.plan || 'trial', meState).ai ? (
               <Link to="/autonomy"><button style={btn}>Open Autonomy</button></Link>
             ) : (
               <LockedTile title="AI Security Assistant" reason="Available on Pro+ (trial preview unlocks it temporarily)." />
@@ -3833,8 +3837,8 @@ function TestEvents({ api }){
   const apiKey = (typeof localStorage !== "undefined" && localStorage.getItem("api_key")) || "";
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
-  const caps = planCapabilities(me?.plan || "trial", me);
-  const planStr = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const caps = planCapabilities(me?.effective_plan || me?.plan_actual || me?.plan || "trial", me);
+const planStr = String(me?.effective_plan || me?.plan_actual || me?.plan || '').toLowerCase();
   const adminPreviewTE = (typeof localStorage!=='undefined' && (localStorage.getItem('admin_plan_preview')||'')).toLowerCase();
   const showTrial = !!(me?.trial?.active) && (planStr === 'basic' || planStr === 'pro') && adminPreviewTE !== 'pro_plus';
   const isProPlus = planStr === 'pro_plus';
