@@ -3266,6 +3266,47 @@ function Layout({ children }) {
   return <div style={{ padding: 16 }}>{children}</div>;
 }
 
+// Guard to avoid runtime ReferenceError if AuthLogin isn't defined yet
+function LoginGuard(){
+  try {
+    if (typeof AuthLogin === 'function') return <AuthLogin/>;
+  } catch (_e) { /* ignore */ }
+  // Minimal inline fallback login (never blocks build/runtime)
+  const [email,setEmail] = React.useState("");
+  const [password,setPassword] = React.useState("");
+  const [err,setErr] = React.useState("");
+  const [busy,setBusy] = React.useState(false);
+  const API_ORIGIN = (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+  async function submit(e){
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      const r = await fetch(`${API_ORIGIN}/auth/login`, {
+        method: 'POST', headers: { 'content-type':'application/json' }, credentials:'include',
+        body: JSON.stringify({ email, password })
+      });
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok || !j?.token) throw new Error(j?.error || 'login failed');
+      try { localStorage.setItem('token', j.token); } catch {}
+      if (typeof window !== 'undefined') window.location.replace('/');
+    } catch (e) { setErr(String(e?.message || e)); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div style={{maxWidth:380,margin:'80px auto'}}>
+      <h1 style={{marginBottom:16}}>Sign in</h1>
+      <form onSubmit={submit}>
+        <input style={{width:'100%',marginBottom:10}} type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
+        <input style={{width:'100%',marginBottom:10}} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
+        {err && <div style={{color:'#ff7777',marginBottom:10}}>{err}</div>}
+        <button type="submit" disabled={busy} style={{width:'100%'}}>{busy? 'Signing in…':'Sign in'}</button>
+      </form>
+    </div>
+  );
+}
+
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
   const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
@@ -3275,7 +3316,7 @@ function App(){
       <LayoutSafe>
         <>
           <Routes>
-            <Route path="/login" element={<AuthLogin/>}/>
+            <Route path="/login" element={<LoginGuard/>}/>
             <Route path="/register" element={<Register/>}/>
 
             <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
