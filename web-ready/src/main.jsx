@@ -1,3 +1,39 @@
+// --- Runtime shims: prevent ReferenceError when optional screens aren't bundled ---
+/* eslint-disable no-var */
+// If these components are not present in the current build, provide safe fallbacks.
+try {
+  if (typeof Account === 'undefined') {
+    var Account = function Account(props){
+      return (typeof React !== 'undefined')
+        ? React.createElement('div', { style:{ padding:16 } }, 'Account module is not available in this build.')
+        : null;
+    };
+    try { globalThis.Account = Account; } catch(_e) {}
+  }
+} catch(_e) {}
+
+try {
+  if (typeof Policy === 'undefined') {
+    var Policy = function Policy(props){
+      return (typeof React !== 'undefined')
+        ? React.createElement('div', { style:{ padding:16 } }, 'Policy module is not available in this build.')
+        : null;
+    };
+    try { globalThis.Policy = Policy; } catch(_e) {}
+  }
+} catch(_e) {}
+
+try {
+  if (typeof Layout === 'undefined') {
+    var Layout = function Layout(props){
+      return (typeof React !== 'undefined')
+        ? React.createElement('div', { style:{ padding:16 } }, props && props.children)
+        : null;
+    };
+    try { globalThis.Layout = Layout; } catch(_e) {}
+  }
+} catch(_e) {}
+/* eslint-enable no-var */
 // --- Runtime safety shims (prevent ReferenceError if optional screens weren't bundled) ---
 /* eslint-disable no-var */
 var __R = (typeof globalThis !== 'undefined' && globalThis.React) ? globalThis.React : null;
