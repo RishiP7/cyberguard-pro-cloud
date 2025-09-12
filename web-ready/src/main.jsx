@@ -3252,6 +3252,15 @@ function RequireAuth({ children }){
 }
 
 // Simple layout wrapper to avoid runtime ReferenceError when Layout is not defined.
+// Safe layout wrapper: uses global Layout if present, otherwise falls back to a simple padded div.
+function LayoutSafe({ children }) {
+  try {
+    if (typeof Layout === 'function') {
+      return <Layout>{children}</Layout>;
+    }
+  } catch (_e) { /* ignore and fall back */ }
+  return <div style={{ padding: 16 }}>{children}</div>;
+}
 // Replace later with your real layout (header/sidebar) if desired.
 function Layout({ children }) {
   return <div style={{ padding: 16 }}>{children}</div>;
@@ -3263,7 +3272,7 @@ function App(){
 
   return (
     <ErrorBoundary>
-      <Layout>
+      <LayoutSafe>
         <>
           <Routes>
             <Route path="/login" element={<AuthLogin/>}/>
@@ -3287,7 +3296,7 @@ function App(){
             <Route path="*" element={<Navigate to="/" replace />}/>
           </Routes>
         </>
-      </Layout>
+      </LayoutSafe>
     </ErrorBoundary>
   );
 }
