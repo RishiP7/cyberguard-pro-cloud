@@ -3214,20 +3214,15 @@ function RequireAuth({ children }){
 // --- RequireAuthSafe: single, bullet-proof shim ---
 // Guarantees the identifier exists at runtime and works even if routing evaluates early.
 // Uses real <RequireAuth> when present; otherwise renders children unguarded (server must enforce auth).
-try {
-  // eslint-disable-next-line no-var
-  var RequireAuthSafe =
-    (typeof globalThis !== 'undefined' && globalThis.RequireAuthSafe)
-      || function RequireAuthSafeShim({ children }) {
-           try {
-             if (typeof RequireAuth === 'function') {
-               return React.createElement(RequireAuth, null, children);
-             }
-           } catch (_) {}
-           return React.createElement(React.Fragment, null, children);
-         };
-  try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch (_) {}
-} catch (_) {}
+function RequireAuthSafe({ children }) {
+  try {
+    if (typeof RequireAuth === 'function') {
+      return React.createElement(RequireAuth, null, children);
+    }
+  } catch (_) {}
+  return React.createElement(React.Fragment, null, children);
+}
+try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch (_) {}
 
   async function refresh(){
     try{
