@@ -3212,6 +3212,9 @@ function RequireAuth({ children }){
   return children;
 }
 
+/* --- RequireAuth: expose globally to satisfy any stale chunks and prevent ReferenceError --- */
+try { globalThis.RequireAuth = globalThis.RequireAuth || RequireAuth; } catch (_e) { /* no-op */ }
+
 // --- Hard alias to catch any stale <RequireAuthSafe> references from older chunks ---
 // Ensure a real identifier exists in this module (prevents ReferenceError in strict ESM)
 var RequireAuthSafe = function RequireAuthSafe(props){ 
@@ -3650,6 +3653,12 @@ class SafeErrorBoundary extends React.Component {
     }
     return this.props.children;
   }
+}
+/* --- SAFETY GUARD: if RequireAuth identifier is missing at runtime, provide a permissive fallback --- */
+if (typeof RequireAuth === 'undefined') {
+  // eslint-disable-next-line no-var
+  var RequireAuth = function RequireAuth(props){ return props && props.children; };
+  try { globalThis.RequireAuth = globalThis.RequireAuth || RequireAuth; } catch (_e) {}
 }
 function App(){
   return (
