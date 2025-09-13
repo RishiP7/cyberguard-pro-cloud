@@ -3487,6 +3487,31 @@ function AutonomySafe(props){
     </div>
   );
 }
+// --- Ensure a Dashboard symbol exists so routes can render a real dashboard ---
+// We alias Dashboard to the enhanced DashboardWithOnboarding so both names exist.
+function Dashboard(props){
+  try {
+    if (typeof DashboardWithOnboarding === 'function') {
+      return <DashboardWithOnboarding {...props} />;
+    }
+  } catch (_e) { /* fall through to placeholder below */ }
+  // Fallback tiny panel if something goes wrong; SafeDashboard adds deeper diagnostics.
+  return (
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginTop: 0 }}>Dashboard</h2>
+      <div style={{ opacity: .8 }}>Loading…</div>
+    </div>
+  );
+}
+
+// Expose to globalThis to avoid any bundler scoping surprises when other guards check presence
+try {
+  globalThis.Dashboard = Dashboard;
+  // Also expose the wrapper in case any guard checks it by name on window/globalThis
+  if (typeof DashboardWithOnboarding === 'function') {
+    globalThis.DashboardWithOnboarding = DashboardWithOnboarding;
+  }
+} catch (_e) { /* no-op */ }
 // SafeDashboard: fall back to Dashboard or a minimal placeholder if needed
 function SafeDashboard(props){
   // Try to render the real dashboard first
