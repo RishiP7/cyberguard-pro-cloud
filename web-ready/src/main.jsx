@@ -192,7 +192,6 @@ import "./setupFetchAuth.js";
   }
 })();
 // build: bump
-import ReactDOM from "react-dom/client";
 
 // --- BrandLogo: tries overrides + common paths, falls back to text ---
 function BrandLogo(){
@@ -226,7 +225,6 @@ function BrandLogo(){
   );
 }
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
