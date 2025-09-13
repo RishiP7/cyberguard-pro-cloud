@@ -3186,6 +3186,7 @@ const API_ORIGIN =
     </div>
   );
 }
+
 function RequireAuth({ children }){
   const [ok, setOk] = React.useState(() => {
     try { return !!(typeof localStorage !== 'undefined' && localStorage.getItem('token')); }
@@ -3211,11 +3212,12 @@ function RequireAuth({ children }){
   return children;
 }
 
-// --- RequireAuthSafe: hard alias to local RequireAuth to avoid runtime "ReferenceError" ---
-function RequireAuthSafe(props) {
-  return React.createElement(RequireAuth, props);
-}
-try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch (_) {}
+// --- Hard alias to catch any stale <RequireAuthSafe> references from older chunks ---
+// Ensure a real identifier exists in this module (prevents ReferenceError in strict ESM)
+var RequireAuthSafe = function RequireAuthSafe(props){ 
+  return React.createElement(RequireAuth, props); 
+};
+try { globalThis.RequireAuthSafe = globalThis.RequireAuthSafe || RequireAuthSafe; } catch (_e) {}
 
   async function refresh(){
     try{
