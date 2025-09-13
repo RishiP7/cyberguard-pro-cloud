@@ -3482,17 +3482,68 @@ function AutonomySafe(props){
 }
 // SafeDashboard: fall back to Dashboard or a minimal placeholder if needed
 function SafeDashboard(props){
+  // Try to render the real dashboard first
   try {
     if (typeof DashboardWithOnboarding === 'function') {
       return <DashboardWithOnboarding {...props} />;
     }
-  } catch (_e) { /* ignore and fall through */ }
+  } catch (_e) { /* ignore */ }
   try {
     if (typeof Dashboard === 'function') {
       return <Dashboard {...props} />;
     }
   } catch (_e) { /* ignore */ }
-  return <div style={{ padding: 16 }}>Loading…</div>;
+
+  // If neither dashboard exists, show a diagnostic panel instead of an empty "Loading…"
+  const [diag, setDiag] = React.useState({ token:false, meOk:null, plan:null, error:null });
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const token = (()=>{ try { return !!localStorage.getItem('token'); } catch { return false; } })();
+        let meOk = null, plan = null;
+        try {
+          const API_ORIGIN =
+            (import.meta?.env?.VITE_API_BASE)
+            || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+                  ? 'https://cyberguard-pro-cloud.onrender.com'
+                  : 'http://localhost:8080');
+          const r = await fetch(`${API_ORIGIN}/me`, { credentials: 'include' });
+          meOk = r.ok;
+          if (r.ok) {
+            const j = await r.json().catch(()=>({}));
+            plan = j?.effective_plan || j?.plan_actual || j?.plan || null;
+          }
+        } catch (e) {
+          meOk = false;
+        }
+        if (alive) setDiag({ token, meOk, plan, error:null });
+      } catch (e) {
+        if (alive) setDiag({ token:false, meOk:false, plan:null, error:String(e?.message||e) });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  return (
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginTop: 0 }}>Dashboard loading…</h2>
+      <p style={{ opacity: .8 }}>We couldn't find a Dashboard component in this build. The app will still work; below is a quick diagnostic to help us fix the route without a blank screen.</p>
+      <ul style={{ lineHeight: 1.6 }}>
+        <li>DashboardWithOnboarding: <code>{(typeof DashboardWithOnboarding === 'function') ? 'present' : 'missing'}</code></li>
+        <li>Dashboard: <code>{(typeof Dashboard === 'function') ? 'present' : 'missing'}</code></li>
+        <li>Token in localStorage: <code>{diag.token ? 'present' : 'missing'}</code></li>
+        <li>/me via cookie: <code>{diag.meOk === null ? 'checking…' : diag.meOk ? '200 OK' : '401/failed'}</code></li>
+        {diag.plan ? <li>Plan detected: <code>{String(diag.plan)}</code></li> : null}
+        {diag.error ? <li>Error: <code>{String(diag.error)}</code></li> : null}
+      </ul>
+      <div style={{ display:'flex', gap:8, marginTop:8 }}>
+        <button onClick={() => window.location.reload()} style={{ padding:'8px 12px' }}>Reload</button>
+        <a href="/login" style={{ padding:'8px 12px', border:'1px solid rgba(255,255,255,.2)', borderRadius:8 }}>Go to login</a>
+      </div>
+    </div>
+  );
 }
 function App(){
   const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
