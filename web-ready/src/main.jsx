@@ -3211,26 +3211,23 @@ function RequireAuth({ children }){
   return children;
 }
 
-// --- RequireAuthSafe: define once and expose both locally and globally ---
-// Ensures JSX like &lt;RequireAuthSafe&gt; works even if routing evaluates early.
-// Uses real &lt;RequireAuth&gt; when available; otherwise renders children unguarded.
-// Backend must still enforce authorization on sensitive APIs.
-let RequireAuthSafe =
-  (typeof globalThis !== 'undefined' && typeof globalThis.RequireAuthSafe === 'function')
-    ? globalThis.RequireAuthSafe
-    : null;
-
-if (typeof RequireAuthSafe !== 'function') {
-  RequireAuthSafe = function RequireAuthSafeInner({ children }) {
-    try {
-      if (typeof RequireAuth === 'function') {
-        return <RequireAuth>{children}</RequireAuth>;
-      }
-    } catch (_e) { /* ignore */ }
-    return <>{children}</>;
-  };
-  try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch (_e) {}
-}
+// --- RequireAuthSafe: single, bullet-proof shim ---
+// Guarantees the identifier exists at runtime and works even if routing evaluates early.
+// Uses real <RequireAuth> when present; otherwise renders children unguarded (server must enforce auth).
+try {
+  // eslint-disable-next-line no-var
+  var RequireAuthSafe =
+    (typeof globalThis !== 'undefined' && globalThis.RequireAuthSafe)
+      || function RequireAuthSafeShim({ children }) {
+           try {
+             if (typeof RequireAuth === 'function') {
+               return React.createElement(RequireAuth, null, children);
+             }
+           } catch (_) {}
+           return React.createElement(React.Fragment, null, children);
+         };
+  try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch (_) {}
+} catch (_) {}
 
   async function refresh(){
     try{
