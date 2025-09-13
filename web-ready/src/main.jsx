@@ -4600,7 +4600,7 @@ function Support(){
 }
 // ---- DEBUG OVERLAY (temporary, to diagnose blank screen) ----
 function DebugOverlay(){
-  const loc = useLocation ? useLocation() : { pathname: '(no-router)' };
+  const loc = (typeof useLocation !== 'undefined') ? useLocation() : { pathname: '(no-router)' };
   const [visible, setVisible] = React.useState(()=>{
     try{ return localStorage.getItem('debug:overlay') === '1'; }catch{ return true; }
   });
