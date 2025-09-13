@@ -4350,9 +4350,9 @@ function normalizeRisk(v){
 // --- BillingPanel: self-serve subscriptions (Basic/Pro/Pro+) + Portal ---
 
 function BillingPanel() {
-  const [me, setMe] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [me, setMe] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
 
   const API_ORIGIN =
     (import.meta?.env?.VITE_API_BASE)
@@ -4379,7 +4379,7 @@ function BillingPanel() {
     return json;
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     (async () => {
       try {
         const j = await api("/me");
