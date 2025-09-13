@@ -1,12 +1,11 @@
 import React from "react";
 
-// Pure presentational Dashboard page.
-// Do NOT mount React or define routes here. App shell & routing live in src/main.jsx.
+// Pure page component. No Router here — routing is handled in main.jsx
 export default function Dashboard() {
   return (
-    <div className="page dashboard" style={{ padding: 16 }}>
+    <div className="page dashboard">
       <h1>Dashboard</h1>
-      <p>Welcome back. Your app shell (header/sidebar) and routes are defined in <code>src/main.jsx</code>.</p>
+      <p>Loading...</p>
     </div>
   );
 }
