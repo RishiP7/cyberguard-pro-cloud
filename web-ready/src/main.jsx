@@ -3211,16 +3211,9 @@ function RequireAuth({ children }){
   return children;
 }
 
-// --- RequireAuthSafe: single, bullet-proof shim ---
-// Guarantees the identifier exists at runtime and works even if routing evaluates early.
-// Uses real <RequireAuth> when present; otherwise renders children unguarded (server must enforce auth).
-function RequireAuthSafe({ children }) {
-  try {
-    if (typeof RequireAuth === 'function') {
-      return React.createElement(RequireAuth, null, children);
-    }
-  } catch (_) {}
-  return React.createElement(React.Fragment, null, children);
+// --- RequireAuthSafe: hard alias to local RequireAuth to avoid runtime "ReferenceError" ---
+function RequireAuthSafe(props) {
+  return React.createElement(RequireAuth, props);
 }
 try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch (_) {}
 
