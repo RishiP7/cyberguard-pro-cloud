@@ -1,6 +1,33 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { API } from "../main.jsx";
+
+// Local minimal API helper (decoupled from main.jsx to avoid circular builds)
+const API_BASE =
+  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_API_BASE) ||
+  (typeof window !== "undefined" && window.location.hostname.endsWith("onrender.com")
+    ? "https://cyberguard-pro-cloud.onrender.com"
+    : "http://localhost:10000");
+
+async function apiPost(path, body) {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include", // allow cookie-based auth if present
+      body: JSON.stringify(body || {})
+    });
+    // Try to parse JSON; fall back to a generic error object
+    const text = await res.text();
+    let json;
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { ok:false, error:"Invalid JSON" }; }
+    if (!res.ok && !json.error) {
+      json.error = `HTTP ${res.status}`;
+    }
+    return json;
+  } catch (_e) {
+    return { ok:false, error:"Network error" };
+  }
+}
 
 export default function Register(){
   const [company, setCompany] = useState("");
@@ -18,7 +45,7 @@ export default function Register(){
     setLoading(true);
     try{
       const payload = { company: company.trim(), email: email.trim().toLowerCase(), password };
-      const j = await API.post("/auth/register", payload);
+      const j = await apiPost("/auth/register", payload);
       if(j?.error){ setErr(j.error); return; }
       setMsg("🎉 Account created! Redirecting to login…");
       setTimeout(()=>navigate("/login"), 1400);
