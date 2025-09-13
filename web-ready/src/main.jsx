@@ -3759,23 +3759,23 @@ function App(){
       <LayoutSafe>
         <>
           <Routes>
-            <Route path="/login" element={<LoginGuard/>}/>
-            <Route path="/register" element={<RegisterSafe/>}/>
+            <Route path="/login" element={<AuthLogin/>}/>
+            <Route path="/register" element={<Register/>}/>
 
-            <Route path="/" element={<RequireAuth><SafeDashboard api={API}/></RequireAuth>} />
-            <Route path="/dashboard" element={<RequireAuth><SafeDashboard api={API}/></RequireAuth>} />
+            <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
+            <Route path="/dashboard" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
             <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>} />
-            <Route path="/policy" element={<RequireAuth><PolicySafe api={API}/></RequireAuth>} />
+            <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>} />
             <Route path="/pricing" element={<RequireAuth><PricingPage/></RequireAuth>} />
-            <Route path="/account" element={<RequireAuth><AccountSafe api={API}/></RequireAuth>} />
-            <Route path="/alerts" element={<RequireAuth><AlertsPageSafe/></RequireAuth>} />
-            <Route path="/autonomy" element={<RequireAuth><AutonomySafe/></RequireAuth>} />
-            <Route path="/admin" element={<RequireAuth><AdminSafe api={API}/></RequireAuth>} />
+            <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>} />
+            <Route path="/alerts" element={<RequireAuth><AlertsPage/></RequireAuth>} />
+            <Route path="/autonomy" element={<RequireAuth><AutonomyPage/></RequireAuth>} />
+            <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>} />
 
             <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
-            <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePageSafe page="trial" /></RequireAuth>} />
-            <Route path="/admin/console/retention" element={<RequireAuth><AdminConsolePageSafe page="retention" /></RequireAuth>} />
-            <Route path="/admin/console/audit" element={<RequireAuth><AdminConsolePageSafe page="audit" /></RequireAuth>} />
+            <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
+            <Route path="/admin/console/retention" element={<RequireAuth><AdminConsolePage page="retention" /></RequireAuth>} />
+            <Route path="/admin/console/audit" element={<RequireAuth><AdminConsolePage page="audit" /></RequireAuth>} />
             <Route path="/test" element={<RequireAuth><TestEvents api={API}/></RequireAuth>} />
             <Route path="/support" element={<RequireAuth><Support/></RequireAuth>} /> 
             <Route path="*" element={<Navigate to="/" replace />}/>
