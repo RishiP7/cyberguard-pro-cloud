@@ -3086,6 +3086,41 @@ function LiveEmailScan(){
     </div>
   );
 }
+// --- Safe fallbacks for optional UI blocks used by the enhanced dashboard ---
+// If these components are not bundled in this build, provide lightweight stand‑ins
+// so DashboardWithOnboarding can still render a full page instead of falling back
+// to the minimal Dashboard placeholder.
+try { if (typeof CollapsibleSection === 'undefined') {
+  // eslint-disable-next-line no-var
+  var CollapsibleSection = function CollapsibleSectionFallback({ id, title, children }){
+    return (
+      <div style={{ margin: '12px 0' }}>
+        {title ? <div style={{ opacity: .85, fontWeight: 700, marginBottom: 6 }}>{title}</div> : null}
+        <div>{children}</div>
+      </div>
+    );
+  };
+} } catch(_e) {}
+try { if (typeof OnboardingChecklist === 'undefined') {
+  // eslint-disable-next-line no-var
+  var OnboardingChecklist = function OnboardingChecklistFallback(){
+    return <div style={{ opacity: .8 }}>Welcome! Connect an email provider to get started.</div>;
+  };
+} } catch(_e) {}
+try { if (typeof OnboardingTips === 'undefined') {
+  // eslint-disable-next-line no-var
+  var OnboardingTips = function OnboardingTipsFallback(){
+    return <div style={{ opacity: .8 }}>Tips will appear here when the full module is available.</div>;
+  };
+} } catch(_e) {}
+try { if (typeof LiveEmailScan === 'undefined') {
+  // eslint-disable-next-line no-var
+  var LiveEmailScan = function LiveEmailScanFallback(){ return null; };
+} } catch(_e) {}
+try { if (typeof LiveStatusTicker === 'undefined') {
+  // eslint-disable-next-line no-var
+  var LiveStatusTicker = function LiveStatusTickerFallback(){ return null; };
+} } catch(_e) {}
 // DashboardWithOnboarding: wrapper for Dashboard with onboarding/tips sections
 function DashboardWithOnboarding(props){
   return (
