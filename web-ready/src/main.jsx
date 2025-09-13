@@ -4711,33 +4711,61 @@ if (typeof window !== 'undefined') {
     setInterval(tick, 10 * 60 * 1000); // every 10 minutes
   } catch {}
 })();
-// --- Fatal overlay helper: shows a visible panel if boot or runtime crashes before React mounts
 function __showFatalOverlay(error){
   try {
     const id = '__fatal-overlay__';
-    if (document.getElementById(id)) return; // already shown
-    const el = document.createElement('div');
-    el.id = id;
-    el.style.position = 'fixed';
-    el.style.inset = '16px';
-    el.style.zIndex = '999999';
-    el.style.padding = '16px';
-    el.style.border = '1px solid #ff7a7a88';
-    el.style.background = '#0b0c0d';
-    el.style.color = '#e6e9ef';
-    el.style.borderRadius = '10px';
-    el.style.boxShadow = '0 18px 48px rgba(0,0,0,.4)';
-    const pre = document.createElement('pre');
-    pre.style.whiteSpace = 'pre-wrap';
-    pre.style.marginTop = '8px';
-    pre.textContent = (error && (error.stack || error.message || String(error))) || 'Unknown error';
+    // Update existing overlay if present
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.style.position = 'fixed';
+      el.style.inset = '16px';
+      el.style.zIndex = '999999';
+      el.style.padding = '16px';
+      el.style.border = '1px solid #ff7a7a88';
+      el.style.background = '#0b0c0d';
+      el.style.color = '#e6e9ef';
+      el.style.borderRadius = '10px';
+      el.style.boxShadow = '0 18px 48px rgba(0,0,0,.4)';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = '';
+
     const title = document.createElement('div');
     title.style.fontWeight = '700';
     title.style.marginBottom = '6px';
     title.textContent = 'Startup error';
+
+    const msg = document.createElement('div');
+    msg.style.whiteSpace = 'pre-wrap';
+    msg.style.margin = '6px 0';
+    msg.textContent = String(error && (error.message || error.reason) || error || 'Unknown error');
+
+    const pre = document.createElement('pre');
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.style.marginTop = '8px';
+    pre.textContent = (error && (error.stack || ''));
+
+    const env = document.createElement('div');
+    env.style.opacity = '.85';
+    env.style.marginTop = '10px';
+    env.style.fontSize = '12px';
+    try {
+      const info = {
+        react: (window.React && window.React.version) || '(?)',
+        hasReact: !!window.React,
+        hasReactDOM: !!(window.ReactDOM && window.ReactDOM.createRoot),
+        location: (window.location && window.location.href) || '(no window)'
+      };
+      env.textContent = 'env: ' + JSON.stringify(info);
+    } catch(_) {}
+
     el.appendChild(title);
+    el.appendChild(msg);
     el.appendChild(pre);
-    document.body.appendChild(el);
+    el.appendChild(env);
+
     try { console.error('[fatal]', error); } catch {}
   } catch(_) {}
 }
@@ -4757,18 +4785,43 @@ function __showFatalOverlay(error){
   }catch(e){ __showFatalOverlay(e); }
 })();
 
-// Mount React with try/catch so any early failure becomes visible
+
+// Safety: export React and ReactDOM to global scope for error overlays and diagnostics
+try { globalThis.React = React; globalThis.ReactDOM = ReactDOM; } catch(_) {}
+
 (function __mount(){
   try {
     const rootEl = document.getElementById('root');
-    ReactDOM.createRoot(rootEl).render(
-      <React.StrictMode>
-        <BrowserRouter>
-          <DebugOverlay/>
-          <App/>
-        </BrowserRouter>
-      </React.StrictMode>
-    );
+    if (!rootEl) throw new Error('Root element not found');
+
+    // Basic sanity diagnostics before mounting full app
+    if (!(window.ReactDOM && typeof ReactDOM.createRoot === 'function')) {
+      throw new Error('ReactDOM.createRoot unavailable');
+    }
+
+    const root = ReactDOM.createRoot(rootEl);
+
+    // Phase 1: mount a tiny boot component so the page never stays blank
+    function BootOK(){
+      return React.createElement('div', { style:{padding:'8px',opacity:.7,fontSize:12} }, 'booting…');
+    }
+    root.render(React.createElement(BootOK));
+
+    // Phase 2: switch to the real app in a microtask; if that fails, show overlay and keep BootOK
+    queueMicrotask(() => {
+      try {
+        root.render(
+          React.createElement(React.StrictMode, null,
+            React.createElement(BrowserRouter, null,
+              React.createElement(DebugOverlay, null),
+              React.createElement(App, null)
+            )
+          )
+        );
+      } catch (e) {
+        __showFatalOverlay(e);
+      }
+    });
   } catch (e) {
     __showFatalOverlay(e);
   }
