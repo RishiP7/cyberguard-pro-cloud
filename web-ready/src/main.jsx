@@ -1,3 +1,85 @@
+/* === SAFETY BOOTSTRAP (do not remove) ================================
+   Ensures required React/Router imports and minimal API helpers exist.
+   This prevents blank screens when a module didn't tree-shake in.
+===================================================================== */
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
+
+/* Define globals only if they aren't already defined in this bundle */
+/// eslint-disable-next-line no-var
+var API_BASE = (typeof API_BASE !== "undefined")
+  ? API_BASE
+  : ((import.meta?.env?.VITE_API_BASE)
+     || (typeof window !== "undefined" && window.location.hostname.endsWith("onrender.com")
+           ? "https://cyberguard-pro-cloud.onrender.com"
+           : "http://localhost:8080"));
+
+/// eslint-disable-next-line no-var
+var apiGet = (typeof apiGet !== "undefined")
+  ? apiGet
+  : async function apiGet(path){
+      const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+      const url = `${API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+      const r = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials:"include" });
+      const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+      if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { detail: j });
+      return j;
+    };
+
+/// eslint-disable-next-line no-var
+var API = (typeof API !== "undefined")
+  ? API
+  : {
+      async get(path){ return apiGet(path); },
+      async post(path, body){
+        const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+        const url = `${API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+        const r = await fetch(url, {
+          method:"POST",
+          headers:{ "content-type":"application/json", ...(token? { Authorization:`Bearer ${token}` } : {}) },
+          credentials:"include",
+          body: JSON.stringify(body||{})
+        });
+        const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+        if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { detail: j });
+        return j;
+      },
+      async postWithKey(path, body, key){
+        const url = `${API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+        const r = await fetch(url, {
+          method:"POST",
+          headers:{ "content-type":"application/json", ...(key? { "x-api-key": key } : {}) },
+          credentials:"include",
+          body: JSON.stringify(body||{})
+        });
+        const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+        if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { detail: j });
+        return j;
+      }
+    };
+
+/* Minimal ErrorBoundary if one is not already defined */
+if (typeof ErrorBoundary === "undefined") {
+  // define a lightweight error boundary component
+  // eslint-disable-next-line no-unused-vars
+  class ErrorBoundaryInner extends React.Component {
+    constructor(props){ super(props); this.state = { hasError:false, error:null }; }
+    static getDerivedStateFromError(error){ return { hasError:true, error }; }
+    componentDidCatch(err, info){ try{ console.error("[ErrorBoundary]", err, info); }catch{} }
+    render(){
+      if (this.state.hasError) {
+        return (
+          <div style={{padding:16}}>
+            <h2 style={{marginTop:0}}>Something went wrong.</h2>
+            <pre style={{whiteSpace:"pre-wrap"}}>{String(this.state.error)}</pre>
+          </div>
+        );
+      }
+      return this.props.children;
+    }
+  }
+}
 // --- Runtime shims: prevent ReferenceError when optional screens aren't bundled ---
 /* eslint-disable no-var */
 // If these components are not present in the current build, provide safe fallbacks.
@@ -356,79 +438,6 @@ function AdminTenantKeys({ selected }) {
     </div>
   );
 }
-
-
-// ===== Minimal API wrapper (re-added) =====
-const API_BASE = (import.meta?.env?.VITE_API_BASE)
-  || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-        ? 'https://cyberguard-pro-cloud.onrender.com'
-        : 'http://localhost:8080');
-
-function authHeaders(){
-  const t = localStorage.getItem("token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
-
-function adminPreviewHeaders(){
-  const h = {};
-  try{
-    const lp = localStorage.getItem('admin_plan_preview');
-    const or = localStorage.getItem('admin_override');
-    if(lp) h['x-plan-preview'] = lp;
-    if(or === '1') h['x-admin-override'] = '1';
-  }catch(_e){}
-  return h;
-}
-
-async function parse(r){
-  const ct = r.headers.get("content-type")||"";
-  if (ct.includes("application/json")) return r.json();
-  return r.text();
-}
-
-async function apiGet(path){
-  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders(), ...adminPreviewHeaders() } });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-async function apiPost(path, body){
-  const r = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type":"application/json", ...authHeaders(), ...adminPreviewHeaders() },
-    body: JSON.stringify(body||{})
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-async function adminGet(path){
-  const adminKey = (typeof localStorage !== "undefined" && localStorage.getItem("admin_key"))
-    || (typeof window !== "undefined" && window.__ADMIN_KEY__)
-    || "dev_admin_key";
-  const r = await fetch(`${API_BASE}${path}`, {
-    headers: { "x-admin-key": adminKey }
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-
-async function apiPostWithKey(path, body, apiKey){
-  const p = path.startsWith("/") ? path : `/${path}`;
-  const r = await fetch(`${API_BASE}${p}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "x-api-key": apiKey } : {}),
-      ...authHeaders(),
-      ...adminPreviewHeaders()
-    },
-    body: JSON.stringify(body || {})
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-
-export const API = { get: apiGet, post: apiPost, admin: adminGet, postWithKey: apiPostWithKey };
-// ===== End minimal API wrapper =====
 const card={
   padding:16,
   border:"1px solid rgba(255,255,255,.14)",
