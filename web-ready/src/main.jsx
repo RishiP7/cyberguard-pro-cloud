@@ -3558,16 +3558,60 @@ function AutonomySafe(props){
 // --- Ensure a Dashboard symbol exists so routes can render a real dashboard ---
 // We alias Dashboard to the enhanced DashboardWithOnboarding so both names exist.
 function Dashboard(props){
+  // Prefer the enhanced dashboard if it exists
   try {
     if (typeof DashboardWithOnboarding === 'function') {
       return <DashboardWithOnboarding {...props} />;
     }
-  } catch (_e) { /* fall through to placeholder below */ }
-  // Fallback tiny panel if something goes wrong; SafeDashboard adds deeper diagnostics.
+  } catch (_e) { /* fall through to lightweight fallback */ }
+
+  // Lightweight self-contained fallback so the page isn't stuck on "Loading…"
+  const [me, setMe] = React.useState(null);
+  const [err, setErr] = React.useState('');
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`${API_ORIGIN}/me`, { credentials: 'include' });
+        const j = await r.json().catch(()=>({}));
+        if (!alive) return;
+        if (r.ok) setMe(j); else setErr(j?.error || `HTTP ${r.status}`);
+      } catch(e){
+        if (alive) setErr(String(e?.message || e));
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   return (
     <div style={{ padding: 16 }}>
       <h2 style={{ marginTop: 0 }}>Dashboard</h2>
-      <div style={{ opacity: .8 }}>Loading…</div>
+      {err && (
+        <div style={{ padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8, marginBottom:10 }}>
+          Error: {err}
+        </div>
+      )}
+      {!me ? (
+        <div style={{ opacity: .8 }}>Loading profile…</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ padding: '10px 12px', border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, background: 'rgba(255,255,255,.04)' }}>
+            Signed in as <b>{me.email || me.user?.email || 'you'}</b> — plan: <code>{String(me.effective_plan || me.plan_actual || me.plan || 'unknown')}</code>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
+            <a href="/alerts" style={{ padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:10, display:'block' }}>Open Alerts</a>
+            <a href="/integrations" style={{ padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:10, display:'block' }}>Integrations</a>
+            <a href="/account" style={{ padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:10, display:'block' }}>Account</a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
