@@ -1435,6 +1435,13 @@ function EmptyStateFx({ title, subtitle, actionHref, actionLabel }) {
     </div>
   );
 }
+// make Dashboard visible to the runtime guard
+try {
+  if (typeof globalThis !== 'undefined') {
+    if (!globalThis.Dashboard) globalThis.Dashboard = Dashboard;
+    if (!globalThis.DashboardWithOnboarding) globalThis.DashboardWithOnboarding = Dashboard;
+  }
+} catch (_e) {}
 
 // Build small series arrays for sparklines (fallback to simple trending values)
   const seriesAlerts = (()=>{
@@ -3083,8 +3090,8 @@ function LiveEmailScan(){
     </div>
   );
 }
-// Dashboard: wrapper for Dashboard with onboarding/tips sections
-function Dashboard(props){
+// DashboardWithOnboarding: wrapper for Dashboard with onboarding/tips sections
+function DashboardWithOnboarding(props){
   return (
     <div style={{padding:16}}>
       {/* Onboarding/tips: place Get started first under trial banner */}
@@ -3484,8 +3491,8 @@ function AutonomySafe(props){
 function SafeDashboard(props){
   // Try to render the real dashboard first
   try {
-    if (typeof Dashboard === 'function') {
-      return <Dashboard {...props} />;
+    if (typeof DashboardWithOnboarding === 'function') {
+      return <DashboardWithOnboarding {...props} />;
     }
   } catch (_e) { /* ignore */ }
   try {
@@ -3531,7 +3538,7 @@ function SafeDashboard(props){
       <h2 style={{ marginTop: 0 }}>Dashboard loading…</h2>
       <p style={{ opacity: .8 }}>We couldn't find a Dashboard component in this build. The app will still work; below is a quick diagnostic to help us fix the route without a blank screen.</p>
       <ul style={{ lineHeight: 1.6 }}>
-        <li>Dashboard: <code>{(typeof Dashboard === 'function') ? 'present' : 'missing'}</code></li>
+        <li>DashboardWithOnboarding: <code>{(typeof DashboardWithOnboarding === 'function') ? 'present' : 'missing'}</code></li>
         <li>Dashboard: <code>{(typeof Dashboard === 'function') ? 'present' : 'missing'}</code></li>
         <li>Token in localStorage: <code>{diag.token ? 'present' : 'missing'}</code></li>
         <li>/me via cookie: <code>{diag.meOk === null ? 'checking…' : diag.meOk ? '200 OK' : '401/failed'}</code></li>
