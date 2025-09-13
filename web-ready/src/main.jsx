@@ -3603,7 +3603,8 @@ function App(){
         <>
           <Routes>
             <Route path="/login" element={<LoginGuard/>}/>
-            <Route path="/register" element={<Register/>}/>
+            
+            <Route path="/register" element={<RegisterSafe/>}/>
 
             <Route path="/" element={<RequireAuth><SafeDashboard api={API}/></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><SafeDashboard api={API}/></RequireAuth>} />
