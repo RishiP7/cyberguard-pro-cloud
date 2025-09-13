@@ -195,7 +195,6 @@ import "./setupFetchAuth.js";
   }
 })();
 // build: bump
-import ReactDOM from "react-dom/client";
 
 // --- BrandLogo: tries overrides + common paths, falls back to text ---
 function BrandLogo(){
@@ -440,77 +439,6 @@ function AdminTenantKeys({ selected }) {
 }
 
 
-// ===== Minimal API wrapper (re-added) =====
-const API_BASE = (import.meta?.env?.VITE_API_BASE)
-  || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-        ? 'https://cyberguard-pro-cloud.onrender.com'
-        : 'http://localhost:8080');
-
-function authHeaders(){
-  const t = localStorage.getItem("token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
-
-function adminPreviewHeaders(){
-  const h = {};
-  try{
-    const lp = localStorage.getItem('admin_plan_preview');
-    const or = localStorage.getItem('admin_override');
-    if(lp) h['x-plan-preview'] = lp;
-    if(or === '1') h['x-admin-override'] = '1';
-  }catch(_e){}
-  return h;
-}
-
-async function parse(r){
-  const ct = r.headers.get("content-type")||"";
-  if (ct.includes("application/json")) return r.json();
-  return r.text();
-}
-
-async function apiGet(path){
-  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders(), ...adminPreviewHeaders() } });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-async function apiPost(path, body){
-  const r = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type":"application/json", ...authHeaders(), ...adminPreviewHeaders() },
-    body: JSON.stringify(body||{})
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-async function adminGet(path){
-  const adminKey = (typeof localStorage !== "undefined" && localStorage.getItem("admin_key"))
-    || (typeof window !== "undefined" && window.__ADMIN_KEY__)
-    || "dev_admin_key";
-  const r = await fetch(`${API_BASE}${path}`, {
-    headers: { "x-admin-key": adminKey }
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-
-async function apiPostWithKey(path, body, apiKey){
-  const p = path.startsWith("/") ? path : `/${path}`;
-  const r = await fetch(`${API_BASE}${p}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "x-api-key": apiKey } : {}),
-      ...authHeaders(),
-      ...adminPreviewHeaders()
-    },
-    body: JSON.stringify(body || {})
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-
-export const API = { get: apiGet, post: apiPost, admin: adminGet, postWithKey: apiPostWithKey };
-// ===== End minimal API wrapper =====
 const card={
   padding:16,
   border:"1px solid rgba(255,255,255,.14)",
@@ -573,21 +501,7 @@ function TrialNotice({ me }){
 }
 
 
-class ErrorBoundary extends React.Component {
-  constructor(props){ super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(error){ return { error }; }
-  componentDidCatch(error, info){ console.error("App error boundary caught:", error, info); }
-  render(){
-    if(this.state.error){
-      return (
-        <pre style={{ padding:12, background:"#220", color:"#fdd", whiteSpace:"pre-wrap", borderRadius:8 }}>
-{ `App error:\n${String(this.state.error?.message || this.state.error)}\n(see console for details)` }
-        </pre>
-      );
-    }
-    return this.props.children;
-  }
-}
+
 
 class ErrorCatcher extends React.Component{
   constructor(p){ super(p); this.state={}; }
