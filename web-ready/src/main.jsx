@@ -4711,13 +4711,74 @@ if (typeof window !== 'undefined') {
     setInterval(tick, 10 * 60 * 1000); // every 10 minutes
   } catch {}
 })();
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <DebugOverlay/>
-      <App/>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+// --- Fatal overlay helper: shows a visible panel if boot or runtime crashes before React mounts
+function __showFatalOverlay(error){
+  try {
+    const id = '__fatal-overlay__';
+    if (document.getElementById(id)) return; // already shown
+    const el = document.createElement('div');
+    el.id = id;
+    el.style.position = 'fixed';
+    el.style.inset = '16px';
+    el.style.zIndex = '999999';
+    el.style.padding = '16px';
+    el.style.border = '1px solid #ff7a7a88';
+    el.style.background = '#0b0c0d';
+    el.style.color = '#e6e9ef';
+    el.style.borderRadius = '10px';
+    el.style.boxShadow = '0 18px 48px rgba(0,0,0,.4)';
+    const pre = document.createElement('pre');
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.style.marginTop = '8px';
+    pre.textContent = (error && (error.stack || error.message || String(error))) || 'Unknown error';
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.style.marginBottom = '6px';
+    title.textContent = 'Startup error';
+    el.appendChild(title);
+    el.appendChild(pre);
+    document.body.appendChild(el);
+    try { console.error('[fatal]', error); } catch {}
+  } catch(_) {}
+}
+
+// Ensure a root node exists and show a tiny boot hint so we know HTML is visible
+(function __ensureRoot(){
+  try{
+    document.body.style.background = document.body.style.background || '#0b0c0d';
+    document.body.style.color = document.body.style.color || '#e6e9ef';
+    let root = document.getElementById('root');
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'root';
+      root.textContent = 'Booting…';
+      document.body.appendChild(root);
+    }
+  }catch(e){ __showFatalOverlay(e); }
+})();
+
+// Mount React with try/catch so any early failure becomes visible
+(function __mount(){
+  try {
+    const rootEl = document.getElementById('root');
+    ReactDOM.createRoot(rootEl).render(
+      <React.StrictMode>
+        <BrowserRouter>
+          <DebugOverlay/>
+          <App/>
+        </BrowserRouter>
+      </React.StrictMode>
+    );
+  } catch (e) {
+    __showFatalOverlay(e);
+  }
+})();
+
+// Upgrade global error taps to also show fatal overlay if React hasn't mounted yet
+if (typeof window !== 'undefined') {
+  const handler = (err) => { try { __showFatalOverlay(err && (err.error || err.reason || err)); } catch(_){} };
+  window.addEventListener('error', handler);
+  window.addEventListener('unhandledrejection', handler);
+}
 
 // Only a single BrandLogo definition should exist in this file.
