@@ -3401,6 +3401,27 @@ function AlertsPageSafe(props){
   );
 }
 
+// SafeRegister: wrapper for Register page (global if present, else lazy-load, else placeholder)
+function RegisterSafe(props){
+  try { if (typeof Register === 'function') return <Register {...props}/>; } catch(_e){}
+  const Lazy = React.useMemo(() =>
+    React.lazy(() => import("./pages/Register.jsx")
+      .then(mod => ({ default: mod?.default || mod?.Register || ((p)=> (
+        <div style={{ padding: 16 }}>
+          <h1 style={{ marginTop: 0 }}>Register</h1>
+          <div style={{ opacity: .8 }}>The Register page isn’t available in this build. You can continue using the rest of the app.</div>
+        </div>
+      )) }))
+      .catch(() => ({ default: (p) => (
+        <div style={{ padding: 16 }}>
+          <h1 style={{ marginTop: 0 }}>Register</h1>
+          <div style={{ opacity: .8 }}>The Register page isn’t available in this build. You can continue using the rest of the app.</div>
+        </div>
+      ) }))
+    ), []);
+  return <React.Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}><Lazy {...props}/></React.Suspense>;
+}
+
 // SafeAdmin: try global Admin; else lazy-load from pages/Admin.jsx; else show placeholder
 function AdminSafe(props){
   // 1) If a global Admin is available (defined earlier), use it
