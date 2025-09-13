@@ -3573,9 +3573,32 @@ function SafeDashboard(props){
     </div>
   );
 }
+// --- SafeErrorBoundary: always shows a visible error box instead of failing silently ---
+class SafeErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { err: null, info: null }; }
+  componentDidCatch(error, info){
+    try { console.error('[SafeErrorBoundary]', error, info); } catch {}
+    this.setState({ err: error, info });
+  }
+  render(){
+    if (this.state && this.state.err) {
+      const msg = String(this.state.err?.message || this.state.err || 'Unknown error');
+      return (
+        <div style={{padding:16, margin:16, border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:10}}>
+          <div style={{fontWeight:700, marginBottom:6}}>App error</div>
+          <div style={{whiteSpace:'pre-wrap'}}>{msg}</div>
+          <div style={{opacity:.8, marginTop:6, fontSize:12}}>
+            If this persists, check the console for a stack trace logged by SafeErrorBoundary.
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 function App(){
   return (
-    <ErrorBoundary>
+    <SafeErrorBoundary>
       <LayoutSafe>
         <>
           <Routes>
@@ -3602,7 +3625,7 @@ function App(){
           </Routes>
         </>
       </LayoutSafe>
-    </ErrorBoundary>
+    </SafeErrorBoundary>
   );
 }
 
