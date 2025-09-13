@@ -3434,6 +3434,38 @@ function AdminSafe(props){
     </div>
   );
 }
+
+// SafeAdminConsole: use global AdminConsolePage if present; else lazy-load; else show placeholder
+function AdminConsolePageSafe(props){
+  // If available globally, use it
+  try {
+    if (typeof AdminConsolePage === 'function') {
+      return <AdminConsolePage {...props} />;
+    }
+  } catch (_e) { /* fall through */ }
+
+  // Try lazy-import; if the file doesn't exist, fallback to a placeholder
+  const Lazy = React.useMemo(
+    () =>
+      React.lazy(() =>
+        import('./pages/AdminConsolePage.jsx').catch(() => ({
+          default: (p) => (
+            <div style={{ padding: 16 }}>
+              <h1 style={{ marginTop: 0 }}>Admin Console</h1>
+              <div style={{ opacity: .8 }}>The Admin Console module isn’t available in this build. You can continue using the rest of the app.</div>
+            </div>
+          ),
+        }))
+      ),
+    []
+  );
+
+  return (
+    <React.Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+      <Lazy {...props} />
+    </React.Suspense>
+  );
+}
 // SafeAutonomy: fall back to a minimal placeholder if real AutonomyPage isn't available
 function AutonomySafe(props){
   try {
@@ -3484,9 +3516,9 @@ function App(){
             <Route path="/admin" element={protect(<AdminSafe api={API}/>)} />
 
             <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
-            <Route path="/admin/console/trial" element={protect(<AdminConsolePage page="trial" />)} />
-            <Route path="/admin/console/retention" element={protect(<AdminConsolePage page="retention" />)} />
-            <Route path="/admin/console/audit" element={protect(<AdminConsolePage page="audit" />)} />
+            <Route path="/admin/console/trial" element={protect(<AdminConsolePageSafe page="trial" />)} />
+            <Route path="/admin/console/retention" element={protect(<AdminConsolePageSafe page="retention" />)} />
+            <Route path="/admin/console/audit" element={protect(<AdminConsolePageSafe page="audit" />)} />
             <Route path="/test" element={protect(<TestEvents api={API}/>)} />
             <Route path="/support" element={protect(<Support/>)} /> 
             <Route path="*" element={<Navigate to="/" replace />}/>
