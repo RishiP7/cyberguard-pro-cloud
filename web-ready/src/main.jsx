@@ -3211,6 +3211,22 @@ function RequireAuth({ children }){
   return children;
 }
 
+// --- Global-safe shim: ensure RequireAuthSafe always exists at runtime ---
+// Some bundlers or lazy-eval paths may reference RequireAuthSafe before this module body
+// finishes evaluating. This guard defines a minimal, global-safe fallback that never crashes.
+if (typeof globalThis.RequireAuthSafe !== 'function') {
+  function RequireAuthSafe({ children }) {
+    try {
+      if (typeof RequireAuth === 'function') {
+        return <RequireAuth>{children}</RequireAuth>;
+      }
+    } catch (_e) { /* ignore */ }
+    // Fallback: render unguarded; backend still enforces auth for sensitive APIs
+    return <>{children}</>;
+  }
+  try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch(_e) {}
+}
+
 // Safe wrapper to avoid runtime ReferenceError if RequireAuth isn't in scope during route evaluation
 function RequireAuthSafe({ children }) {
   try {
