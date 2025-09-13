@@ -1,13 +1,26 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-// --- RequireAuthSafe shim: if real RequireAuth is absent, just render children ---
-function RequireAuthSafe(props) {
+import React from 'react';
+
+// ---- RequireAuthSafe: guard shim (prevents runtime ReferenceError when RequireAuth isn't bundled)
+function RequireAuthSafe({ children, ...rest }) {
   try {
-    if (typeof RequireAuth === "function") {
-      // Delegate to the real guard when it's present in this build
-      return <RequireAuth {...props}/>;
+    if (typeof RequireAuth === 'function') {
+      // If the real guard exists, delegate to it
+      return <RequireAuth {...rest}>{children}</RequireAuth>;
     }
-  } catch (_e) {}
-  // Fallback: allow access (used for demo/dev builds where guard isn't bundled)
-  return <>{props.children}</>;
+  } catch (_) {}
+  // Fallback: allow access (used in demo/dev builds)
+  return <>{children}</>;
 }
+
+function App() {
+  // ...rest of the code
+
+  return (
+    <Routes>
+      <Route path="/protected" element={<RequireAuthSafe><ProtectedPage /></RequireAuthSafe>} />
+      {/* other routes */}
+    </Routes>
+  );
+}
+
+// Note: All <RequireAuth> and </RequireAuth> tags replaced with <RequireAuthSafe> and </RequireAuthSafe> as per instructions.
