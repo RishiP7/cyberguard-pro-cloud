@@ -3211,32 +3211,25 @@ function RequireAuth({ children }){
   return children;
 }
 
-// --- Global-safe shim: ensure RequireAuthSafe always exists at runtime ---
-// Some bundlers or lazy-eval paths may reference RequireAuthSafe before this module body
-// finishes evaluating. This guard defines a minimal, global-safe fallback that never crashes.
-if (typeof globalThis.RequireAuthSafe !== 'function') {
-  function RequireAuthSafe({ children }) {
+// --- RequireAuthSafe: define once and expose both locally and globally ---
+// Ensures JSX like &lt;RequireAuthSafe&gt; works even if routing evaluates early.
+// Uses real &lt;RequireAuth&gt; when available; otherwise renders children unguarded.
+// Backend must still enforce authorization on sensitive APIs.
+let RequireAuthSafe =
+  (typeof globalThis !== 'undefined' && typeof globalThis.RequireAuthSafe === 'function')
+    ? globalThis.RequireAuthSafe
+    : null;
+
+if (typeof RequireAuthSafe !== 'function') {
+  RequireAuthSafe = function RequireAuthSafeInner({ children }) {
     try {
       if (typeof RequireAuth === 'function') {
         return <RequireAuth>{children}</RequireAuth>;
       }
     } catch (_e) { /* ignore */ }
-    // Fallback: render unguarded; backend still enforces auth for sensitive APIs
     return <>{children}</>;
-  }
-  try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch(_e) {}
-}
-
-// Safe wrapper to avoid runtime ReferenceError if RequireAuth isn't in scope during route evaluation
-function RequireAuthSafe({ children }) {
-  try {
-    if (typeof RequireAuth === 'function') {
-      return <RequireAuth>{children}</RequireAuth>;
-    }
-  } catch (_e) { /* ignore */ }
-  // Fallback: render children unguarded so the app doesn't crash;
-  // backend will still protect sensitive calls.
-  return <>{children}</>;
+  };
+  try { globalThis.RequireAuthSafe = RequireAuthSafe; } catch (_e) {}
 }
 
   async function refresh(){
