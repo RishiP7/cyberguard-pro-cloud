@@ -3544,19 +3544,84 @@ function AutonomySafe(props){
 // --- Ensure a Dashboard symbol exists so routes can render a real dashboard ---
 // We alias Dashboard to the enhanced DashboardWithOnboarding so both names exist.
 function Dashboard(props){
+  // Prefer the enhanced dashboard if it's available and renders fine
   try {
     if (typeof DashboardWithOnboarding === 'function') {
       return <DashboardWithOnboarding {...props} />;
     }
-  } catch (_e) { /* fall through to placeholder below */ }
-  // Fallback tiny panel if something goes wrong; SafeDashboard adds deeper diagnostics.
+  } catch (_e) { /* if the enhanced dashboard throws during render, fall back below */ }
+
+  // Minimal, self-contained dashboard that never depends on optional components
+  // so we don't get a blank screen. This shows key entry points and live status.
+  const [me, setMe] = React.useState(null);
+  const [err, setErr] = React.useState("");
+
+  const API_ORIGIN =
+    (import.meta?.env?.VITE_API_BASE)
+    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
+          ? 'https://cyberguard-pro-cloud.onrender.com'
+          : 'http://localhost:8080');
+
+  React.useEffect(()=>{
+    (async()=>{
+      try{
+        const r = await fetch(`${API_ORIGIN}/me`, { credentials:'include' });
+        const j = await r.json().catch(()=>({}));
+        if (r.ok) setMe(j); else setErr(j?.error || `HTTP ${r.status}`);
+      }catch(e){ setErr(String(e?.message||e)); }
+    })();
+  },[]);
+
+  const Card = ({title, children}) => (
+    <div style={{padding:16,border:'1px solid rgba(255,255,255,.12)',borderRadius:12,background:'rgba(255,255,255,.04)'}}>
+      <div style={{fontWeight:700,marginBottom:6}}>{title}</div>
+      <div>{children}</div>
+    </div>
+  );
+
   return (
     <div style={{ padding: 16 }}>
       <h2 style={{ marginTop: 0 }}>Dashboard</h2>
-      <div style={{ opacity: .8 }}>Loading…</div>
+      {/* Always show a live status ticker */}
+      <LiveStatusTicker inline />
+
+      {/* Quick actions grid */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:12,marginTop:8}}>
+        <Card title="Integrations">
+          <div style={{opacity:.85}}>Connect email, DNS, EDR to start ingesting data.</div>
+          <div style={{marginTop:8}}><a href="/integrations">Open Integrations →</a></div>
+        </Card>
+        <Card title="Recent Alerts">
+          <div style={{opacity:.85}}>View and triage detections from connected sources.</div>
+          <div style={{marginTop:8}}><a href="/alerts">Open Alerts →</a></div>
+        </Card>
+        <Card title="Account & API">
+          <div style={{opacity:.85}}>Manage profile, API keys, and billing.</div>
+          <div style={{marginTop:8,display:'flex',gap:12,flexWrap:'wrap'}}>
+            <a href="/account">Account →</a>
+            <a href="/pricing">Billing →</a>
+          </div>
+        </Card>
+        <Card title="Support">
+          <div style={{opacity:.85}}>Need help? Reach out to us any time.</div>
+          <div style={{marginTop:8}}><a href="/support">Contact Support →</a></div>
+        </Card>
+      </div>
+
+      {/* Tiny profile strip so user sees they are signed in */}
+      <div style={{marginTop:16,padding:'10px 12px',border:'1px solid rgba(255,255,255,.12)',borderRadius:10,background:'rgba(255,255,255,.04)'}}>
+        {err ? (
+          <span style={{color:'#ff7777'}}>Profile: {err}</span>
+        ) : me ? (
+          <span>Signed in as <b>{me.email || me.user?.email || 'you'}</b> — plan: <code>{String(me.effective_plan || me.plan_actual || me.plan || 'unknown')}</code></span>
+        ) : (
+          <span style={{opacity:.8}}>Loading profile…</span>
+        )}
+      </div>
     </div>
   );
 }
+
 
 // Expose to globalThis to avoid any bundler scoping surprises when other guards check presence
 try {
