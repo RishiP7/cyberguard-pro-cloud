@@ -5584,3 +5584,61 @@ if (!globalThis.__cg_cookie_sessions__) {
   }
 }
 // ===== End cookie-based session helpers =====
+
+// ===== DEV LOGIN (safe, opt-in) =====
+// Enable a one-click login to a demo/super account for debugging environments.
+// Only active if ALLOW_DEV_LOGIN=1 is set. Never enable in production.
+if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
+  // Small helper to reuse the cookie setter from our cookie middleware if available
+  const _cgSetTokens =
+    (globalThis && globalThis.__cg_setTokens__) ||
+    function _fallbackSetTokens(res, access, refresh) {
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      try { res.cookie("cg_access", access,  { ...base, maxAge: 15 * 60 * 1000 }); } catch (_e) {
+        res.setHeader("Set-Cookie", [`cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`]);
+      }
+      try { res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_e) {
+        const prev = res.getHeader("Set-Cookie");
+        const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+        next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`);
+        res.setHeader("Set-Cookie", next);
+      }
+    };
+
+  // POST /auth/dev-login
+  // Creates a signed JWT for a demo super-admin on the current tenant and sets cookies.
+  app.post('/auth/dev-login', async (req, res) => {
+    try {
+      // Choose tenant: honor ?tenant_id=... else default "demo"
+      const tid = (req.query && req.query.tenant_id) ? String(req.query.tenant_id) : 'demo';
+      const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+
+      // Minimal demo user payload
+      const demoUser = {
+        sub: `demo-admin@${tid}`,
+        email: `demo-admin@${tid}`,
+        tenant_id: tid,
+        role: 'admin',
+        is_super: true,
+      };
+
+      // Issue JWT (1 hour)
+      const token = jwt.sign(demoUser, jwtSecret, { expiresIn: '1h' });
+
+      // Set cookies for both access & refresh (simple compat)
+      _cgSetTokens(res, token, token);
+
+      return res.json({ ok: true, tenant_id: tid, user: { email: demoUser.email, role: demoUser.role, is_super: true } });
+    } catch (e) {
+      try { console.error('[dev-login] failed', e?.message || e); } catch (_e) {}
+      return res.status(500).json({ ok:false, error: 'dev login failed' });
+    }
+  });
+
+  // Simple probe to verify feature toggle
+  app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: true }));
+} else {
+  // In locked mode, expose a status endpoint for quick debugging
+  app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: false }));
+}
+// ===== END DEV LOGIN =====
