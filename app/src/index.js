@@ -5506,8 +5506,8 @@ if (!globalThis.__cg_cookie_sessions__) {
         req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
       }
 
-      // If this is the login endpoint, monkey-patch res.json to also set cookies when a token is returned
-      if (req.method === "POST" && req.path === "/auth/login") {
+      // If this is the login endpoint (including legacy paths), monkey-patch res.json to also set cookies when a token is returned
+      if (req.method === "POST" && (req.path === "/auth/login" || req.path === "/login" || req.path === "/admin-login")) {
         const origJson = res.json.bind(res);
         res.json = (obj) => {
           try {
@@ -5565,6 +5565,22 @@ if (!globalThis.__cg_cookie_sessions__) {
       return res.json({ ok: true });
     });
     app._cg_logout_route = true;
+  }
+  if (!app._cg_logout_route_alias) {
+    app.post("/logout", (_req, res) => {
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      try {
+        res.cookie("cg_access", "", { ...base, maxAge: 0 });
+        res.cookie("cg_refresh", "", { ...base, maxAge: 0 });
+      } catch (_) {
+        res.setHeader("Set-Cookie", [
+          "cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None",
+          "cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
+        ]);
+      }
+      return res.json({ ok: true });
+    });
+    app._cg_logout_route_alias = true;
   }
 }
 // ===== End cookie-based session helpers =====
