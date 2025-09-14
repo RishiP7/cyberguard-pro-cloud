@@ -231,6 +231,22 @@ function setTokens(res, access, refresh) {
   }
 }
 
+function clearTokens(res) {
+  try {
+    // These attributes must match those used to set the cookies
+    const opts = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+    res.clearCookie("cg_access", opts);
+    res.clearCookie("cg_refresh", opts);
+  } catch {
+    // Fallback for environments without cookie-parser helpers
+    const prev = res.getHeader("Set-Cookie");
+    const arr = Array.isArray(prev) ? prev : prev ? [prev] : [];
+    arr.push("cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None");
+    arr.push("cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None");
+    res.setHeader("Set-Cookie", arr);
+  }
+}
+
 // ---------- helpers ----------
 const now=()=>Math.floor(Date.now()/1000);
 const authMiddleware=async (req,res,next)=>{
@@ -1443,6 +1459,12 @@ app.post("/auth/refresh", async (req, res) => {
   } catch (e) {
     return res.status(401).json({ ok:false, error: "refresh failed" });
   }
+});
+
+// Explicit logout endpoint for browser sessions
+app.post("/logout", (req, res) => {
+  clearTokens(res);
+  return res.status(200).json({ ok: true });
 });
 
 app.post("/auth/register",async (req,res)=>{
