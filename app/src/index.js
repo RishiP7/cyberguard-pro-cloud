@@ -1,5 +1,5 @@
 import express from "express";
-import setupBilling from "./billing.js";
+import { setupBilling } from "./billing.js";
 import morgan from "morgan";
 // morgan import moved up
 import helmet from "helmet";
