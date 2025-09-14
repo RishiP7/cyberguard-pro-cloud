@@ -5373,8 +5373,6 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // ===== Express 5 catch-all route compatibility patch =====
 // All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
 
-import cors from "cors";
-
 // ===== GLOBAL CORS (must be before any routes) =====
 // Handle all CORS & preflight centrally to avoid route-level mismatches.
 app.use((req, res, next) => {
