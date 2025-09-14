@@ -12,9 +12,33 @@ import OpenAI from "openai";
 import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
 import querystring from "node:querystring";
-import * as Sentry from "@sentry/node";
 import cookieParser from "cookie-parser";
 import * as impersonation from "./impersonation.js";
+// --- Optional Sentry bootstrap (no dependency required) ---
+let Sentry = null;
+if (process.env.SENTRY_DSN) {
+  try {
+    const mod = await import("@sentry/node");
+    Sentry = mod.default ?? mod;
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN,
+      environment: process.env.NODE_ENV || "development",
+      release: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || undefined,
+      tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
+      integrations: [
+        Sentry.extraErrorDataIntegration?.(),
+        Sentry.httpIntegration?.(),
+        Sentry.expressIntegration?.(),
+      ].filter(Boolean),
+    });
+    console.log("[sentry] enabled");
+  } catch (err) {
+    Sentry = null;
+    console.warn("[sentry] disabled (module missing or init failed):", err?.code || err?.message || err);
+  }
+} else {
+  console.log("[sentry] no DSN, disabled");
+}
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -97,7 +121,7 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
 const app = express();
 
 // After app is defined, setup Sentry Express error handler (v8+)
-if (process.env.SENTRY_DSN) {
+if (Sentry && process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
 
@@ -5256,7 +5280,7 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 
 // ---------- start ----------
 // Sentry error handler (must be before any other error middleware)
-if (process.env.SENTRY_DSN) {
+if (Sentry && process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
 // Minimal fallback error handler to avoid leaking internals
