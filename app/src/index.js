@@ -13,6 +13,7 @@ import OpenAI from "openai";
 import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
 import querystring from "node:querystring";
+import cors from "cors";
 import cookieParser from "cookie-parser";
 import * as impersonation from "./impersonation.js";
 // --- Optional Sentry bootstrap (no dependency required) ---
@@ -41,19 +42,6 @@ if (process.env.SENTRY_DSN) {
   console.log("[sentry] no DSN, disabled");
 }
 
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || "development",
-    release: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || undefined,
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
-    integrations: [
-      Sentry.extraErrorDataIntegration(),
-      Sentry.httpIntegration(),
-      Sentry.expressIntegration(),
-    ],
-  });
-}
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY||"";
 const AI_MODEL=process.env.AI_MODEL||"gpt-4o-mini";
 const SLACK_WEBHOOK_URL=process.env.SLACK_WEBHOOK_URL||"";
@@ -120,17 +108,12 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
-
+app.use('/billing/webhook', express.raw({ type: '*/*' }));
 // After app is defined, setup Sentry Express error handler (v8+)
 if (Sentry && process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
 
-// --- Body size limit defaults (defensive) ---
-app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
-app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
-// Parse cookies (needed for httpOnly auth cookies)
-app.use(cookieParser());
 
 // ---- Impersonation wiring ----
 // destructure helpers/router from the module (works for both ESM/CJS exports)
@@ -157,6 +140,7 @@ app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
   return express.urlencoded({ extended: true })(req, res, next);
 });
+app.use(cookieParser());
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
@@ -1937,8 +1921,6 @@ app.get("/billing/_config", (req, res) => {
 });
 
 
-// Ensure Stripe webhook receives raw Buffer body for signature verification
-app.use('/billing/webhook', express.raw({ type: '*/*' }));
 // --- keep a copy of the raw body for Stripe signature verification ---
 // Only save rawBody for Stripe webhook endpoint
 const rawSaver = (req, res, buf) => {
