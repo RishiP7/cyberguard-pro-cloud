@@ -5628,7 +5628,12 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       // Set cookies for both access & refresh (simple compat)
       _cgSetTokens(res, token, token);
 
-      return res.json({ ok: true, tenant_id: tid, user: { email: demoUser.email, role: demoUser.role, is_super: true } });
+      return res.json({
+        ok: true,
+        tenant_id: tid,
+        token,
+        user: { email: demoUser.email, role: demoUser.role, is_super: true }
+      });
     } catch (e) {
       try { console.error('[dev-login] failed', e?.message || e); } catch (_e) {}
       return res.status(500).json({ ok:false, error: 'dev login failed' });
