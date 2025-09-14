@@ -5622,6 +5622,35 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         is_super: true,
       };
 
+      // --- Auto-provision demo tenant & user for dev-login (idempotent) ---
+      try {
+        const nowEpoch = Math.floor(Date.now() / 1000);
+        const trialEnds = nowEpoch + (30 * 24 * 60 * 60); // 30 days
+
+        // Ensure tenants table has a row for this tid
+        await q(`
+          INSERT INTO tenants(tenant_id, name, plan, trial_status, trial_ends_at, created_at, updated_at)
+          VALUES($1, $2, 'pro_plus', 'active', $3, $4, $4)
+          ON CONFLICT (tenant_id) DO NOTHING
+        `, [tid, `Demo (${tid})`, trialEnds, nowEpoch]);
+
+        // Ensure a demo admin user exists (email unique per tenant via index)
+        const demoEmail = `demo-admin@${tid}`;
+        // Attempt insert; ignore if duplicate
+        try {
+          await q(`
+            INSERT INTO users(id, tenant_id, email, role, created_at, updated_at)
+            VALUES($1, $2, $3, 'admin', $4, $4)
+          `, ['u_' + uuidv4(), tid, demoEmail, nowEpoch]);
+        } catch(_ue) {
+          // best-effort: if a unique constraint exists, ignore
+        }
+      } catch(_provErr) {
+        // non-fatal: dev-login should still succeed even if provisioning fails
+        try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch(_e) {}
+      }
+      // --- End auto-provision ---
+
       // Issue JWT (1 hour)
       const token = jwt.sign(demoUser, jwtSecret, { expiresIn: '1h' });
 
