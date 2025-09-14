@@ -1,5 +1,5 @@
 import express from "express";
-import cors from "cors";
+import setupBilling from "./billing.js";
 import morgan from "morgan";
 // morgan import moved up
 import helmet from "helmet";
@@ -12,7 +12,23 @@ import OpenAI from "openai";
 import { EventEmitter } from "events";
 import { URLSearchParams } from "url";
 import querystring from "node:querystring";
+import * as Sentry from "@sentry/node";
+import cookieParser from "cookie-parser";
+import * as impersonation from "./impersonation.js";
 
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    release: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || undefined,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
+    integrations: [
+      Sentry.extraErrorDataIntegration(),
+      Sentry.httpIntegration(),
+      Sentry.expressIntegration(),
+    ],
+  });
+}
 const OPENAI_API_KEY=process.env.OPENAI_API_KEY||"";
 const AI_MODEL=process.env.AI_MODEL||"gpt-4o-mini";
 const SLACK_WEBHOOK_URL=process.env.SLACK_WEBHOOK_URL||"";
@@ -28,12 +44,85 @@ const pool = new pg.Pool({
   ssl: isRender ? { rejectUnauthorized: false } : false,
 });
 const q=(sql,vals=[])=>pool.query(sql,vals);
+// --- bootstrap: ensure minimal schema exists (safe for repeated runs) ---
+async function ensureSchema(){
+  try{
+    // tenants table
+    await q(`
+      CREATE TABLE IF NOT EXISTS public.tenants (
+        id TEXT DEFAULT uuid_generate_v4(),
+        tenant_id TEXT PRIMARY KEY,
+        name TEXT,
+        plan TEXT,
+        trial_status TEXT,
+        trial_started_at BIGINT,
+        trial_ends_at BIGINT,
+        contact_email TEXT,
+        stripe_customer_id TEXT,
+        billing_status TEXT,
+        created_at BIGINT,
+        updated_at BIGINT
+      );
+    `);
+
+    // make sure uuid extension exists (ignore if not supported/already there)
+    try { await q('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'); } catch(_e){}
+
+    // unique index (no-op if it already exists)
+    await q(`CREATE UNIQUE INDEX IF NOT EXISTS tenants_tenant_id_key ON public.tenants(tenant_id);`);
+
+    // users table (minimal fields the app expects)
+    await q(`
+      CREATE TABLE IF NOT EXISTS public.users (
+        id TEXT DEFAULT uuid_generate_v4(),
+        email TEXT PRIMARY KEY,
+        password_hash TEXT,
+        tenant_id TEXT REFERENCES public.tenants(tenant_id),
+        role TEXT,
+        created_at BIGINT
+      );
+    `);
+  }catch(e){
+    console.error('[ensureSchema] failed:', e?.detail || e?.message || e);
+  }
+}
+// fire-and-forget (TLA would work too, keeping it simple)
+ensureSchema();
+// --- end bootstrap ---
 const bus = new EventEmitter();
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .split(/[\s,]+/)
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
+
+// After app is defined, setup Sentry Express error handler (v8+)
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
+
+// --- Body size limit defaults (defensive) ---
+app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_LIMIT || "1mb" }));
+// Parse cookies (needed for httpOnly auth cookies)
+app.use(cookieParser());
+
+// ---- Impersonation wiring ----
+// destructure helpers/router from the module (works for both ESM/CJS exports)
+const { router: impersonationRouter, loadImpersonation, attachTenantContext, ensureCookies } = impersonation;
+
+// ensure req.cookies exists even if cookie-parser is unavailable somewhere upstream
+if (typeof ensureCookies === 'function') app.use(ensureCookies);
+
+// mark impersonation on requests and attach effective tenant context
+if (typeof loadImpersonation === 'function') app.use(loadImpersonation);
+if (typeof attachTenantContext === 'function') app.use(attachTenantContext);
+
+// mount admin routes (request/approve/start/revoke, etc.)
+if (impersonationRouter) app.use('/admin', impersonationRouter);
+// ---- end impersonation wiring ----
+
+// --- Sentry request + tracing handlers removed for Sentry v8+ ---
 // Parse JSON for all routes except the Stripe webhook (which must remain raw)
 app.use((req, res, next) => {
   if (req.originalUrl === '/billing/webhook') return next();
@@ -80,12 +169,23 @@ app.use(cors({
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   allowedHeaders: [
     "Origin","X-Requested-With","Content-Type","Accept","Authorization",
-    "x-api-key","x-admin-key","x-plan-preview","x-admin-override"
+    "x-api-key","x-admin-key",
+    // legacy + new admin preview/bypass headers
+    "x-plan-preview","x-admin-override",
+    "x-admin-plan-preview","x-admin-bypass"
   ],
   exposedHeaders: [
     "RateLimit-Policy","RateLimit-Limit","RateLimit-Remaining","RateLimit-Reset"
   ]
 }));
+// Global preflight handler (Express 5 safe)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    // CORS headers are already set by the cors() middleware above
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 app.use(helmet());
 
@@ -97,20 +197,47 @@ morgan.token("body",req=>{
   return JSON.stringify(b).slice(0,400);
 });
 app.use(morgan(':method :url :status - :response-time ms :body'));
+// ---- cookie/JWT helpers ----
+function getBearer(req) {
+  const h = req.headers?.authorization || "";
+  const m = /^Bearer\s+(.+)$/.exec(h);
+  return m ? m[1] : null;
+}
+
+function setTokens(res, access, refresh) {
+  const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+  try {
+    res.cookie("cg_access", access,  { ...base, maxAge: 15 * 60 * 1000 });
+    res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 });
+  } catch {
+    const prev = res.getHeader("Set-Cookie");
+    const arr = Array.isArray(prev) ? prev : prev ? [prev] : [];
+    arr.push(
+      `cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+    );
+    arr.push(
+      `cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+    );
+    res.setHeader("Set-Cookie", arr);
+  }
+}
 
 // ---------- helpers ----------
 const now=()=>Math.floor(Date.now()/1000);
 const authMiddleware=async (req,res,next)=>{
   try{
-    const hdr=req.headers.authorization||"";
-    const tok=hdr.startsWith("Bearer ")?hdr.slice(7):"";
-    const dec=jwt.verify(tok,JWT_SECRET);
+    const hdr = req.headers.authorization || "";
+    let tok = hdr.startsWith("Bearer ") ? hdr.slice(7) : "";
+    if (!tok && req.cookies && req.cookies.cg_access) {
+      tok = req.cookies.cg_access;
+    }
+    const dec = jwt.verify(tok, JWT_SECRET);
     req.user = {
-  email: dec.email,
-  tenant_id: dec.tenant_id,
-  role: dec.role || 'member',
-  is_super: !!dec.is_super
-};
+      email: dec.email,
+      tenant_id: dec.tenant_id,
+      role: dec.role || 'member',
+      is_super: !!dec.is_super
+    };
     next();
   }catch(e){ return res.status(401).json({error:"Invalid token"}); }
 };
@@ -137,8 +264,9 @@ function requireSuper(req, res, next) { if (!req.user?.is_super) return res.stat
 function requireOwner(req, res, next) { if (!(req.user?.is_super || (req.user?.role === 'owner'))) return res.status(403).json({ error: 'forbidden' }); next(); }
 
 function readAdminFlags(req){
-  const preview = req.headers['x-plan-preview']; // 'trial'|'basic'|'pro'|'pro+'
-  const override = req.headers['x-admin-override'] === '1';
+  const h = (req && req.headers) || {};
+  const preview = h['x-admin-plan-preview'] || h['x-plan-preview'] || null; // new + legacy
+  const override = (h['x-admin-bypass'] === '1') || (h['x-admin-override'] === '1'); // new + legacy
   return { preview, override };
 }
 
@@ -152,12 +280,17 @@ async function getEffectivePlan(tenant_id, req){
   const trialEligible = (basePlan === 'basic' || basePlan === 'pro');
   const trialActive   = trialEligible && (t.trial_ends_at ? Number(t.trial_ends_at) > nowEpoch : false);
 
-  // Super admin preview override (UI can pass x-plan-preview)
-  const flags = readAdminFlags(req||{headers:{}});
+  // Super admin preview override (accept both legacy and new headers)
+  const flags = readAdminFlags(req || { headers: {} });
   let effective = t.plan || 'basic';
   if (trialActive) effective = 'pro_plus';
   if (flags && flags.preview && (req?.user?.is_super)) {
-    effective = String(flags.preview).toLowerCase();
+    const raw = String(flags.preview || '').toLowerCase();
+    const compact = raw.replace(/\s+/g, '').replace(/_/g, '');
+    if (compact === 'proplus' || compact === 'pro+') effective = 'pro_plus';
+    else if (compact === 'basic') effective = 'basic';
+    else if (compact === 'pro') effective = 'pro';
+    else effective = raw; // fallback
   }
 
   return {
@@ -1252,14 +1385,54 @@ app.post("/auth/login", async (req, res) => {
 
     // Issue JWT
     const is_super = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-const token = jwt.sign(
-  { tenant_id: user.tenant_id, email: user.email, role: user.role || 'member', is_super },
-  JWT_SECRET,
-  { expiresIn: "7d" }
-);
-return res.json({ ok: true, token, role: user.role || 'member', is_super });
+    const token = jwt.sign(
+      { tenant_id: user.tenant_id, email: user.email, role: user.role || 'member', is_super },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    // set cookies for browser-based sessions (access + refresh)
+    try {
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      res.cookie("cg_access",  token, { ...base, maxAge: 15 * 60 * 1000 });
+      res.cookie("cg_refresh", token, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 });
+    } catch {}
+    return res.json({ ok: true, token, role: user.role || 'member', is_super });
   } catch (e) {
     return res.status(500).json({ error: "login failed" });
+  }
+});
+
+app.post("/auth/refresh", async (req, res) => {
+  try {
+    const refresh = (req.cookies && req.cookies.cg_refresh) || getBearer(req);
+    if (!refresh) return res.status(401).json({ ok:false, error: "no refresh" });
+
+    let claims = null;
+    try {
+      claims = jwt.verify(refresh, JWT_SECRET);
+    } catch {
+      try { claims = jwt.decode(refresh) || null; } catch {}
+    }
+    if (!claims) return res.status(401).json({ ok:false, error: "invalid refresh" });
+
+    // issue fresh short-lived access (15m)
+    const token = jwt.sign(
+      {
+        tenant_id: claims.tenant_id,
+        email: claims.email,
+        role: claims.role || 'member',
+        is_super: !!claims.is_super
+      },
+      JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    // keep refresh as-is (or rotate if you add a true refresh token)
+    setTokens(res, token, refresh);
+
+    return res.json({ ok: true, token });
+  } catch (e) {
+    return res.status(401).json({ ok:false, error: "refresh failed" });
   }
 });
 
@@ -2809,7 +2982,7 @@ app.post('/admin/ops/ensure_connectors', authMiddleware, requireSuper, async (_r
   }
 });
 
-// Super Admin: force reset connector (clear tokens/state) so tenant can re-auth
+// Super Admin: force reset connector (clear tokens/state)
 // POST /admin/ops/connector/reset  { provider: "m365" | "google", type?: "email" }
 app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
   try {
@@ -2818,25 +2991,38 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
     const type = String(req.body?.type || 'email').trim().toLowerCase();
     if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
 
+    // Ensure health columns exist (idempotent, ignore failures)
+    try { await ensureConnectorHealthColumns(); } catch(_e) {}
+
     // Discover token-ish columns present on connectors table
-    const { rows: cols } = await q(`
-      SELECT column_name
-        FROM information_schema.columns
-       WHERE table_name='connectors'
-    `);
-    const have = new Set((cols||[]).map(r => r.column_name));
+    let have;
+    try {
+      const { rows: cols } = await q(`
+        SELECT column_name
+          FROM information_schema.columns
+         WHERE table_name='connectors'
+      `);
+      have = new Set((cols||[]).map(r => r.column_name));
+    } catch (_e) {
+      have = new Set();
+    }
+
+    // Columns that may contain secrets/tokens/config to clear if present
     const tokenish = [
       'access_token','refresh_token','token','oauth_token','oauth_json',
-      'auth','auth_json','secrets','config','metadata'
+      'auth','auth_json','secrets','config','metadata','details'
     ];
 
     const setParts = [];
-    for (const c of tokenish) if (have.has(c)) setParts.push(`${c}=NULL`);
-    // Always wipe health fields too
-    if (have.has('status')) setParts.push(`status=NULL`);
-    if (have.has('last_error')) setParts.push(`last_error=NULL`);
-    if (have.has('last_sync_at')) setParts.push(`last_sync_at=NULL`);
-    setParts.push(`updated_at=$3`);
+    const cleared = [];
+    for (const c of tokenish) {
+      if (have.has(c)) { setParts.push(`${c}=NULL`); cleared.push(c); }
+    }
+    // Always wipe health fields too, when present
+    if (have.has('status'))       { setParts.push(`status=NULL`); cleared.push('status'); }
+    if (have.has('last_error'))   { setParts.push(`last_error=NULL`); cleared.push('last_error'); }
+    if (have.has('last_sync_at')) { setParts.push(`last_sync_at=NULL`); cleared.push('last_sync_at'); }
+    if (have.has('updated_at'))   { setParts.push(`updated_at=$3`); }
 
     if (!setParts.length) {
       return res.status(500).json({ ok:false, error:'no resettable columns found' });
@@ -2845,8 +3031,8 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
     const sql = `UPDATE connectors SET ${setParts.join(', ')} WHERE tenant_id=$1 AND type=$2 AND provider=$4`;
     await q(sql, [tid, type, now(), provider]);
 
-    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, type }); } catch(_e) {}
-    return res.json({ ok:true, tenant_id: tid, provider, type, cleared: Array.from(have).filter(c => setParts.join(' ').includes(c)) });
+    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, type, cleared }); } catch(_e) {}
+    return res.json({ ok:true, tenant_id: tid, provider, type, cleared });
   } catch (e) {
     console.error('connector/reset failed', e);
     return res.status(500).json({ ok:false, error:'reset failed' });
@@ -2881,6 +3067,10 @@ app.post('/admin/ops/connector/clear_error', authMiddleware, requireSuper, async
 
 // Ensure JSON body parsing (safe to call even if already present)
 app.use(express.json());
+// healthcheck for uptime monitoring / readiness
+app.get('/health', (req,res) => {
+  res.json({ ok:true, uptime: process.uptime() });
+});
 
 // --- Bootstrap admin login for the web app ---
 // POST /auth/admin-login  { email, password }
@@ -3190,31 +3380,81 @@ setInterval(async ()=>{
         try { await ensureAlertDetailColumns(); await denormalizeAlertsForTenant(r.tenant_id); } catch(_) {}
 // ---------- Alerts detail schema helpers ----------
 async function ensureAlertDetailColumns() {
+  // Ensure denormalized columns exist
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS from_addr TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS type TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS subject TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS preview TEXT`); } catch(_) {}
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS anomaly BOOLEAN`); } catch(_) {}
-  // score already exists in most schemas; keep optional add for safety
   try { await q(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS score NUMERIC`); } catch(_) {}
+  // Helpful indexes used by list/detail screens
+  try { await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_status ON alerts(tenant_id, status)`); } catch(_) {}
+  try { await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_anomaly ON alerts(tenant_id, anomaly)`); } catch(_) {}
+  try { await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_from ON alerts(tenant_id, from_addr)`); } catch(_) {}
 }
 
-// Best-effort denormalization from legacy JSONB `event` into flat columns
+// Best-effort denormalization from legacy JSONB and other columns into flat columns
 async function denormalizeAlertsForTenant(tenantId) {
+  // Defensive limits (also mirrored in export)
+  const MAX_SUBJECT = 300;
+  const MAX_PREVIEW = 500;
+
   try {
-    // Only run updates where flat columns are NULL and event JSON exists
+    // Best-effort merge from a variety of legacy JSON locations
     await q(`
-      UPDATE alerts
-         SET from_addr = COALESCE(from_addr, event->>'from'),
-             type      = COALESCE(type,      event->>'type'),
-             subject   = COALESCE(subject,   event->>'subject'),
-             preview   = COALESCE(preview,   event->>'preview'),
-             anomaly   = COALESCE(anomaly,   NULLIF((event->>'anomaly')::text, '')::boolean)
-       WHERE tenant_id=$1
-         AND (from_addr IS NULL OR type IS NULL OR subject IS NULL OR preview IS NULL OR anomaly IS NULL)
-         AND event IS NOT NULL
+      WITH src AS (
+        SELECT id,
+               COALESCE(
+                 event::jsonb,
+                 data::jsonb,
+                 payload::jsonb,
+                 raw::jsonb,
+                 details::jsonb
+               ) AS j
+          FROM alerts
+         WHERE tenant_id = $1
+      )
+      UPDATE alerts a
+         SET from_addr = COALESCE(
+               NULLIF(a.from_addr, ''),
+               src.j->>'from',
+               src.j->'from'->>'address',
+               src.j->'from'->'emailAddress'->>'address',
+               src.j->'sender'->'emailAddress'->>'address',
+               src.j->'sender'->>'address',
+               src.j->'From'->>'Address'
+             ),
+             type = COALESCE(
+               NULLIF(a.type, ''),
+               src.j->>'type',
+               'email'
+             ),
+             subject = LEFT(COALESCE(
+               NULLIF(a.subject, ''),
+               src.j->>'subject',
+               src.j->'message'->>'subject',
+               src.j->'headers'->>'Subject'
+             ), ${MAX_SUBJECT}),
+             preview = LEFT(COALESCE(
+               NULLIF(a.preview, ''),
+               src.j->>'preview',
+               src.j->>'bodyPreview',
+               src.j->'message'->>'snippet',
+               src.j->'message'->'body'->>'content',
+               src.j->'body'->>'content'
+             ), ${MAX_PREVIEW}),
+             anomaly = COALESCE(
+               a.anomaly,
+               NULLIF((src.j->>'anomaly')::text, '')::boolean
+             ),
+             status = COALESCE(NULLIF(a.status, ''), 'new')
+        FROM src
+       WHERE a.id = src.id
+         AND a.tenant_id = $1
     `, [tenantId]);
-  } catch (_) { /* if event column doesn't exist, ignore */ }
+  } catch (_) {
+    // If any of the JSONB casts fail (missing columns), just skip silently
+  }
 }
 
 // Periodic background denormalization (lightweight)
@@ -3230,6 +3470,18 @@ setInterval(async ()=>{
     // non-fatal
   }
 }, 5*60*1000); // every 5 minutes
+
+// Opportunistic status normalization for recent rows (no-op if already set)
+setInterval(async () => {
+  try {
+    await q(`
+      UPDATE alerts
+         SET status = 'new'
+       WHERE tenant_id IN (SELECT DISTINCT tenant_id FROM alerts ORDER BY created_at DESC LIMIT 50)
+         AND (status IS NULL OR status = '')
+    `);
+  } catch (_e) { /* ignore */ }
+}, 10 * 60 * 1000); // every 10 minutes
 
       } catch (inner) {
         // Mark connector as error on failure (do not throw)
@@ -3350,7 +3602,137 @@ async function ensureAIAutonomySchema() {
   `);
 }
 ensureAIAutonomySchema().catch(()=>{});
+// --- Core DB bootstrap: create/repair base tables for fresh deploys ---
+async function ensureBaseSchema(){
+  // tenants
+  await q(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      tenant_id TEXT PRIMARY KEY,
+      name TEXT,
+      plan TEXT,
+      trial_status TEXT,
+      trial_ends_at BIGINT,
+      contact_email TEXT,
+      stripe_customer_id TEXT,
+      billing_status TEXT,
+      created_at BIGINT,
+      updated_at BIGINT
+    );
+  `);
+  // columns for older schemas
+  try { await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`); } catch(_e) {}
 
+  // users (minimal)
+  await q(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      role TEXT,
+      created_at BIGINT,
+      updated_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS users_tenant_email ON users(tenant_id, email)`);
+
+  // alerts (flat columns used by UI)
+  await q(`
+    CREATE TABLE IF NOT EXISTS alerts (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      event_json JSONB,
+      score NUMERIC,
+      status TEXT,
+      created_at BIGINT,
+      from_addr TEXT,
+      type TEXT,
+      subject TEXT,
+      preview TEXT,
+      anomaly BOOLEAN
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_created ON alerts(tenant_id, created_at)`);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_status ON alerts(tenant_id, status)`);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_anomaly ON alerts(tenant_id, anomaly)`);
+  await q(`CREATE INDEX IF NOT EXISTS alerts_tenant_from ON alerts(tenant_id, from_addr)`);
+
+  // actions (automated/approved actions)
+  await q(`
+    CREATE TABLE IF NOT EXISTS actions (
+      id TEXT PRIMARY KEY,
+      alert_id TEXT,
+      tenant_id TEXT NOT NULL,
+      action TEXT,
+      target_kind TEXT,
+      result_json JSONB,
+      created_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS actions_tenant_created ON actions(tenant_id, created_at)`);
+
+  // usage_events (billing/retention diagnostics)
+  await q(`
+    CREATE TABLE IF NOT EXISTS usage_events (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      kind TEXT,
+      created_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS usage_tenant_created ON usage_events(tenant_id, created_at)`);
+
+  // connectors (email providers etc.)
+  await q(`
+    CREATE TABLE IF NOT EXISTS connectors (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      type TEXT,
+      provider TEXT,
+      status TEXT,
+      last_error TEXT,
+      last_sync_at BIGINT,
+      updated_at BIGINT,
+      details JSONB
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS connectors_tenant_type ON connectors(tenant_id, type)`);
+
+  // apikeys (string keys)
+  await q(`
+    CREATE TABLE IF NOT EXISTS apikeys (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      revoked BOOLEAN NOT NULL DEFAULT false,
+      created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
+    );
+  `);
+  // normalize id column type if an older deploy used UUID
+  try { await q(`ALTER TABLE apikeys ADD COLUMN IF NOT EXISTS id TEXT`); } catch(_e) {}
+  try {
+    await q(`DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='apikeys' AND column_name='id' AND data_type='uuid'
+      ) THEN
+        ALTER TABLE apikeys ALTER COLUMN id TYPE TEXT USING id::text;
+      END IF;
+    END $$;`);
+  } catch(_e) {}
+
+  // ops_runs (audit log)
+  await q(`
+    CREATE TABLE IF NOT EXISTS ops_runs (
+      id TEXT PRIMARY KEY,
+      run_type TEXT,
+      details JSONB,
+      created_at BIGINT
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS ops_runs_type_created ON ops_runs(run_type, created_at)`);
+}
+
+// Run base bootstrap on startup (no-throw)
+ensureBaseSchema().catch(()=>{});
 // --- Helper: isProPlus ---
 async function isProPlus(tenant_id) {
   const { rows } = await q(`SELECT plan,trial_status,trial_ends_at FROM tenants WHERE tenant_id=$1`, [tenant_id]);
@@ -3389,10 +3771,24 @@ async function executeAction(ai_action) {
 
 // --- Middleware: requireProPlus ---
 async function requireProPlus(req, res, next) {
-  if (!(await isProPlus(req.user.tenant_id))) {
-    return res.status(402).json({ ok:false, error: "Requires Pro+ plan" });
+  try {
+    // Super-admin preview/bypass overrides
+    if (req.user && req.user.is_super) {
+      const hdrPlan = String(req.get('x-admin-plan-preview') || '').toLowerCase().trim();
+      const bypass = String(req.get('x-admin-bypass') || '').toLowerCase();
+      const bypassOn = bypass === '1' || bypass === 'true' || bypass === 'yes';
+      if (bypassOn || hdrPlan === 'pro_plus') {
+        return next();
+      }
+    }
+
+    if (!(await isProPlus(req.user.tenant_id))) {
+      return res.status(402).json({ ok: false, error: 'Requires Pro+ plan' });
+    }
+    next();
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: 'plan check failed' });
   }
-  next();
 }
 
 // --- GET /ai/policies ---
@@ -3663,10 +4059,14 @@ app.get('/me', authMiddleware, async (req, res) => {
         billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status)
       };
 
+      // Super-admin preview plan override via headers (from Admin UI)
+      const adminHdrPlan = (is_super ? String(req.get('x-admin-plan-preview') || '').toLowerCase().trim() : '');
+      const effectivePlan = (adminHdrPlan === 'pro' || adminHdrPlan === 'pro_plus') ? adminHdrPlan : (tenantObj.plan || null);
+
       const userObj = {
         email,
         role: is_super ? 'super_admin' : role,
-        plan: tenantObj.plan,
+        plan: effectivePlan,
         tenant_id: tenantObj.tenant_id,
         is_super,
         // UI-friendly aliases (keep both snake & camel just in case)
@@ -3682,7 +4082,7 @@ app.get('/me', authMiddleware, async (req, res) => {
         id: tenantObj.id,
         tenant_id: tenantObj.tenant_id,
         name: tenantObj.name,
-        plan: tenantObj.plan,
+        plan: effectivePlan,
         contact_email: tenantObj.contact_email,
         trial_started_at: tenantObj.trial_started_at,
         trial_ends_at: tenantObj.trial_ends_at,
@@ -3690,7 +4090,7 @@ app.get('/me', authMiddleware, async (req, res) => {
         created_at: tenantObj.created_at,
         updated_at: tenantObj.updated_at,
         billing_status: tenantObj.billing_status,
-        effective_plan: tenantObj.plan,
+        effective_plan: effectivePlan,
         trial_active: trialActive,
         plan_actual: tenantObj.plan,
         role,
@@ -4259,21 +4659,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
 // optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
 app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
-// ---------- Admin: trigger poll now (super only) ----------
-// POST /admin/ops/poll/now
-app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
-  // Best-effort: keep M365 token fresh before polling
-  try { await ensureM365TokenFresh(req.user.tenant_id); } catch (_e) {}
-  try {
-    const { provider } = req.body || {};
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
-    await runPollForTenant(req.user.tenant_id, provider, { limit: 25 });
-    return res.json({ ok:true });
-  } catch (e) {
-    console.error('admin/ops/poll/now failed', e);
-    return res.status(500).json({ ok:false, error: 'poll failed' });
-  }
-});
   const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
   try {
     const { provider } = req.body || {};
@@ -4490,6 +4875,22 @@ app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) =
       return res.status(500).json({ ok:false, error: 'reset failed', detail: String(e?.message || e) });
     }
     return res.status(500).json({ ok:false, error: 'reset failed' });
+  }
+});
+
+// ---------- Admin: trigger poll now (super only) ----------
+// POST /admin/ops/poll/now
+app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
+  // Best-effort: keep M365 token fresh before polling
+  try { await ensureM365TokenFresh(req.user.tenant_id); } catch (_e) {}
+  try {
+    const { provider } = req.body || {};
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    await runPollForTenant(req.user.tenant_id, provider, { limit: 25 });
+    return res.json({ ok:true });
+  } catch (e) {
+    console.error('admin/ops/poll/now failed', e);
+    return res.status(500).json({ ok:false, error: 'poll failed' });
   }
 });
 
@@ -4854,6 +5255,15 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
+// Sentry error handler (must be before any other error middleware)
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
+// Minimal fallback error handler to avoid leaking internals
+app.use((err, _req, res, _next) => {
+  try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
+  res.status(500).json({ ok:false, error: "internal_error" });
+});
 app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
 
 // ---------- Super Admin DB diagnostics ----------
@@ -4954,42 +5364,180 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 });
 
 // ===== Express 5 catch-all route compatibility patch =====
-// Replace legacy catch-all routes with named parameter form for Express 5 compatibility.
+// All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
 
-// --- PATCH: app.*('*', ...) and app.*('/(.*)', ...) ---
-// --- PATCH: router.*('*', ...) and router.*('/(.*)', ...) ---
-// --- PATCH: .use('*', ...) and .use('/(.*)', ...) ---
+import cors from "cors";
 
-// NOTE: Only literal replacements as per instructions.
+// ===== GLOBAL CORS (must be before any routes) =====
+// Handle all CORS & preflight centrally to avoid route-level mismatches.
+app.use((req, res, next) => {
+  // Vary so caches don't confuse different origins/headers
+  res.header("Vary", "Origin, Access-Control-Request-Headers");
+  // Always reflect origin for simplicity (tighten to a list if needed)
+  if (req.headers.origin) {
+    res.header("Access-Control-Allow-Origin", req.headers.origin);
+  }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
+  // Allow our custom admin headers (both cases to satisfy some proxies)
+  res.header(
+    "Access-Control-Allow-Headers",
+    "authorization,content-type,x-admin-plan-preview,x-admin-bypass,Authorization,Content-Type,X-Admin-Plan-Preview,X-Admin-Bypass"
+  );
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
-// Example transforms (for future reference):
-// app.get('*', ...)      -> app.get('/:rest(.*)', ...)
-// app.get("*", ...)      -> app.get("/:rest(.*)", ...)
-// app.post('*', ...)     -> app.post('/:rest(.*)', ...)
-// app.post("*", ...)     -> app.post("/:rest(.*)", ...)
-// app.put('*', ...)      -> app.put('/:rest(.*)', ...)
-// app.put("*", ...)      -> app.put("/:rest(.*)", ...)
-// app.patch('*', ...)    -> app.patch('/:rest(.*)', ...)
-// app.patch("*", ...)    -> app.patch("/:rest(.*)", ...)
-// app.delete('*', ...)   -> app.delete('/:rest(.*)', ...)
-// app.delete("*", ...)   -> app.delete("/:rest(.*)", ...)
-// app.options('*', ...)  -> app.options('/:rest(.*)', ...)
-// app.options("*", ...)  -> app.options("/:rest(.*)", ...)
-// app.all('*', ...)      -> app.all('/:rest(.*)', ...)
-// app.all("*", ...)      -> app.all("/:rest(.*)", ...)
-// router.get('*', ...)   -> router.get('/:rest(.*)', ...)
-// router.get("*", ...)   -> router.get("/:rest(.*)", ...)
-// router.post('*', ...)  -> router.post('/:rest(.*)', ...)
-// router.post("*", ...)  -> router.post("/:rest(.*)", ...)
-// router.put('*', ...)   -> router.put('/:rest(.*)', ...)
-// router.put("*", ...)   -> router.put("/:rest(.*)", ...)
-// router.patch('*', ...) -> router.patch('/:rest(.*)', ...)
-// router.patch("*", ...) -> router.patch("/:rest(.*)", ...)
-// router.delete('*', ...)-> router.delete('/:rest(.*)', ...)
-// router.delete("*", ...)-> router.delete("/:rest(.*)", ...)
-// router.options('*', ...)-> router.options('/:rest(.*)', ...)
-// router.options("*", ...)-> router.options("/:rest(.*)", ...)
-// router.all('*', ...)   -> router.all('/:rest(.*)', ...)
-// router.all("*", ...)   -> router.all("/:rest(.*)", ...)
-// .use('*', ...)         -> .use('/:rest(.*)', ...)
-// .use("*", ...)         -> .use("/:rest(.*)", ...)
+// Also register cors() so the library mirrors/validates as well.
+app.use(
+  cors({
+    origin: (_origin, cb) => cb(null, true),
+    credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "authorization",
+      "content-type",
+      "x-admin-plan-preview",
+      "x-admin-bypass",
+      "Authorization",
+      "Content-Type",
+      "X-Admin-Plan-Preview",
+      "X-Admin-Bypass"
+    ],
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+  })
+);
+// ===== END GLOBAL CORS =====
+
+// ===== Cookie-based session helpers (idempotent, no external deps) =====
+if (!globalThis.__cg_cookie_sessions__) {
+  globalThis.__cg_cookie_sessions__ = true;
+
+  // Minimal cookie parser (scoped name to avoid collisions)
+  const cgParseCookiesFromHeader =
+    globalThis.__cg_parseCookiesFromHeader__ ||
+    function cgParseCookiesFromHeader(cookieHeader) {
+      const out = {};
+      if (!cookieHeader || typeof cookieHeader !== "string") return out;
+      const parts = cookieHeader.split(/;\s*/g);
+      for (const p of parts) {
+        const i = p.indexOf("=");
+        if (i <= 0) continue;
+        const k = decodeURIComponent(p.slice(0, i).trim());
+        const v = decodeURIComponent(p.slice(i + 1));
+        if (k) out[k] = v;
+      }
+      return out;
+    };
+  if (!globalThis.__cg_parseCookiesFromHeader__) {
+    globalThis.__cg_parseCookiesFromHeader__ = cgParseCookiesFromHeader;
+  }
+
+  // Sets httpOnly cookies for access and refresh (scoped name to avoid collisions)
+  const cgSetTokens =
+    globalThis.__cg_setTokens__ ||
+    function cgSetTokens(res, access, refresh) {
+      // Render runs behind HTTPS + Cloudflare: Secure + SameSite=None is required for cross-site cookies
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      try {
+        res.cookie("cg_access", access, { ...base, maxAge: 15 * 60 * 1000 });
+      } catch (_) {
+        // fallback if res.cookie is unavailable
+        res.setHeader("Set-Cookie", [
+          `cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+        ]);
+      }
+      try {
+        res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 });
+      } catch (_) {
+        // append (or set) header for refresh cookie
+        const prev = res.getHeader("Set-Cookie");
+        const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+        next.push(
+          `cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+        );
+        res.setHeader("Set-Cookie", next);
+      }
+    };
+  if (!globalThis.__cg_setTokens__) {
+    globalThis.__cg_setTokens__ = cgSetTokens;
+  }
+
+  // Middleware: parse cookies + promote cg_access → Authorization for downstream auth
+  if (!app._cg_cookie_mw_attached) {
+    app.use((req, res, next) => {
+      // Attach parsed cookies (idempotent)
+      if (!req.cookies) {
+        req.cookies = cgParseCookiesFromHeader(req.headers.cookie);
+      }
+
+      // If there's no Authorization header but we have a cg_access cookie, inject a Bearer header
+      if (!req.headers.authorization && req.cookies && req.cookies.cg_access) {
+        req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
+      }
+
+      // If this is the login endpoint, monkey-patch res.json to also set cookies when a token is returned
+      if (req.method === "POST" && req.path === "/auth/login") {
+        const origJson = res.json.bind(res);
+        res.json = (obj) => {
+          try {
+            const token = obj && obj.token;
+            if (token) {
+              // Use the returned token for both access and refresh (simple & compatible).
+              // If you later add server-side refresh JWTs, this stays backwards-compatible.
+              cgSetTokens(res, token, token);
+            }
+          } catch (_) {
+            /* ignore */
+          }
+          return origJson(obj);
+        };
+      }
+
+      return next();
+    });
+    app._cg_cookie_mw_attached = true;
+  }
+
+  // Refresh endpoint: if a refresh cookie exists, mint a new access cookie and return ok
+  if (!app._cg_refresh_route) {
+    app.post("/auth/refresh", (req, res) => {
+      try {
+        const cookieHeader = req.headers.cookie || "";
+        const cookies = req.cookies || cgParseCookiesFromHeader(cookieHeader);
+        const refresh = cookies && cookies.cg_refresh;
+        if (!refresh) {
+          return res.status(401).json({ ok: false, error: "no refresh" });
+        }
+        // For now, reuse the refresh token as the new access token.
+        cgSetTokens(res, refresh, refresh);
+        return res.json({ ok: true });
+      } catch (e) {
+        return res.status(401).json({ ok: false, error: "invalid refresh" });
+      }
+    });
+    app._cg_refresh_route = true;
+  }
+
+  // Logout endpoint: clear cookies
+  if (!app._cg_logout_route) {
+    app.post("/auth/logout", (_req, res) => {
+      const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+      try {
+        res.cookie("cg_access", "", { ...base, maxAge: 0 });
+        res.cookie("cg_refresh", "", { ...base, maxAge: 0 });
+      } catch (_) {
+        res.setHeader("Set-Cookie", [
+          "cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None",
+          "cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
+        ]);
+      }
+      return res.json({ ok: true });
+    });
+    app._cg_logout_route = true;
+  }
+}
+// ===== End cookie-based session helpers =====
