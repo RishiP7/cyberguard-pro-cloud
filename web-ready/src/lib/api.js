@@ -1,4 +1,4 @@
-const API = '/api'; // we proxy in Render, so same-origin
+export const API = import.meta.env?.VITE_API_BASE || '/api'; // default to /api in prod, override via VITE_API_BASE
 
 function getToken() {
   return localStorage.getItem('auth_token') || localStorage.getItem('cg_token') || '';
@@ -8,41 +8,40 @@ export async function fetchJSON(path, init = {}) {
   const headers = new Headers(init.headers || {});
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  if (!headers.has('Content-Type') && init.body != null) {
+  // Only set JSON content-type if a body is present and no explicit content-type set
+  if (!headers.has('Content-Type') && init.body != null && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
-  const res = await fetch(`${API}${path}`, { ...init, headers });
+  const opts = { ...init, headers };
+  // Ensure cookies (if any) are sent for same-origin; doesn't hurt with Bearer
+  if (opts.credentials === undefined) opts.credentials = 'include';
+
+  const res = await fetch(`${API}${path}`, opts);
   if (res.status === 401) {
     try { localStorage.removeItem('auth_token'); localStorage.removeItem('cg_token'); } catch {}
-    // Optional: location.assign('/login');
     throw new Error('UNAUTHORIZED');
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  // Safely handle empty bodies (e.g., 204 or explicit zero-length)
   if (res.status === 204) return null;
-  const contentLength = res.headers.get('content-length');
-  if (contentLength === '0') return null;
+  const len = res.headers.get('content-length');
+  if (len === '0') return null;
   return res.json();
 }
+
 export function apiGet(path) {
-  // same-origin '/api', cookies will be sent automatically (same-origin default)
   return fetchJSON(path, { method: 'GET' });
 }
 
 export function apiPost(path, body = {}) {
-  return fetchJSON(path, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return fetchJSON(path, { method: 'POST', body: JSON.stringify(body) });
 }
 
-// Optional: when sending FormData (no Content-Type header):
+// FormData helper: uses same API base and does NOT set Content-Type
 export async function apiPostForm(path, formData) {
-  const token = localStorage.getItem('auth_token') || localStorage.getItem('cg_token') || '';
   const headers = new Headers();
+  const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  // do NOT set Content-Type when using FormData
-  const res = await fetch(`/api${path}`, { method: 'POST', headers, body: formData });
+  const res = await fetch(`${API}${path}`, { method: 'POST', headers, body: formData, credentials: 'include' });
   if (res.status === 401) throw new Error('UNAUTHORIZED');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
