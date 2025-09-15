@@ -148,6 +148,7 @@ var Policy = (typeof Policy !== 'undefined')
     try { console.warn('[boot-guard] skipped', e && (e.message || e)); } catch(_e) {}
   }
 })();
+import "./setupFetchAuth.js";
 // Ensure the UI uses a single, consistent token key.
 // Migrate any older keys (auth_token, cg_token) -> token on startup.
 (() => {
@@ -2889,16 +2890,11 @@ function LiveEmailScan(){
     setLoading(true); setErr("");
     try{
       const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-      const origin =
-        (import.meta?.env?.VITE_API_BASE)
-        || (typeof window!=="undefined" && window.location.hostname.endsWith("onrender.com")
-              ? "https://cyberguard-pro-cloud.onrender.com"
-              : "http://localhost:8080");
-
-      const r = await fetch(`${origin}/alerts/export?days=1&limit=200`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const API_BASE = '/api';
+      const r = await fetch(`${API_BASE}/alerts/export?days=1&limit=200`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include'
       });
-
       const text = await r.text();
       let j;
       try { j = JSON.parse(text); }
