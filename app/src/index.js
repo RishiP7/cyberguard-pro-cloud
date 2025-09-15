@@ -5239,16 +5239,16 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
-// Expose every existing route under an /api prefix as well.
-// This keeps backward compatibility for /me, /auth/*, etc. while the frontend
-// can safely call /api/... in production without CORS/mixed-content issues.
-if (!app._api_prefix_alias) {
-  app._api_prefix_alias = true;
-  app.use('/api', (req, res, next) => {
-    // When mounted at /api, Express trims the base path before calling this handler,
-    // so the inner router sees paths like "/me", "/auth/login", etc.
-    if (app && app._router && typeof app._router.handle === 'function') {
-      return app._router.handle(req, res, next);
+// /api prefix URL rewrite shim (no double routing, no recursion)
+// This rewrites incoming URLs so existing routes like `/me`, `/auth/*` work under `/api/...`.
+if (!app._api_prefix_rewrite) {
+  app._api_prefix_rewrite = true;
+  app.use((req, _res, next) => {
+    if (req.url === '/api') {
+      req.url = '/';
+    } else if (req.url.startsWith('/api/')) {
+      // strip the /api prefix and let the normal routes handle it
+      req.url = req.url.slice(4);
     }
     next();
   });
