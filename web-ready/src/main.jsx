@@ -148,6 +148,7 @@ var Policy = (typeof Policy !== 'undefined')
     try { console.warn('[boot-guard] skipped', e && (e.message || e)); } catch(_e) {}
   }
 })();
+import "./setupFetchAuth.js";
 // Ensure the UI uses a single, consistent token key.
 // Migrate any older keys (auth_token, cg_token) -> token on startup.
 (() => {
@@ -3516,35 +3517,21 @@ function AdminSafe(props){
 
 // SafeAdminConsole: use global AdminConsolePage if present; else lazy-load; else show placeholder
 function AdminConsolePageSafe(props){
-  // If available globally, use it
+  // 1) If a global AdminConsolePage is available (defined elsewhere), use it
   try {
     if (typeof AdminConsolePage === 'function') {
       return <AdminConsolePage {...props} />;
     }
-  } catch (_e) { /* fall through */ }
+  } catch (_e) { /* ignore and fall through */ }
 
-  // Try lazy-import with vite-ignore pragma; if the file doesn't exist, fallback to a placeholder
-  const Lazy = React.useMemo(
-    () =>
-      React.lazy(() =>
-        import(/* @vite-ignore */ './pages/AdminConsolePage.jsx')
-          .then(mod => ({ default: mod?.default || mod?.AdminConsolePage || mod?.AdminConsole || null }))
-          .catch(() => ({
-            default: (p) => (
-              <div style={{ padding: 16 }}>
-                <h1 style={{ marginTop: 0 }}>Admin Console</h1>
-                <div style={{ opacity: .8 }}>The Admin Console module isn’t available in this build. You can continue using the rest of the app.</div>
-              </div>
-            )
-          }))
-      ),
-    []
-  );
-
+  // 2) Otherwise, render a lightweight placeholder so the route never breaks the build
   return (
-    <React.Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
-      <Lazy {...props} />
-    </React.Suspense>
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Admin Console</h1>
+      <div style={{ opacity: .8 }}>
+        The Admin Console module isn’t available in this build. You can continue using the rest of the app.
+      </div>
+    </div>
   );
 }
 // SafeAutonomy: fall back to a minimal placeholder if real AutonomyPage isn't available
