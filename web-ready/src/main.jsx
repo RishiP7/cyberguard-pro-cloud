@@ -148,6 +148,7 @@ var Policy = (typeof Policy !== 'undefined')
     try { console.warn('[boot-guard] skipped', e && (e.message || e)); } catch(_e) {}
   }
 })();
+import "./setupFetchAuth.js";
 // Ensure the UI uses a single, consistent token key.
 // Migrate any older keys (auth_token, cg_token) -> token on startup.
 (() => {
@@ -3447,7 +3448,7 @@ function RegisterSafe(props) {
   const Lazy = React.useMemo(
     () =>
       React.lazy(() =>
-        import("./pages/Register.jsx")
+        import(/* @vite-ignore */ './pages/Register.jsx')
           .then(mod => ({
             default:
               mod?.default ||
@@ -3528,18 +3529,20 @@ function AdminConsolePageSafe(props){
     }
   } catch (_e) { /* fall through */ }
 
-  // Try lazy-import; if the file doesn't exist, fallback to a placeholder
+  // Try lazy-import with vite-ignore pragma; if the file doesn't exist, fallback to a placeholder
   const Lazy = React.useMemo(
     () =>
       React.lazy(() =>
-        import('./pages/AdminConsolePage.jsx').catch(() => ({
-          default: (p) => (
-            <div style={{ padding: 16 }}>
-              <h1 style={{ marginTop: 0 }}>Admin Console</h1>
-              <div style={{ opacity: .8 }}>The Admin Console module isn’t available in this build. You can continue using the rest of the app.</div>
-            </div>
-          ),
-        }))
+        import(/* @vite-ignore */ './pages/AdminConsolePage.jsx')
+          .then(mod => ({ default: mod?.default || mod?.AdminConsolePage || mod?.AdminConsole || null }))
+          .catch(() => ({
+            default: (p) => (
+              <div style={{ padding: 16 }}>
+                <h1 style={{ marginTop: 0 }}>Admin Console</h1>
+                <div style={{ opacity: .8 }}>The Admin Console module isn’t available in this build. You can continue using the rest of the app.</div>
+              </div>
+            )
+          }))
       ),
     []
   );
