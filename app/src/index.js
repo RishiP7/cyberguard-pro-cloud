@@ -5239,6 +5239,20 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
+// Expose every existing route under an /api prefix as well.
+// This keeps backward compatibility for /me, /auth/*, etc. while the frontend
+// can safely call /api/... in production without CORS/mixed-content issues.
+if (!app._api_prefix_alias) {
+  app._api_prefix_alias = true;
+  app.use('/api', (req, res, next) => {
+    // When mounted at /api, Express trims the base path before calling this handler,
+    // so the inner router sees paths like "/me", "/auth/login", etc.
+    if (app && app._router && typeof app._router.handle === 'function') {
+      return app._router.handle(req, res, next);
+    }
+    next();
+  });
+}
 // Sentry error handler (must be before any other error middleware)
 if (Sentry && process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
