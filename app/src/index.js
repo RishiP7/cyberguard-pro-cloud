@@ -3775,6 +3775,60 @@ async function requireProPlus(req, res, next) {
   }
 }
 
+// ===== EARLY BOOTSTRAP: CORS + /api rewrite + cookie→auth (must be before any routes) =====
+if (!app._early_bootstrap) {
+  app._early_bootstrap = true;
+  app.use((req, res, next) => {
+    // --- /api prefix rewrite (ensure legacy routes work under /api/*) ---
+    if (req.url === '/api') {
+      req.url = '/';
+    } else if (req.url && req.url.startsWith('/api/')) {
+      req.url = req.url.slice(4);
+    }
+
+    // --- CORS headers (always set, even on 4xx/5xx) ---
+    res.header('Vary', 'Origin, Access-Control-Request-Headers');
+    if (req.headers.origin) {
+      res.header('Access-Control-Allow-Origin', req.headers.origin);
+    }
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header(
+      'Access-Control-Allow-Headers',
+      'authorization,content-type,x-admin-plan-preview,x-admin-bypass,Authorization,Content-Type,X-Admin-Plan-Preview,X-Admin-Bypass'
+    );
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+
+    // --- Minimal cookie parse + promote cg_access -> Authorization (so auth works cross-site) ---
+    try {
+      if (!req.cookies) {
+        const cookieHeader = req.headers.cookie || '';
+        const out = {};
+        if (cookieHeader && typeof cookieHeader === 'string') {
+          const parts = cookieHeader.split(/;\s*/g);
+          for (const p of parts) {
+            const i = p.indexOf('=');
+            if (i > 0) {
+              const k = decodeURIComponent(p.slice(0, i).trim());
+              const v = decodeURIComponent(p.slice(i + 1));
+              if (k) out[k] = v;
+            }
+          }
+        }
+        req.cookies = out;
+      }
+      if (!req.headers.authorization && req.cookies && req.cookies.cg_access) {
+        req.headers.authorization = `Bearer ${req.cookies.cg_access}`;
+      }
+    } catch (_e) { /* non-fatal */ }
+
+    return next();
+  });
+}
+// ===== END EARLY BOOTSTRAP =====
+
 // --- GET /ai/policies ---
 app.get('/ai/policies', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
   try {
