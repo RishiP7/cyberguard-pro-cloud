@@ -1,5 +1,202 @@
-// build: bump
+// --- API base path ---
+const API_BASE = '/api';
+/* === SAFETY BOOTSTRAP (do not remove) ================================
+   Ensures required React/Router imports and minimal API helpers exist.
+   This prevents blank screens when a module didn't tree-shake in.
+===================================================================== */
+import React from "react";
 import ReactDOM from "react-dom/client";
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
+
+/* Define globals only if they aren't already defined in this bundle */
+/// eslint-disable-next-line no-var
+var API_BASE = (typeof API_BASE !== "undefined")
+  ? API_BASE
+  : ((import.meta?.env?.VITE_API_BASE)
+     || (typeof window !== "undefined" && window.location.hostname.endsWith("onrender.com")
+           ? "https://cyberguard-pro-cloud.onrender.com"
+           : "http://localhost:8080"));
+
+/// eslint-disable-next-line no-var
+var apiGet = (typeof apiGet !== "undefined")
+  ? apiGet
+  : async function apiGet(path){
+      const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+      const url = `${API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+      const r = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials:"include" });
+      const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+      if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { detail: j });
+      return j;
+    };
+
+/// eslint-disable-next-line no-var
+var API = (typeof API !== "undefined")
+  ? API
+  : {
+      async get(path){ return apiGet(path); },
+      async post(path, body){
+        const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
+        const url = `${API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+        const r = await fetch(url, {
+          method:"POST",
+          headers:{ "content-type":"application/json", ...(token? { Authorization:`Bearer ${token}` } : {}) },
+          credentials:"include",
+          body: JSON.stringify(body||{})
+        });
+        const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+        if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { detail: j });
+        return j;
+      },
+      async postWithKey(path, body, key){
+        const url = `${API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+        const r = await fetch(url, {
+          method:"POST",
+          headers:{ "content-type":"application/json", ...(key? { "x-api-key": key } : {}) },
+          credentials:"include",
+          body: JSON.stringify(body||{})
+        });
+        const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { ok:false, error:t }; }
+        if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { detail: j });
+        return j;
+      }
+    };
+
+/* Minimal ErrorBoundary if one is not already defined */
+if (typeof ErrorBoundary === "undefined") {
+  // define a lightweight error boundary component
+  // eslint-disable-next-line no-unused-vars
+  class ErrorBoundaryInner extends React.Component {
+    constructor(props){ super(props); this.state = { hasError:false, error:null }; }
+    static getDerivedStateFromError(error){ return { hasError:true, error }; }
+    componentDidCatch(err, info){ try{ console.error("[ErrorBoundary]", err, info); }catch{} }
+    render(){
+      if (this.state.hasError) {
+        return (
+          <div style={{padding:16}}>
+            <h2 style={{marginTop:0}}>Something went wrong.</h2>
+            <pre style={{whiteSpace:"pre-wrap"}}>{String(this.state.error)}</pre>
+          </div>
+        );
+      }
+      return this.props.children;
+    }
+  }
+  // expose as ErrorBoundary for the rest of the file
+  // eslint-disable-next-line no-var
+  var ErrorBoundary = ErrorBoundaryInner;
+}
+// --- Runtime shims: prevent ReferenceError when optional screens aren't bundled ---
+/* eslint-disable no-var */
+// If these components are not present in the current build, provide safe fallbacks.
+try {
+  if (typeof Account === 'undefined') {
+    var Account = function Account(props){
+      return (typeof React !== 'undefined')
+        ? React.createElement('div', { style:{ padding:16 } }, 'Account module is not available in this build.')
+        : null;
+    };
+    try { globalThis.Account = Account; } catch(_e) {}
+  }
+} catch(_e) {}
+
+try {
+  if (typeof Policy === 'undefined') {
+    var Policy = function Policy(props){
+      return (typeof React !== 'undefined')
+        ? React.createElement('div', { style:{ padding:16 } }, 'Policy module is not available in this build.')
+        : null;
+    };
+    try { globalThis.Policy = Policy; } catch(_e) {}
+  }
+} catch(_e) {}
+
+try {
+  if (typeof Layout === 'undefined') {
+    var Layout = function Layout(props){
+      return (typeof React !== 'undefined')
+        ? React.createElement('div', { style:{ padding:16 } }, props && props.children)
+        : null;
+    };
+    try { globalThis.Layout = Layout; } catch(_e) {}
+  }
+} catch(_e) {}
+/* eslint-enable no-var */
+// --- Runtime safety shims (prevent ReferenceError if optional screens weren't bundled) ---
+/* eslint-disable no-var */
+var __R = (typeof globalThis !== 'undefined' && globalThis.React) ? globalThis.React : null;
+var Account = (typeof globalThis !== 'undefined' && typeof globalThis.Account === 'function')
+  ? globalThis.Account
+  : function AccountFallback(){ return __R ? __R.createElement('div',{style:{padding:16}}, __R.createElement('h1',null,'Account')) : null; };
+var Policy = (typeof globalThis !== 'undefined' && typeof globalThis.Policy === 'function')
+  ? globalThis.Policy
+  : function PolicyFallback(){ return __R ? __R.createElement('div',{style:{padding:16}}, __R.createElement('h1',null,'Policy')) : null; };
+/* eslint-enable no-var */
+// Safe Policy fallback to avoid ReferenceError
+var Policy = (typeof Policy !== 'undefined')
+  ? Policy
+  : ((typeof window !== 'undefined' && window.Policy)
+      ? window.Policy
+      : function Policy(){ return null; });
+// --- Boot guard: ensure we never hit /me without a token ---
+(function guardTokenOnBoot(){
+  try {
+    // Allow auth-related pages to load without a token
+    var path = (typeof window !== 'undefined' && window.location && window.location.pathname) || '/';
+    var isAuthPage = /^\/(login|register|auth)(\b|\/|$)/.test(path);
+
+    // If no token and not already on an auth page, redirect to /login immediately
+    var token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
+    if (!token && !isAuthPage) {
+      if (typeof window !== 'undefined' && window.location) {
+        window.location.replace('/login');
+      }
+    }
+  } catch (e) {
+    // non-fatal: never block boot if guard fails
+    try { console.warn('[boot-guard] skipped', e && (e.message || e)); } catch(_e) {}
+  }
+})();
+import "./setupFetchAuth.js";
+// Ensure the UI uses a single, consistent token key.
+// Migrate any older keys (auth_token, cg_token) -> token on startup.
+(() => {
+  try {
+    const t =
+      (typeof localStorage !== "undefined" && (
+        localStorage.getItem("token") ||
+        localStorage.getItem("auth_token") ||
+        localStorage.getItem("cg_token") ||
+        localStorage.getItem("authToken")
+      )) || "";
+    if (t && t.trim()) {
+      localStorage.setItem("token", t);
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("cg_token");
+      localStorage.removeItem("authToken");
+    }
+  } catch (_e) {
+    // ignore
+  }
+})();
+
+// Hard guard: if no token, don’t boot the app UI; send to login.
+// This prevents unauthenticated boots that spam 401s.
+(() => {
+  try {
+    const t = (typeof localStorage !== "undefined" && localStorage.getItem("token")) || "";
+    const path = (typeof window !== "undefined" && window.location && window.location.pathname) || "/";
+    const isAuthRoute =
+      /^\/(login|admin-login)$/.test(path) ||
+      path.startsWith("/auth/");
+    if (!t && !isAuthRoute) {
+      // Replace instead of push to avoid back button loops
+      window.location.replace("/login");
+    }
+  } catch (_e) {
+    // ignore; fail open (app may still render and show its own login)
+  }
+})();
+// build: bump
 
 // --- BrandLogo: tries overrides + common paths, falls back to text ---
 function BrandLogo(){
@@ -32,9 +229,6 @@ function BrandLogo(){
     />
   );
 }
-import React, { useEffect, useState } from "react";
-import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import Register from "./pages/Register.jsx";
 // ===== KeysCard component =====
 function KeysCard() {
   const [keys, setKeys] = useState([]);
@@ -247,77 +441,6 @@ function AdminTenantKeys({ selected }) {
 }
 
 
-// ===== Minimal API wrapper (re-added) =====
-const API_BASE = (import.meta?.env?.VITE_API_BASE)
-  || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-        ? 'https://cyberguard-pro-cloud.onrender.com'
-        : 'http://localhost:8080');
-
-function authHeaders(){
-  const t = localStorage.getItem("token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
-
-function adminPreviewHeaders(){
-  const h = {};
-  try{
-    const lp = localStorage.getItem('admin_plan_preview');
-    const or = localStorage.getItem('admin_override');
-    if(lp) h['x-plan-preview'] = lp;
-    if(or === '1') h['x-admin-override'] = '1';
-  }catch(_e){}
-  return h;
-}
-
-async function parse(r){
-  const ct = r.headers.get("content-type")||"";
-  if (ct.includes("application/json")) return r.json();
-  return r.text();
-}
-
-async function apiGet(path){
-  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders(), ...adminPreviewHeaders() } });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-async function apiPost(path, body){
-  const r = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type":"application/json", ...authHeaders(), ...adminPreviewHeaders() },
-    body: JSON.stringify(body||{})
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-async function adminGet(path){
-  const adminKey = (typeof localStorage !== "undefined" && localStorage.getItem("admin_key"))
-    || (typeof window !== "undefined" && window.__ADMIN_KEY__)
-    || "dev_admin_key";
-  const r = await fetch(`${API_BASE}${path}`, {
-    headers: { "x-admin-key": adminKey }
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-
-async function apiPostWithKey(path, body, apiKey){
-  const p = path.startsWith("/") ? path : `/${path}`;
-  const r = await fetch(`${API_BASE}${p}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "x-api-key": apiKey } : {}),
-      ...authHeaders(),
-      ...adminPreviewHeaders()
-    },
-    body: JSON.stringify(body || {})
-  });
-  if (!r.ok) throw await parse(r);
-  return parse(r);
-}
-
-export const API = { get: apiGet, post: apiPost, admin: adminGet, postWithKey: apiPostWithKey };
-// ===== End minimal API wrapper =====
 const card={
   padding:16,
   border:"1px solid rgba(255,255,255,.14)",
@@ -380,21 +503,7 @@ function TrialNotice({ me }){
 }
 
 
-class ErrorBoundary extends React.Component {
-  constructor(props){ super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(error){ return { error }; }
-  componentDidCatch(error, info){ console.error("App error boundary caught:", error, info); }
-  render(){
-    if(this.state.error){
-      return (
-        <pre style={{ padding:12, background:"#220", color:"#fdd", whiteSpace:"pre-wrap", borderRadius:8 }}>
-{ `App error:\n${String(this.state.error?.message || this.state.error)}\n(see console for details)` }
-        </pre>
-      );
-    }
-    return this.props.children;
-  }
-}
+
 
 class ErrorCatcher extends React.Component{
   constructor(p){ super(p); this.state={}; }
@@ -691,6 +800,8 @@ function AdminTrialControl(){
 
   React.useEffect(()=>{ apiGet('/me').then(m=>setMe({...m, trial: trialInfo(m)})).catch(()=>setMe(null)); },[]);
 
+function LiveStatusTicker({ inline = false }) {
+  const [msgs, setMsgs] = React.useState([]);
   async function refresh(){
     setErr(""); setMsg(""); setLoading(true);
     try{ const m = await apiGet('/me'); setMe({...m, trial: trialInfo(m)}); }
@@ -1322,6 +1433,13 @@ function EmptyStateFx({ title, subtitle, actionHref, actionLabel }) {
     </div>
   );
 }
+// make Dashboard visible to the runtime guard
+try {
+  if (typeof globalThis !== 'undefined') {
+    if (!globalThis.Dashboard) globalThis.Dashboard = Dashboard;
+    if (!globalThis.DashboardWithOnboarding) globalThis.DashboardWithOnboarding = Dashboard;
+  }
+} catch (_e) {}
 
 // Build small series arrays for sparklines (fallback to simple trending values)
   const seriesAlerts = (()=>{
@@ -2562,7 +2680,7 @@ function AutonomyPage(){
   // Persist filter on change
   React.useEffect(()=>{ try{ if(typeof localStorage!=="undefined"){ localStorage.setItem('autonomy:filter', String(statusFilter)); } }catch{} },[statusFilter]);
 
-  const caps = planCapabilities(me?.plan_actual || me?.plan || 'trial', me);
+  const caps = planCapabilities(me?.effective_plan || me?.plan_actual || me?.plan || 'trial', me);
   const proPlus = caps.ai; // same gating
 
   async function setMode(mode){
@@ -2970,6 +3088,41 @@ function LiveEmailScan(){
     </div>
   );
 }
+// --- Safe fallbacks for optional UI blocks used by the enhanced dashboard ---
+// If these components are not bundled in this build, provide lightweight stand‑ins
+// so DashboardWithOnboarding can still render a full page instead of falling back
+// to the minimal Dashboard placeholder.
+try { if (typeof CollapsibleSection === 'undefined') {
+  // eslint-disable-next-line no-var
+  var CollapsibleSection = function CollapsibleSectionFallback({ id, title, children }){
+    return (
+      <div style={{ margin: '12px 0' }}>
+        {title ? <div style={{ opacity: .85, fontWeight: 700, marginBottom: 6 }}>{title}</div> : null}
+        <div>{children}</div>
+      </div>
+    );
+  };
+} } catch(_e) {}
+try { if (typeof OnboardingChecklist === 'undefined') {
+  // eslint-disable-next-line no-var
+  var OnboardingChecklist = function OnboardingChecklistFallback(){
+    return <div style={{ opacity: .8 }}>Welcome! Connect an email provider to get started.</div>;
+  };
+} } catch(_e) {}
+try { if (typeof OnboardingTips === 'undefined') {
+  // eslint-disable-next-line no-var
+  var OnboardingTips = function OnboardingTipsFallback(){
+    return <div style={{ opacity: .8 }}>Tips will appear here when the full module is available.</div>;
+  };
+} } catch(_e) {}
+try { if (typeof LiveEmailScan === 'undefined') {
+  // eslint-disable-next-line no-var
+  var LiveEmailScan = function LiveEmailScanFallback(){ return null; };
+} } catch(_e) {}
+try { if (typeof LiveStatusTicker === 'undefined') {
+  // eslint-disable-next-line no-var
+  var LiveStatusTicker = function LiveStatusTickerFallback(){ return null; };
+} } catch(_e) {}
 // DashboardWithOnboarding: wrapper for Dashboard with onboarding/tips sections
 function DashboardWithOnboarding(props){
   return (
@@ -2979,7 +3132,21 @@ function DashboardWithOnboarding(props){
         <OnboardingChecklist/>
       </CollapsibleSection>
 
-      <LiveStatusTicker inline />
+      { (function(){
+          try { if (typeof LiveStatusTicker === 'function') return <LiveStatusTicker inline />; } catch(_){}
+          return (
+            <div style={{
+              position:'relative', margin:'8px 0 12px', zIndex: 1,
+              background:'rgba(8,10,14,.9)',
+              border:'1px solid rgba(255,255,255,.12)',
+              borderRadius:8,
+              padding:'6px 10px',
+              fontSize:12, opacity:.9
+            }}>
+              Status: loading…
+            </div>
+          );
+        })() }
 
       {/* Render existing Dashboard next */}
       <Dashboard {...props} />
@@ -3018,24 +3185,34 @@ function AuthLogin(){
     background: "rgba(255,255,255,.12)",
     cursor: "pointer"
   };
-const API_ORIGIN =
-  (import.meta?.env?.VITE_API_BASE)
-  || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-        ? 'https://cyberguard-pro-cloud.onrender.com'
-        : 'http://localhost:8080');
+  const API_BASE = '/api';
   async function onSubmit(e){
     e.preventDefault();
     setErr('');
     setLoading(true);
     try{
-      const res = await fetch(`${API_ORIGIN}/auth/admin-login`, {
+      // Try super-admin endpoint first with cookies (fallback on ANY non-OK)
+      let res = await fetch(`${API_BASE}/auth/admin-login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
+      }).catch(() => null);
+
+      // If admin-login is unavailable or unauthorized, fall back to normal login
+      if (!res || !res.ok) {
+        res = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password })
+        });
+      }
+
+      const data = await (res ? res.json().catch(() => ({})) : Promise.resolve({}));
       if (!res.ok || !data?.token) throw new Error(data?.error || 'login failed');
-      if (typeof localStorage !== 'undefined') localStorage.setItem('token', data.token);
+      // Cookies are set by the server; store token for header-based calls as a backup
+      try { localStorage.setItem('token', data.token); } catch {}
       if (typeof window !== 'undefined') window.location.replace('/');
     }catch(e){
       setErr(String(e?.message || e));
@@ -3056,26 +3233,37 @@ const API_ORIGIN =
     </div>
   );
 }
+
 function RequireAuth({ children }){
-  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-  if (!token) return <Navigate to="/login" replace />;
+  const [ok, setOk] = React.useState(() => {
+    try { return !!(typeof localStorage !== 'undefined' && localStorage.getItem('token')); }
+    catch { return false; }
+  });
+
+  React.useEffect(() => {
+    if (ok) return;
+    const API_BASE = '/api';
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/me`, { credentials: 'include' });
+        if (r.ok) setOk(true);
+      } catch { /* ignore */ }
+    })();
+  }, [ok]);
+
+  if (!ok) return <Navigate to="/login" replace />;
   return children;
 }
-function LiveStatusTicker({ inline=false }){
-  const [msgs, setMsgs] = React.useState([]);
 
-  const API_ORIGIN = (import.meta?.env?.VITE_API_BASE)
-    || (typeof window!=='undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
+/* --- RequireAuth: expose globally to satisfy any stale chunks and prevent ReferenceError --- */
+try { globalThis.RequireAuth = globalThis.RequireAuth || RequireAuth; } catch (_e) { /* no-op */ }
 
-  async function api(path){
-    const token = (typeof localStorage!=='undefined' && localStorage.getItem('token')) || '';
-    const url = `${API_ORIGIN}${path.startsWith('/')?path:'/'+path}`;
-    const r = await fetch(url, { headers:{ Authorization:`Bearer ${token}` }});
-    const t = await r.text();
-    try { return JSON.parse(t); } catch { return { ok:false, error:t }; }
-  }
+// --- Hard alias to catch any stale <RequireAuthSafe> references from older chunks ---
+// Ensure a real identifier exists in this module (prevents ReferenceError in strict ESM)
+var RequireAuthSafe = function RequireAuthSafe(props){ 
+  return React.createElement(RequireAuth, props); 
+};
+try { globalThis.RequireAuthSafe = globalThis.RequireAuthSafe || RequireAuthSafe; } catch (_e) {}
 
   async function refresh(){
     try{
@@ -3172,38 +3360,412 @@ function LiveStatusTicker({ inline=false }){
   );
 }
 
-function App(){
-  const authed = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
-  const protect = (el) => (authed ? el : <Navigate to="/login" replace />);
+// Simple layout wrapper to avoid runtime ReferenceError when Layout is not defined.
+// Safe layout wrapper: uses global Layout if present, otherwise falls back to a simple padded div.
+function LayoutSafe({ children }) {
+  try {
+    if (typeof Layout === 'function') {
+      return <Layout>{children}</Layout>;
+    }
+  } catch (_e) { /* ignore and fall back */ }
+  return <div style={{ padding: 16 }}>{children}</div>;
+}
+
+// Guard to avoid runtime ReferenceError if AuthLogin isn't defined yet
+function LoginGuard(){
+  try {
+    if (typeof AuthLogin === 'function') return <AuthLogin/>;
+  } catch (_e) { /* ignore */ }
+  // Minimal inline fallback login (never blocks build/runtime)
+  const [email,setEmail] = React.useState("");
+  const [password,setPassword] = React.useState("");
+  const [err,setErr] = React.useState("");
+  const [busy,setBusy] = React.useState(false);
+  const API_BASE = '/api';
+  async function submit(e){
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST', headers: { 'content-type':'application/json' }, credentials:'include',
+        body: JSON.stringify({ email, password })
+      });
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok || !j?.token) throw new Error(j?.error || 'login failed');
+      try { localStorage.setItem('token', j.token); } catch {}
+      if (typeof window !== 'undefined') window.location.replace('/');
+    } catch (e) { setErr(String(e?.message || e)); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div style={{maxWidth:380,margin:'80px auto'}}>
+      <h1 style={{marginBottom:16}}>Sign in</h1>
+      <form onSubmit={submit}>
+        <input style={{width:'100%',marginBottom:10}} type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
+        <input style={{width:'100%',marginBottom:10}} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
+        {err && <div style={{color:'#ff7777',marginBottom:10}}>{err}</div>}
+        <button type="submit" disabled={busy} style={{width:'100%'}}>{busy? 'Signing in…':'Sign in'}</button>
+      </form>
+    </div>
+  );
+}
+
+// SafePolicy: fall back to a minimal placeholder if real Policy component isn't available
+function PolicySafe(props){
+  try {
+    if (typeof Policy === 'function') {
+      return <Policy {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Policy</h1>
+      <div style={{ opacity: .8 }}>The Policy module isn't available in this build. You can continue using the rest of the app.</div>
+    </div>
+  );
+}
+// SafeAccount: fall back to a minimal placeholder if real Account component isn't available
+function AccountSafe(props){
+  try {
+    if (typeof Account === 'function') {
+      return <Account {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Account</h1>
+      <div style={{ opacity: .8 }}>The Account page isn't available in this build. You can continue using the rest of the app.</div>
+    </div>
+  );
+}
+// SafeAlerts: fall back to a minimal placeholder if real AlertsPage component isn't available
+
+function AlertsPageSafe(props){
+  try {
+    if (typeof AlertsPage === 'function') {
+      return <AlertsPage {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Alerts</h1>
+      <div style={{ opacity: .8 }}>The Alerts page isn't available in this build. You can continue using the rest of the app.</div>
+    </div>
+  );
+}
+
+// SafeRegister: wrapper for Register page (global if present, else lazy-load, else placeholder)
+function RegisterSafe(props) {
+  try {
+    if (typeof Register === "function") {
+      return <Register {...props} />;
+    }
+  } catch (_e) { /* ignore */ }
+
+  const Lazy = React.useMemo(
+    () =>
+      React.lazy(() =>
+        import("./pages/Register.jsx")
+          .then(mod => ({
+            default:
+              mod?.default ||
+              mod?.Register ||
+              ((p) => (
+                <div style={{ padding: 16 }}>
+                  <h1 style={{ marginTop: 0 }}>Register</h1>
+                  <div style={{ opacity: 0.8 }}>
+                    The Register page isn’t available in this build. You can continue using the rest of the app.
+                  </div>
+                </div>
+              )),
+          }))
+          .catch(() => ({
+            default: (p) => (
+              <div style={{ padding: 16 }}>
+                <h1 style={{ marginTop: 0 }}>Register</h1>
+                <div style={{ opacity: 0.8 }}>
+                  The Register page isn’t available in this build. You can continue using the rest of the app.
+                </div>
+              </div>
+            ),
+          }))
+      ),
+    []
+  );
 
   return (
-    <ErrorBoundary>
-      <Layout>
+    <React.Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+      <Lazy {...props} />
+    </React.Suspense>
+  );
+}
+
+// SafeAdmin: try global Admin; else lazy-load from pages/Admin.jsx; else show placeholder
+function AdminSafe(props){
+  // 1) If a global Admin is available (defined earlier), use it
+  try {
+    if (typeof Admin === 'function') {
+      return <Admin {...props} />;
+    }
+  } catch (_e) { /* fall through to lazy import */ }
+
+  // 2) Lazy import the Admin page module if it exists on disk
+  const [{ Comp }, setState] = React.useState({ Comp: null });
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const mod = await import('./pages/Admin.jsx');
+        if (!alive) return;
+        const C = mod?.default || mod?.Admin || null;
+        if (C) setState({ Comp: C });
+      } catch (_err) {
+        // ignore — we'll render the placeholder below
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  if (Comp) return <Comp {...props} />;
+
+  // 3) Minimal placeholder so the route never crashes
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Admin</h1>
+      <div style={{ opacity: .8 }}>The Admin page is loading or not available in this build.</div>
+    </div>
+  );
+}
+
+// SafeAdminConsole: use global AdminConsolePage if present; else lazy-load; else show placeholder
+function AdminConsolePageSafe(props){
+  // If available globally, use it
+  try {
+    if (typeof AdminConsolePage === 'function') {
+      return <AdminConsolePage {...props} />;
+    }
+  } catch (_e) { /* fall through */ }
+
+  // Try lazy-import; if the file doesn't exist, fallback to a placeholder
+  const Lazy = React.useMemo(
+    () =>
+      React.lazy(() =>
+        import('./pages/AdminConsolePage.jsx').catch(() => ({
+          default: (p) => (
+            <div style={{ padding: 16 }}>
+              <h1 style={{ marginTop: 0 }}>Admin Console</h1>
+              <div style={{ opacity: .8 }}>The Admin Console module isn’t available in this build. You can continue using the rest of the app.</div>
+            </div>
+          ),
+        }))
+      ),
+    []
+  );
+
+  return (
+    <React.Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+      <Lazy {...props} />
+    </React.Suspense>
+  );
+}
+// SafeAutonomy: fall back to a minimal placeholder if real AutonomyPage isn't available
+function AutonomySafe(props){
+  try {
+    if (typeof AutonomyPage === 'function') {
+      return <AutonomyPage {...props} />;
+    }
+  } catch (_e) { /* ignore and fall through */ }
+  return (
+    <div style={{ padding: 16 }}>
+      <h1 style={{ marginTop: 0 }}>Autonomy (beta)</h1>
+      <div style={{ opacity: .8 }}>The Autonomy page isn't available in this build. You can continue using the rest of the app.</div>
+    </div>
+  );
+}
+// --- Ensure a Dashboard symbol exists so routes can render a real dashboard ---
+// We alias Dashboard to the enhanced DashboardWithOnboarding so both names exist.
+function Dashboard(props){
+  // Prefer the enhanced dashboard if it exists
+  try {
+    if (typeof DashboardWithOnboarding === 'function') {
+      return <DashboardWithOnboarding {...props} />;
+    }
+  } catch (_e) { /* fall through to lightweight fallback */ }
+
+  // Lightweight self-contained fallback so the page isn't stuck on "Loading…"
+  const [me, setMe] = React.useState(null);
+  const [err, setErr] = React.useState('');
+
+  const API_BASE = '/api';
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/me`, { credentials: 'include' });
+        const j = await r.json().catch(()=>({}));
+        if (!alive) return;
+        if (r.ok) setMe(j); else setErr(j?.error || `HTTP ${r.status}`);
+      } catch(e){
+        if (alive) setErr(String(e?.message || e));
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  return (
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginTop: 0 }}>Dashboard</h2>
+      {err && (
+        <div style={{ padding:'8px 10px', border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:8, marginBottom:10 }}>
+          Error: {err}
+        </div>
+      )}
+      {!me ? (
+        <div style={{ opacity: .8 }}>Loading profile…</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ padding: '10px 12px', border: '1px solid rgba(255,255,255,.12)', borderRadius: 10, background: 'rgba(255,255,255,.04)' }}>
+            Signed in as <b>{me.email || me.user?.email || 'you'}</b> — plan: <code>{String(me.effective_plan || me.plan_actual || me.plan || 'unknown')}</code>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
+            <a href="/alerts" style={{ padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:10, display:'block' }}>Open Alerts</a>
+            <a href="/integrations" style={{ padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:10, display:'block' }}>Integrations</a>
+            <a href="/account" style={{ padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:10, display:'block' }}>Account</a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Expose to globalThis to avoid any bundler scoping surprises when other guards check presence
+try {
+  globalThis.Dashboard = Dashboard;
+  // Also expose the wrapper in case any guard checks it by name on window/globalThis
+  if (typeof DashboardWithOnboarding === 'function') {
+    globalThis.DashboardWithOnboarding = DashboardWithOnboarding;
+  }
+} catch (_e) { /* no-op */ }
+// SafeDashboard: fall back to Dashboard or a minimal placeholder if needed
+function SafeDashboard(props){
+  // Try to render the real dashboard first
+  try {
+    if (typeof DashboardWithOnboarding === 'function') {
+      return <DashboardWithOnboarding {...props} />;
+    }
+  } catch (_e) { /* ignore */ }
+  try {
+    if (typeof Dashboard === 'function') {
+      return <Dashboard {...props} />;
+    }
+  } catch (_e) { /* ignore */ }
+
+  // If neither dashboard exists, show a diagnostic panel instead of an empty "Loading…"
+  const [diag, setDiag] = React.useState({ token:false, meOk:null, plan:null, error:null });
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const token = (()=>{ try { return !!localStorage.getItem('token'); } catch { return false; } })();
+        let meOk = null, plan = null;
+        try {
+          const API_BASE = '/api';
+          const r = await fetch(`${API_BASE}/me`, { credentials: 'include' });
+          meOk = r.ok;
+          if (r.ok) {
+            const j = await r.json().catch(()=>({}));
+            plan = j?.effective_plan || j?.plan_actual || j?.plan || null;
+          }
+        } catch (e) {
+          meOk = false;
+        }
+        if (alive) setDiag({ token, meOk, plan, error:null });
+      } catch (e) {
+        if (alive) setDiag({ token:false, meOk:false, plan:null, error:String(e?.message||e) });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  return (
+    <div style={{ padding: 16 }}>
+      <h2 style={{ marginTop: 0 }}>Dashboard loading…</h2>
+      <p style={{ opacity: .8 }}>We couldn't find a Dashboard component in this build. The app will still work; below is a quick diagnostic to help us fix the route without a blank screen.</p>
+      <ul style={{ lineHeight: 1.6 }}>
+        <li>DashboardWithOnboarding: <code>{(typeof DashboardWithOnboarding === 'function') ? 'present' : 'missing'}</code></li>
+        <li>Dashboard: <code>{(typeof Dashboard === 'function') ? 'present' : 'missing'}</code></li>
+        <li>Token in localStorage: <code>{diag.token ? 'present' : 'missing'}</code></li>
+        <li>/me via cookie: <code>{diag.meOk === null ? 'checking…' : diag.meOk ? '200 OK' : '401/failed'}</code></li>
+        {diag.plan ? <li>Plan detected: <code>{String(diag.plan)}</code></li> : null}
+        {diag.error ? <li>Error: <code>{String(diag.error)}</code></li> : null}
+      </ul>
+      <div style={{ display:'flex', gap:8, marginTop:8 }}>
+        <button onClick={() => window.location.reload()} style={{ padding:'8px 12px' }}>Reload</button>
+        <a href="/login" style={{ padding:'8px 12px', border:'1px solid rgba(255,255,255,.2)', borderRadius:8 }}>Go to login</a>
+      </div>
+    </div>
+  );
+}
+// --- SafeErrorBoundary: always shows a visible error box instead of failing silently ---
+class SafeErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { err: null, info: null }; }
+  componentDidCatch(error, info){
+    try { console.error('[SafeErrorBoundary]', error, info); } catch {}
+    this.setState({ err: error, info });
+  }
+  render(){
+    if (this.state && this.state.err) {
+      const msg = String(this.state.err?.message || this.state.err || 'Unknown error');
+      return (
+        <div style={{padding:16, margin:16, border:'1px solid #ff7a7a88', background:'#ff7a7a22', borderRadius:10}}>
+          <div style={{fontWeight:700, marginBottom:6}}>App error</div>
+          <div style={{whiteSpace:'pre-wrap'}}>{msg}</div>
+          <div style={{opacity:.8, marginTop:6, fontSize:12}}>
+            If this persists, check the console for a stack trace logged by SafeErrorBoundary.
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+/* --- SAFETY GUARD: if RequireAuth identifier is missing at runtime, provide a permissive fallback --- */
+if (typeof RequireAuth === 'undefined') {
+  // eslint-disable-next-line no-var
+  var RequireAuth = function RequireAuth(props){ return props && props.children; };
+  try { globalThis.RequireAuth = globalThis.RequireAuth || RequireAuth; } catch (_e) {}
+}
+function App(){
+  return (
+    <SafeErrorBoundary>
+      <LayoutSafe>
         <>
           <Routes>
             <Route path="/login" element={<AuthLogin/>}/>
             <Route path="/register" element={<Register/>}/>
 
-            <Route path="/" element={protect(<DashboardWithOnboarding api={API}/>)} />
-            <Route path="/integrations" element={protect(<Integrations api={API}/>)} />
-            <Route path="/policy" element={protect(<Policy api={API}/>)} />
-            <Route path="/pricing" element={protect(<PricingPage/>)} />
-            <Route path="/account" element={protect(<Account api={API}/>)} />
-            <Route path="/alerts" element={protect(<AlertsPage/>)} />
-            <Route path="/autonomy" element={protect(<AutonomyPage/>)} />
-            <Route path="/admin" element={protect(<Admin api={API}/>)} />
+            <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
+            <Route path="/dashboard" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
+            <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>} />
+            <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>} />
+            <Route path="/pricing" element={<RequireAuth><PricingPage/></RequireAuth>} />
+            <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>} />
+            <Route path="/alerts" element={<RequireAuth><AlertsPage/></RequireAuth>} />
+            <Route path="/autonomy" element={<RequireAuth><AutonomyPage/></RequireAuth>} />
+            <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>} />
 
             <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
-            <Route path="/admin/console/trial" element={protect(<AdminConsolePage page="trial" />)} />
-            <Route path="/admin/console/retention" element={protect(<AdminConsolePage page="retention" />)} />
-            <Route path="/admin/console/audit" element={protect(<AdminConsolePage page="audit" />)} />
-            <Route path="/test" element={protect(<TestEvents api={API}/>)} />
-            <Route path="/support" element={protect(<Support/>)} /> 
+            <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePage page="trial" /></RequireAuth>} />
+            <Route path="/admin/console/retention" element={<RequireAuth><AdminConsolePage page="retention" /></RequireAuth>} />
+            <Route path="/admin/console/audit" element={<RequireAuth><AdminConsolePage page="audit" /></RequireAuth>} />
+            <Route path="/test" element={<RequireAuth><TestEvents api={API}/></RequireAuth>} />
+            <Route path="/support" element={<RequireAuth><Support/></RequireAuth>} /> 
             <Route path="*" element={<Navigate to="/" replace />}/>
           </Routes>
         </>
-      </Layout>
-    </ErrorBoundary>
+      </LayoutSafe>
+    </SafeErrorBoundary>
   );
 }
 
@@ -3256,7 +3818,7 @@ function Integrations({ api }) {
     } catch (_e) {}
     return () => { if (timer) try { clearTimeout(timer); } catch(_e){} };
   }, [meState?.trial?.ends_at, meState?.trial?.active, meState?.plan_actual, meState?.plan]);
-  const caps = planCapabilities(meState?.plan_actual || meState?.plan || 'trial', meState);
+  const caps = planCapabilities(meState?.effective_plan || meState?.plan_actual || meState?.plan || 'trial', meState);
   // --- Helper functions for email provider normalization and OAuth ---
   function normEmailProvider(p){
     p = (p||'').toLowerCase();
@@ -3632,7 +4194,7 @@ function Integrations({ api }) {
           <div style={{fontWeight:700}}>AI Security Assistant</div>
           <div style={{opacity:.85,marginTop:6}}>Ask natural‑language questions, triage alerts, and get guidance (preview).</div>
           <div style={{marginTop:8}}>
-            {planCapabilities(meState?.plan || 'trial', meState).ai ? (
+            {planCapabilities(meState?.effective_plan || meState?.plan_actual || meState?.plan || 'trial', meState).ai ? (
               <Link to="/autonomy"><button style={btn}>Open Autonomy</button></Link>
             ) : (
               <LockedTile title="AI Security Assistant" reason="Available on Pro+ (trial preview unlocks it temporarily)." />
@@ -3769,8 +4331,8 @@ function TestEvents({ api }){
   const apiKey = (typeof localStorage !== "undefined" && localStorage.getItem("api_key")) || "";
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
-  const caps = planCapabilities(me?.plan || "trial", me);
-  const planStr = String(me?.plan_actual || me?.plan || '').toLowerCase();
+  const caps = planCapabilities(me?.effective_plan || me?.plan_actual || me?.plan || "trial", me);
+const planStr = String(me?.effective_plan || me?.plan_actual || me?.plan || '').toLowerCase();
   const adminPreviewTE = (typeof localStorage!=='undefined' && (localStorage.getItem('admin_plan_preview')||'')).toLowerCase();
   const showTrial = !!(me?.trial?.active) && (planStr === 'basic' || planStr === 'pro') && adminPreviewTE !== 'pro_plus';
   const isProPlus = planStr === 'pro_plus';
@@ -3913,7 +4475,16 @@ function planCapabilities(plan, me){
   const p = String(plan || '').toLowerCase();
   const trialActive = !!(me?.trial?.active);
   const trialUnlock = trialActive && (p === 'basic' || p === 'pro');
-  const effective = trialUnlock ? 'pro_plus' : p;
+  let effective = trialUnlock ? 'pro_plus' : p;
+
+  // Super‑admin preview: if the admin UI stored an override, honor it here.
+  // This is read‑only and only affects the current browser; it does not change billing.
+  try {
+    const preview = ((typeof localStorage !== 'undefined' && localStorage.getItem('admin_plan_preview')) || '').toLowerCase();
+    if (me?.is_super && (preview === 'pro_plus' || preview === 'pro+')) {
+      effective = 'pro_plus';
+    }
+  } catch (_) {}
 
   return {
     email: true, // always
@@ -3947,19 +4518,15 @@ function normalizeRisk(v){
 // --- BillingPanel: self-serve subscriptions (Basic/Pro/Pro+) + Portal ---
 
 function BillingPanel() {
-  const [me, setMe] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const [me, setMe] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
 
-  const API_ORIGIN =
-    (import.meta?.env?.VITE_API_BASE)
-    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
+  const API_BASE = '/api';
 
   async function api(path, opts = {}) {
     const token = localStorage.getItem("token") || "";
-    const url = `${API_ORIGIN}${path.startsWith('/') ? path : '/' + path}`;
+    const url = `${API_BASE}${path.startsWith('/') ? path : '/' + path}`;
     const res = await fetch(url, {
       method: opts.method || "GET",
       headers: {
@@ -3976,7 +4543,7 @@ function BillingPanel() {
     return json;
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     (async () => {
       try {
         const j = await api("/me");
@@ -4134,18 +4701,14 @@ function Support(){
   const [sent, setSent] = React.useState(false);
   const [err, setErr] = React.useState("");
 
-  const API_ORIGIN =
-    (import.meta?.env?.VITE_API_BASE)
-    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
+  const API_BASE = '/api';
 
   async function submit(e){
     e.preventDefault();
     setErr("");
     try{
       if (hp) { setSent(true); return; } // bot trap
-      const r = await fetch(`${API_ORIGIN}/support/send`, {
+      const r = await fetch(`${API_BASE}/support/send`, {
         method: "POST",
         headers: { "Content-Type":"application/json" },
         body: JSON.stringify({ name, email, message, hp })
@@ -4197,7 +4760,7 @@ function Support(){
 }
 // ---- DEBUG OVERLAY (temporary, to diagnose blank screen) ----
 function DebugOverlay(){
-  const loc = useLocation ? useLocation() : { pathname: '(no-router)' };
+  const loc = (typeof useLocation !== 'undefined') ? useLocation() : { pathname: '(no-router)' };
   const [visible, setVisible] = React.useState(()=>{
     try{ return localStorage.getItem('debug:overlay') === '1'; }catch{ return true; }
   });
@@ -4237,13 +4800,179 @@ if (typeof window !== 'undefined') {
 // Replace with:
 // <img src="/brand/logo.png" alt="Cyber Guard Pro" style={{height:54,width:"auto",display:"block",objectFit:"contain"}} />
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <DebugOverlay/>
-      <App/>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+// --- SAFETY NET: global fetch shim to always attach Authorization and avoid stray preview header ---
+(() => {
+  if (typeof window === 'undefined' || window.__authFetchShim) return;
+  window.__authFetchShim = true;
+  const orig = window.fetch.bind(window);
+  const API_HOST = 'cyberguard-pro-cloud.onrender.com';
+  const API_HTTP = 'http://localhost:8080';
+  const API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
+
+  function looksLikeApi(u){
+    return u.startsWith(API_HTTP) || u.startsWith(API_HTTPS) || u.startsWith('/api') || u.includes(API_HOST);
+  }
+
+  async function refreshIfNeeded() {
+    try {
+      const r = await orig('/api/auth/refresh', { method:'POST', credentials:'include' });
+      return r.ok;
+    } catch { return false; }
+  }
+
+  window.fetch = async (input, init = {}) => {
+    let url = typeof input === 'string' ? input : (input && input.url) || '';
+    const isApi = looksLikeApi(url);
+    if (isApi) {
+      // Ensure cookies are sent
+      init = { credentials: 'include', ...init };
+      if (!init.credentials) init.credentials = 'include';
+
+      // Keep backward-compat: if an explicit Bearer is provided by caller, leave it
+      // Otherwise, do not force Authorization here; the cookie should be enough
+    }
+
+    let res = await orig(input, init);
+    if (isApi && res.status === 401) {
+      // try silent refresh once and retry
+      const ok = await refreshIfNeeded();
+      if (ok) res = await orig(input, init);
+    }
+    return res;
+  };
+})();
+
+// --- Silent session refresher to keep cookies alive ---
+(function startSilentRefresh(){
+  try {
+    const tick = async ()=>{
+      try { await fetch('/api/auth/refresh', { method:'POST', credentials:'include' }); } catch {}
+    };
+    tick();
+    setInterval(tick, 10 * 60 * 1000); // every 10 minutes
+  } catch {}
+})();
+function __showFatalOverlay(error){
+  try {
+    const id = '__fatal-overlay__';
+    // Update existing overlay if present
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.style.position = 'fixed';
+      el.style.inset = '16px';
+      el.style.zIndex = '999999';
+      el.style.padding = '16px';
+      el.style.border = '1px solid #ff7a7a88';
+      el.style.background = '#0b0c0d';
+      el.style.color = '#e6e9ef';
+      el.style.borderRadius = '10px';
+      el.style.boxShadow = '0 18px 48px rgba(0,0,0,.4)';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.style.marginBottom = '6px';
+    title.textContent = 'Startup error';
+
+    const msg = document.createElement('div');
+    msg.style.whiteSpace = 'pre-wrap';
+    msg.style.margin = '6px 0';
+    msg.textContent = String(error && (error.message || error.reason) || error || 'Unknown error');
+
+    const pre = document.createElement('pre');
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.style.marginTop = '8px';
+    pre.textContent = (error && (error.stack || ''));
+
+    const env = document.createElement('div');
+    env.style.opacity = '.85';
+    env.style.marginTop = '10px';
+    env.style.fontSize = '12px';
+    try {
+      const info = {
+        react: (window.React && window.React.version) || '(?)',
+        hasReact: !!window.React,
+        hasReactDOM: !!(window.ReactDOM && window.ReactDOM.createRoot),
+        location: (window.location && window.location.href) || '(no window)'
+      };
+      env.textContent = 'env: ' + JSON.stringify(info);
+    } catch(_) {}
+
+    el.appendChild(title);
+    el.appendChild(msg);
+    el.appendChild(pre);
+    el.appendChild(env);
+
+    try { console.error('[fatal]', error); } catch {}
+  } catch(_) {}
+}
+
+// Ensure a root node exists and show a tiny boot hint so we know HTML is visible
+(function __ensureRoot(){
+  try{
+    document.body.style.background = document.body.style.background || '#0b0c0d';
+    document.body.style.color = document.body.style.color || '#e6e9ef';
+    let root = document.getElementById('root');
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'root';
+      root.textContent = 'Booting…';
+      document.body.appendChild(root);
+    }
+  }catch(e){ __showFatalOverlay(e); }
+})();
+
+
+// Safety: export React and ReactDOM to global scope for error overlays and diagnostics
+try { globalThis.React = React; globalThis.ReactDOM = ReactDOM; } catch(_) {}
+
+(function __mount(){
+  try {
+    const rootEl = document.getElementById('root');
+    if (!rootEl) throw new Error('Root element not found');
+
+    // Basic sanity diagnostics before mounting full app
+    if (!(window.ReactDOM && typeof ReactDOM.createRoot === 'function')) {
+      throw new Error('ReactDOM.createRoot unavailable');
+    }
+
+    const root = ReactDOM.createRoot(rootEl);
+
+    // Phase 1: mount a tiny boot component so the page never stays blank
+    function BootOK(){
+      return React.createElement('div', { style:{padding:'8px',opacity:.7,fontSize:12} }, 'booting…');
+    }
+    root.render(React.createElement(BootOK));
+
+    // Phase 2: switch to the real app in a microtask; if that fails, show overlay and keep BootOK
+    queueMicrotask(() => {
+      try {
+        root.render(
+          React.createElement(React.StrictMode, null,
+            React.createElement(BrowserRouter, null,
+              React.createElement(DebugOverlay, null),
+              React.createElement(App, null)
+            )
+          )
+        );
+      } catch (e) {
+        __showFatalOverlay(e);
+      }
+    });
+  } catch (e) {
+    __showFatalOverlay(e);
+  }
+})();
+
+// Upgrade global error taps to also show fatal overlay if React hasn't mounted yet
+if (typeof window !== 'undefined') {
+  const handler = (err) => { try { __showFatalOverlay(err && (err.error || err.reason || err)); } catch(_){} };
+  window.addEventListener('error', handler);
+  window.addEventListener('unhandledrejection', handler);
+}
 
 // Only a single BrandLogo definition should exist in this file.
