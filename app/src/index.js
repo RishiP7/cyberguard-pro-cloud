@@ -5239,131 +5239,6 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
-// /api prefix URL rewrite shim (no double routing, no recursion)
-// This rewrites incoming URLs so existing routes like `/me`, `/auth/*` work under `/api/...`.
-if (!app._api_prefix_rewrite) {
-  app._api_prefix_rewrite = true;
-  app.use((req, _res, next) => {
-    if (req.url === '/api') {
-      req.url = '/';
-    } else if (req.url.startsWith('/api/')) {
-      // strip the /api prefix and let the normal routes handle it
-      req.url = req.url.slice(4);
-    }
-    next();
-  });
-}
-// Sentry error handler (must be before any other error middleware)
-if (Sentry && process.env.SENTRY_DSN) {
-  Sentry.setupExpressErrorHandler(app);
-}
-// Minimal fallback error handler to avoid leaking internals
-app.use((err, _req, res, _next) => {
-  try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
-  res.status(500).json({ ok:false, error: "internal_error" });
-});
-app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
-
-// ---------- Super Admin DB diagnostics ----------
-app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
-  try{
-    const t = await q(`SELECT to_regclass('public.apikeys') IS NOT NULL AS apikeys_exists`);
-    const c = await q(`SELECT COUNT(*)::int AS cnt FROM apikeys`);
-    return res.json({ ok:true, apikeys_table: t.rows[0]?.apikeys_exists===true, apikey_count: c.rows[0]?.cnt||0 });
-  }catch(e){
-    console.error('db diag failed', e);
-    return res.status(500).json({ ok:false, error: String(e.message||e) });
-  }
-});
-
-// Convenience wrapper: force reset (super only). Mirrors /admin/ops/connector/reset but forces details NULL.
-app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async (req, res) => {
-  const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
-  // proxy to the main handler by setting query flags, then re-running logic here
-  try {
-    // Synthesize query flags
-    req.query = Object.assign({}, req.query || {}, { force: '1', purge: (req.query?.purge ? req.query.purge : undefined) });
-    // Re-run the main logic by inlining a minimal call path:
-    const provider = req.body?.provider;
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
-    // Invoke the same SQL path as /reset by calling the handler body again would be complex.
-    // Instead, duplicate the minimal strong clear here.
-    const tid = req.user.tenant_id;
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
-
-    // First pass: clear details + health
-    let upd1 = null;
-    try {
-      upd1 = await q(`
-        UPDATE connectors
-           SET status='new',
-               last_error=NULL,
-               last_sync_at=NULL,
-               details=NULL
-         WHERE tenant_id=$1 AND provider=$2
-      `, [tid, provider]);
-    } catch (_e) {
-      upd1 = null;
-    }
-
-    // Guard rails: if status somehow remains not 'new', force it again explicitly
-    try {
-      await q(`
-        UPDATE connectors
-           SET status='new'
-         WHERE tenant_id=$1 AND provider=$2
-           AND (status IS DISTINCT FROM 'new')
-      `, [tid, provider]);
-    } catch (_e) {}
-
-    // Also ensure last_error is NULL even if other triggers re-populated it
-    try {
-      await q(`
-        UPDATE connectors
-           SET last_error=NULL
-         WHERE tenant_id=$1 AND provider=$2
-           AND last_error IS NOT NULL
-      `, [tid, provider]);
-    } catch (_e) {}
-
-    // Also remove known token keys from other JSON-ish columns if they exist
-    const extraCols = ['data','config','meta','settings','auth_json'];
-    for (const c of extraCols) {
-      try { await q(`UPDATE connectors SET ${c}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
-    }
-
-    // Diagnostic readback to confirm final status and details are as expected
-    let statusAfter = null, detailsAfterNull = null;
-    try {
-      const chk = await q(`SELECT status, details FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [tid, provider]);
-      if (chk.rows && chk.rows[0]) {
-        statusAfter = chk.rows[0].status || null;
-        detailsAfterNull = (chk.rows[0].details === null);
-      }
-    } catch (_e) {}
-
-    try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider, rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null, status_after: statusAfter, details_is_null: detailsAfterNull }); } catch(_e) {}
-    return res.json({
-      ok: true,
-      forced: true,
-      rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null,
-      status_after: statusAfter,
-      details_is_null: detailsAfterNull
-    });
-  } catch(e) {
-    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
-    if (dbg) {
-  return res.status(500).json({ ok:false, error:'force reset failed', detail: String(e?.message || e) });
-}
-return res.status(500).json({ ok:false, error:'force reset failed' });
-  }
-});
-
-// ===== Express 5 catch-all route compatibility patch =====
-// All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
-
 // ===== GLOBAL CORS (must be before any routes) =====
 // Handle all CORS & preflight centrally to avoid route-level mismatches.
 app.use((req, res, next) => {
@@ -5553,6 +5428,132 @@ if (!globalThis.__cg_cookie_sessions__) {
   }
 }
 // ===== End cookie-based session helpers =====
+
+// /api prefix URL rewrite shim (no double routing, no recursion)
+// This rewrites incoming URLs so existing routes like `/me`, `/auth/*` work under `/api/...`.
+if (!app._api_prefix_rewrite) {
+  app._api_prefix_rewrite = true;
+  app.use((req, _res, next) => {
+    if (req.url === '/api') {
+      req.url = '/';
+    } else if (req.url.startsWith('/api/')) {
+      // strip the /api prefix and let the normal routes handle it
+      req.url = req.url.slice(4);
+    }
+    next();
+  });
+}
+// Sentry error handler (must be before any other error middleware)
+if (Sentry && process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
+// Minimal fallback error handler to avoid leaking internals
+app.use((err, _req, res, _next) => {
+  try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
+  res.status(500).json({ ok:false, error: "internal_error" });
+});
+app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
+
+// ---------- Super Admin DB diagnostics ----------
+app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
+  try{
+    const t = await q(`SELECT to_regclass('public.apikeys') IS NOT NULL AS apikeys_exists`);
+    const c = await q(`SELECT COUNT(*)::int AS cnt FROM apikeys`);
+    return res.json({ ok:true, apikeys_table: t.rows[0]?.apikeys_exists===true, apikey_count: c.rows[0]?.cnt||0 });
+  }catch(e){
+    console.error('db diag failed', e);
+    return res.status(500).json({ ok:false, error: String(e.message||e) });
+  }
+});
+
+// Convenience wrapper: force reset (super only). Mirrors /admin/ops/connector/reset but forces details NULL.
+app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async (req, res) => {
+  const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
+  // proxy to the main handler by setting query flags, then re-running logic here
+  try {
+    // Synthesize query flags
+    req.query = Object.assign({}, req.query || {}, { force: '1', purge: (req.query?.purge ? req.query.purge : undefined) });
+    // Re-run the main logic by inlining a minimal call path:
+    const provider = req.body?.provider;
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    // Invoke the same SQL path as /reset by calling the handler body again would be complex.
+    // Instead, duplicate the minimal strong clear here.
+    const tid = req.user.tenant_id;
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
+
+    // First pass: clear details + health
+    let upd1 = null;
+    try {
+      upd1 = await q(`
+        UPDATE connectors
+           SET status='new',
+               last_error=NULL,
+               last_sync_at=NULL,
+               details=NULL
+         WHERE tenant_id=$1 AND provider=$2
+      `, [tid, provider]);
+    } catch (_e) {
+      upd1 = null;
+    }
+
+    // Guard rails: if status somehow remains not 'new', force it again explicitly
+    try {
+      await q(`
+        UPDATE connectors
+           SET status='new'
+         WHERE tenant_id=$1 AND provider=$2
+           AND (status IS DISTINCT FROM 'new')
+      `, [tid, provider]);
+    } catch (_e) {}
+
+    // Also ensure last_error is NULL even if other triggers re-populated it
+    try {
+      await q(`
+        UPDATE connectors
+           SET last_error=NULL
+         WHERE tenant_id=$1 AND provider=$2
+           AND last_error IS NOT NULL
+      `, [tid, provider]);
+    } catch (_e) {}
+
+    // Also remove known token keys from other JSON-ish columns if they exist
+    const extraCols = ['data','config','meta','settings','auth_json'];
+    for (const c of extraCols) {
+      try { await q(`UPDATE connectors SET ${c}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
+    }
+
+    // Diagnostic readback to confirm final status and details are as expected
+    let statusAfter = null, detailsAfterNull = null;
+    try {
+      const chk = await q(`SELECT status, details FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [tid, provider]);
+      if (chk.rows && chk.rows[0]) {
+        statusAfter = chk.rows[0].status || null;
+        detailsAfterNull = (chk.rows[0].details === null);
+      }
+    } catch (_e) {}
+
+    try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider, rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null, status_after: statusAfter, details_is_null: detailsAfterNull }); } catch(_e) {}
+    return res.json({
+      ok: true,
+      forced: true,
+      rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null,
+      status_after: statusAfter,
+      details_is_null: detailsAfterNull
+    });
+  } catch(e) {
+    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
+    if (dbg) {
+  return res.status(500).json({ ok:false, error:'force reset failed', detail: String(e?.message || e) });
+}
+return res.status(500).json({ ok:false, error:'force reset failed' });
+  }
+});
+
+// ===== Express 5 catch-all route compatibility patch =====
+// All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
+
 
 // ===== DEV LOGIN (safe, opt-in) =====
 // Enable a one-click login to a demo/super account for debugging environments.
