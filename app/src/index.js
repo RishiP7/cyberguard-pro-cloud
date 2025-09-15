@@ -5611,6 +5611,34 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 
       // Set cookies for both access & refresh (simple compat)
       _cgSetTokens(res, token, token);
+      // Also set cookies explicitly to guarantee persistence behind proxies/CDNs
+      try {
+        res.cookie('cg_access', token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+          path: '/',
+          maxAge: 15 * 60 * 1000 // 15 minutes
+        });
+        res.cookie('cg_refresh', token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+          path: '/',
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+      } catch(_e) {
+        // Fallback in case res.cookie is unavailable; append Set-Cookie headers
+        const prev = res.getHeader('Set-Cookie');
+        const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+        next.push(
+          `cg_access=${encodeURIComponent(token)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+        );
+        next.push(
+          `cg_refresh=${encodeURIComponent(token)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
+        );
+        res.setHeader('Set-Cookie', next);
+      }
 
       return res.json({
         ok: true,
