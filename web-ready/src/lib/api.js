@@ -1,4 +1,4 @@
-const API = '/api'; // we proxy in Render, so same-origin
+export const API = import.meta.env?.VITE_API_BASE || '/api'; // environment override, defaults to /api
 
 function getToken() {
   return localStorage.getItem('auth_token') || localStorage.getItem('cg_token') || '';
