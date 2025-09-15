@@ -10,8 +10,6 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from "react
 
 /* Define globals only if they aren't already defined in this bundle */
 /// eslint-disable-next-line no-var
-+ const API_BASE = '/api';
-/// eslint-disable-next-line no-var
 var apiGet = (typeof apiGet !== "undefined")
   ? apiGet
   : async function apiGet(path){
@@ -1046,17 +1044,13 @@ function AIDock({ me }) {
 function TopBadges(){
   const [me, setMe] = React.useState(null);
 
-  const API_ORIGIN =
-    (import.meta?.env?.VITE_API_BASE)
-    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
+  const API_BASE = '/api';
 
   React.useEffect(()=>{
     (async()=>{
       try{
         const token = (typeof localStorage!=='undefined' && localStorage.getItem('token')) || '';
-        const r = await fetch(`${API_ORIGIN}/me`, { headers:{ Authorization:`Bearer ${token}` } });
+        const r = await fetch(`${API_BASE}/me`, { headers:{ Authorization:`Bearer ${token}` }, credentials: 'include' });
         const t = await r.text(); let j; try{ j=JSON.parse(t);}catch{j=null;}
         if (j && typeof j === 'object') setMe(j);
       }catch(_e){}
@@ -1853,18 +1847,14 @@ function Pricing(){
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
 
-  const API_ORIGIN =
-    (import.meta?.env?.VITE_API_BASE)
-    || (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')
-          ? 'https://cyberguard-pro-cloud.onrender.com'
-          : 'http://localhost:8080');
+  const API_BASE = '/api';
 
   async function checkout(plan){
     setErr(""); setMsg(""); setBusy(true);
     try{
       const token = localStorage.getItem("token") || "";
       const body  = coupon ? { plan, coupon } : { plan };
-      const r = await fetch(`${API_ORIGIN}/billing/checkout`, {
+      const r = await fetch(`${API_BASE}/billing/checkout`, {
         method: "POST",
         headers: { "Content-Type":"application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body)
@@ -1889,7 +1879,7 @@ function Pricing(){
     setErr(""); setMsg(""); setBusy(true);
     try{
       const token = localStorage.getItem("token") || "";
-      const r = await fetch(`${API_ORIGIN}/billing/portal`, {
+      const r = await fetch(`${API_BASE}/billing/portal`, {
         method: "POST",
         headers: { "Content-Type":"application/json", Authorization: `Bearer ${token}` }
       });
