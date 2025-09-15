@@ -10,13 +10,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from "react
 
 /* Define globals only if they aren't already defined in this bundle */
 /// eslint-disable-next-line no-var
-var API_BASE = (typeof API_BASE !== "undefined")
-  ? API_BASE
-  : ((import.meta?.env?.VITE_API_BASE)
-     || (typeof window !== "undefined" && window.location.hostname.endsWith("onrender.com")
-           ? "https://cyberguard-pro-cloud.onrender.com"
-           : "http://localhost:8080"));
-
++ const API_BASE = '/api';
 /// eslint-disable-next-line no-var
 var apiGet = (typeof apiGet !== "undefined")
   ? apiGet
