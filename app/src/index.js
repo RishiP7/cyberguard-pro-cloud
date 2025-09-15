@@ -3997,7 +3997,7 @@ async function ensureConnectorHealthColumns() {
 
 
 // ---------- /me route ----------
-app.get('/me', authMiddleware, async (req, res) => {
+async function meRouteHandler(req, res) {
   {
     try {
       // breadcrumbs for debugging
@@ -4111,15 +4111,25 @@ app.get('/me', authMiddleware, async (req, res) => {
       return res.status(500).json({ error: 'me failed', detail: msg });
     }
   }
-});
+}
 
-// Remove any older duplicate /me routes so only this handler remains
+// Register the handler on both legacy and /api paths
+app.get('/me', authMiddleware, meRouteHandler);
+app.get('/api/me', authMiddleware, meRouteHandler);
+
+// Remove any older duplicate /me routes so only this handler remains (but DO NOT remove /api/me)
 try {
   if (app && app._router && Array.isArray(app._router.stack)) {
     let seen = 0;
     for (let i = app._router.stack.length - 1; i >= 0; i--) {
       const layer = app._router.stack[i];
-      if (layer && layer.route && layer.route.path === '/me' && layer.route.methods && layer.route.methods.get) {
+      if (
+        layer &&
+        layer.route &&
+        layer.route.path === '/me' &&
+        layer.route.methods &&
+        layer.route.methods.get
+      ) {
         seen++;
         // keep the most recent (this one), remove older ones
         if (seen > 1) {
