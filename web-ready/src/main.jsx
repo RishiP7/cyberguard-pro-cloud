@@ -148,7 +148,6 @@ var Policy = (typeof Policy !== 'undefined')
     try { console.warn('[boot-guard] skipped', e && (e.message || e)); } catch(_e) {}
   }
 })();
-import "./setupFetchAuth.js";
 // Ensure the UI uses a single, consistent token key.
 // Migrate any older keys (auth_token, cg_token) -> token on startup.
 (() => {
