@@ -5319,53 +5319,6 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 });
 
 // ---------- start ----------
-// ===== GLOBAL CORS (must be before any routes) =====
-// Handle all CORS & preflight centrally to avoid route-level mismatches.
-app.use((req, res, next) => {
-  // Vary so caches don't confuse different origins/headers
-  res.header("Vary", "Origin, Access-Control-Request-Headers");
-  // Only reflect allowed origins
-  if (allowOrigin(req.headers.origin)) {
-    res.header("Access-Control-Allow-Origin", req.headers.origin || '*');
-  }
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
-  // Allow our custom admin headers (both cases to satisfy some proxies)
-  res.header(
-    "Access-Control-Allow-Headers",
-    "authorization,content-type,x-admin-plan-preview,x-admin-bypass,Authorization,Content-Type,X-Admin-Plan-Preview,X-Admin-Bypass"
-  );
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-  next();
-});
-
-// Also register cors() so the library mirrors/validates as well.
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (allowOrigin(origin)) return cb(null, true);
-      // deny otherwise (surface as CORS error to browser)
-      return cb(new Error('Not allowed by CORS'), false);
-    },
-    credentials: true,
-    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "authorization",
-      "content-type",
-      "x-admin-plan-preview",
-      "x-admin-bypass",
-      "Authorization",
-      "Content-Type",
-      "X-Admin-Plan-Preview",
-      "X-Admin-Bypass"
-    ],
-    preflightContinue: false,
-    optionsSuccessStatus: 204
-  })
-);
-// ===== END GLOBAL CORS =====
 
 // ===== Cookie-based session helpers (idempotent, no external deps) =====
 if (!globalThis.__cg_cookie_sessions__) {
