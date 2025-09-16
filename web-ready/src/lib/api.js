@@ -46,3 +46,15 @@ export async function apiPostForm(path, formData) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
+
+// Allow both default and named import styles
+export default API;
+
+// Optional convenience object if callers want a single import
+export const Api = {
+  base: API,
+  get: apiGet,
+  post: apiPost,
+  postForm: apiPostForm,
+  fetchJSON,
+};
