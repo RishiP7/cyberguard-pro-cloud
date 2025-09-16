@@ -1,3 +1,4 @@
+import Login from "./pages/Login.jsx";
 // --- API base path ---
 const API_BASE = '/api';
 /* === SAFETY BOOTSTRAP (do not remove) ================================
@@ -3748,7 +3749,7 @@ function App(){
       <LayoutSafe>
         <>
           <Routes>
-            <Route path="/login" element={<LoginGuard/>}/>
+            <Route path="/login" element={<Login/>}/>
             <Route path="/register" element={<RegisterSafe/>}/>
 
             <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
