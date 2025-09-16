@@ -3726,7 +3726,7 @@ function App(){
             <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>} />
             <Route path="/pricing" element={<RequireAuth><PricingPage/></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>} />
-            <Route path="/alerts" element={<RequireAuth><AlertsPage/></RequireAuth>} />
+            <Route path="/alerts" element={<RequireAuth><AlertsPageSafe/></RequireAuth>} />
             <Route path="/autonomy" element={<RequireAuth><AutonomyPage/></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>} />
 
