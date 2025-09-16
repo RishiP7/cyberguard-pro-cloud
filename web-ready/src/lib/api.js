@@ -1,7 +1,17 @@
+
 const API = import.meta.env?.VITE_API_BASE || '/api'; // default to /api in prod, override via VITE_API_BASE
 
+let currentToken = null;
+
+export function setToken(t) {
+  currentToken = t;
+  try {
+    localStorage.setItem('auth_token', t);
+  } catch {}
+}
+
 function getToken() {
-  return localStorage.getItem('auth_token') || localStorage.getItem('cg_token') || '';
+  return currentToken || localStorage.getItem('auth_token') || localStorage.getItem('cg_token') || '';
 }
 
 export async function fetchJSON(path, init = {}) {
