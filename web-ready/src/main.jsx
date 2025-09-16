@@ -3479,6 +3479,13 @@ function RegisterSafe(props) {
   );
 }
 
+// Expose a safe Register for any stale chunks that reference window.Register
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.Register === 'undefined') {
+    globalThis.Register = RegisterSafe;
+  }
+} catch (_e) { /* no-op */ }
+
 // SafeAdmin: try global Admin; else lazy-load from pages/Admin.jsx; else show placeholder
 function AdminSafe(props){
   // 1) If a global Admin is available (defined earlier), use it
@@ -3711,7 +3718,7 @@ function App(){
         <>
           <Routes>
             <Route path="/login" element={<LoginGuard/>}/>
-            <Route path="/register" element={<Register/>}/>
+            <Route path="/register" element={<RegisterSafe/>}/>
 
             <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
