@@ -866,6 +866,38 @@ function LiveStatusTicker({ inline = false }) {
 }
 
 // ---- Admin Console (sidebar wrapper) ----
+function AdminConsolePage({ page }){
+  const [me, setMe] = React.useState(null);
+  React.useEffect(()=>{ apiGet('/me').then(setMe).catch(()=>setMe(null)); },[]);
+  if(!me) return <div style={{padding:16}}>Loading…</div>;
+  if(!(me.is_super || me.role === 'owner')) return <div style={{padding:16}}>Access denied.</div>;
+
+  const wrap = { display:'grid', gridTemplateColumns:'220px 1fr', gap:12 };
+  const side = { padding:12, border:'1px solid rgba(255,255,255,.12)', borderRadius:12, background:'rgba(255,255,255,.04)', position:'sticky', top:86, height:'fit-content' };
+  const link = { display:'block', padding:'8px 10px', borderRadius:8, border:'1px solid rgba(255,255,255,.12)', textDecoration:'none', color:'#e6e9ef', marginBottom:8, background:'rgba(255,255,255,.03)' };
+
+  return (
+    <div style={{padding:16}}>
+      <h1 style={{marginTop:0}}>Admin Console</h1>
+      <div style={wrap}>
+        <div style={side}>
+          <Link to="/admin/console/trial" style={link}>Trial Control</Link>
+          <Link to="/admin/console/retention" style={link}>Data Retention</Link>
+          <Link to="/admin/console/audit" style={link}>Audit Log</Link>
+        </div>
+        <div>
+          {page === 'trial' && <AdminTrialControl/>}
+          {page === 'retention' && <AdminOpsRetention/>}
+          {page === 'audit' && <AdminOpsAudit/>}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ---------- Layout ----------
+function SuperAdminBanner({ me }) {
+  if (!me?.is_super) return null;
+  return (
     <div style={{
       padding:'6px 10px',
       border:'1px solid #7bd88f55',
@@ -914,7 +946,6 @@ function LiveStatusTicker({ inline = false }) {
         Bypass paywall
       </label>
     </div>
-  );
 }
 function AIDock({ me }) {
   const [open, setOpen] = React.useState(false);
