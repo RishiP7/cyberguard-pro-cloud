@@ -3403,6 +3403,12 @@ function PolicySafe(props){
     </div>
   );
 }
+// Expose a safe Policy for any stale chunks that reference window.Policy
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.Policy === 'undefined') {
+    globalThis.Policy = PolicySafe;
+  }
+} catch (_e) { /* no-op */ }
 // SafeAccount: fall back to a minimal placeholder if real Account component isn't available
 function AccountSafe(props){
   try {
@@ -3417,6 +3423,12 @@ function AccountSafe(props){
     </div>
   );
 }
+// Expose a safe Account for any stale chunks that reference window.Account
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.Account === 'undefined') {
+    globalThis.Account = AccountSafe;
+  }
+} catch (_e) { /* no-op */ }
 // SafeAlerts: fall back to a minimal placeholder if real AlertsPage component isn't available
 
 function AlertsPageSafe(props){
@@ -3556,6 +3568,12 @@ function AutonomySafe(props){
     </div>
   );
 }
+// Expose a safe AutonomyPage for any stale chunks that reference window.AutonomyPage
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.AutonomyPage === 'undefined') {
+    globalThis.AutonomyPage = AutonomySafe;
+  }
+} catch (_e) { /* no-op */ }
 // --- Ensure a Dashboard symbol exists so routes can render a real dashboard ---
 // We alias Dashboard to the enhanced DashboardWithOnboarding so both names exist.
 function Dashboard(props){
@@ -3723,11 +3741,11 @@ function App(){
             <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
             <Route path="/integrations" element={<RequireAuth><Integrations api={API}/></RequireAuth>} />
-            <Route path="/policy" element={<RequireAuth><Policy api={API}/></RequireAuth>} />
+            <Route path="/policy" element={<RequireAuth><PolicySafe api={API}/></RequireAuth>} />
             <Route path="/pricing" element={<RequireAuth><PricingPage/></RequireAuth>} />
-            <Route path="/account" element={<RequireAuth><Account api={API}/></RequireAuth>} />
-            <Route path="/alerts" element={<RequireAuth><AlertsPageSafe/></RequireAuth>} />
-            <Route path="/autonomy" element={<RequireAuth><AutonomyPage/></RequireAuth>} />
+            <Route path="/account" element={<RequireAuth><AccountSafe api={API}/></RequireAuth>} />
+            <Route path="/alerts" element={<RequireAuth><AlertsPage/></RequireAuth>} />
+            <Route path="/autonomy" element={<RequireAuth><AutonomySafe/></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>} />
 
             <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
