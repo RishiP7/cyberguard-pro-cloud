@@ -3775,6 +3775,22 @@ async function requireProPlus(req, res, next) {
   }
 }
 
+// ===== CORS allowlist (frontend) =====
+const ALLOWED_ORIGINS = new Set(
+  [
+    'https://app.cyberguardpro.uk',
+    (process.env.FRONTEND_URL || '').replace(/\/$/, ''),
+    (process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '')
+  ].filter(Boolean)
+);
+function allowOrigin(origin) {
+  if (!origin) return true; // allow same-origin / server-to-server
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  // allow localhost for development
+  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  return false;
+}
+// ===== END CORS allowlist =====
 // ===== EARLY BOOTSTRAP: CORS + /api rewrite + cookie→auth (must be before any routes) =====
 if (!app._early_bootstrap) {
   app._early_bootstrap = true;
@@ -3788,8 +3804,8 @@ if (!app._early_bootstrap) {
 
     // --- CORS headers (always set, even on 4xx/5xx) ---
     res.header('Vary', 'Origin, Access-Control-Request-Headers');
-    if (req.headers.origin) {
-      res.header('Access-Control-Allow-Origin', req.headers.origin);
+    if (allowOrigin(req.headers.origin)) {
+      res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     }
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
@@ -5308,9 +5324,9 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 app.use((req, res, next) => {
   // Vary so caches don't confuse different origins/headers
   res.header("Vary", "Origin, Access-Control-Request-Headers");
-  // Always reflect origin for simplicity (tighten to a list if needed)
-  if (req.headers.origin) {
-    res.header("Access-Control-Allow-Origin", req.headers.origin);
+  // Only reflect allowed origins
+  if (allowOrigin(req.headers.origin)) {
+    res.header("Access-Control-Allow-Origin", req.headers.origin || '*');
   }
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
@@ -5328,7 +5344,11 @@ app.use((req, res, next) => {
 // Also register cors() so the library mirrors/validates as well.
 app.use(
   cors({
-    origin: (_origin, cb) => cb(null, true),
+    origin: (origin, cb) => {
+      if (allowOrigin(origin)) return cb(null, true);
+      // deny otherwise (surface as CORS error to browser)
+      return cb(new Error('Not allowed by CORS'), false);
+    },
     credentials: true,
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: [
