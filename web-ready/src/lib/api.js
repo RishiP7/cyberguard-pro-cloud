@@ -48,6 +48,7 @@ export async function apiPostForm(path, formData) {
 }
 
 // Allow both default and named import styles
+export { API };
 export default API;
 
 // Optional convenience object if callers want a single import
