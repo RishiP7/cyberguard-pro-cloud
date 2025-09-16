@@ -3561,6 +3561,12 @@ function AdminConsolePageSafe(props){
     </div>
   );
 }
+// Expose a safe Admin for any stale chunks that reference window.Admin
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.Admin === 'undefined') {
+    globalThis.Admin = AdminSafe;
+  }
+} catch (_e) { /* no-op */ }
 // SafeAutonomy: fall back to a minimal placeholder if real AutonomyPage isn't available
 function AutonomySafe(props){
   try {
@@ -3753,7 +3759,7 @@ function App(){
             <Route path="/account" element={<RequireAuth><AccountSafe api={API}/></RequireAuth>} />
             <Route path="/alerts" element={<RequireAuth><AlertsPageSafe/></RequireAuth>} />
             <Route path="/autonomy" element={<RequireAuth><AutonomySafe/></RequireAuth>} />
-            <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>} />
+            <Route path="/admin" element={<RequireAuth><AdminSafe api={API}/></RequireAuth>} />
 
             <Route path="/admin/console" element={<Navigate to="/admin/console/trial" replace />}/>
             <Route path="/admin/console/trial" element={<RequireAuth><AdminConsolePageSafe page="trial" /></RequireAuth>} />
