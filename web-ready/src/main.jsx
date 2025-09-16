@@ -945,7 +945,7 @@ function SuperAdminBanner({ me }) {
         />
         Bypass paywall
       </label>
-}    </div>
+    </div>
 function AIDock({ me }) {
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");
