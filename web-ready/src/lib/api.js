@@ -1,4 +1,3 @@
-
 const API = import.meta.env?.VITE_API_BASE || '/api'; // default to /api in prod, override via VITE_API_BASE
 
 let currentToken = null;
@@ -25,15 +24,24 @@ export async function fetchJSON(path, init = {}) {
   if (opts.credentials === undefined) opts.credentials = 'include';
 
   const res = await fetch(`${API}${path}`, opts);
+
+  // No content
+  if (res.status === 204) return null;
+
+  // Read body text once and try to parse JSON if present
+  const raw = await res.text();
+  const maybeJson = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
+
   if (res.status === 401) {
     try { localStorage.removeItem('auth_token'); localStorage.removeItem('cg_token'); } catch {}
-    throw new Error('UNAUTHORIZED');
+    throw new Error(maybeJson?.error || maybeJson?.message || 'UNAUTHORIZED');
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  if (res.status === 204) return null;
-  const len = res.headers.get('content-length');
-  if (len === '0') return null;
-  return res.json();
+
+  if (!res.ok) {
+    throw new Error(maybeJson?.error || maybeJson?.message || `HTTP ${res.status}`);
+  }
+
+  return maybeJson;
 }
 
 export function apiGet(path) {
