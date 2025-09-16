@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import API, { setToken } from "../lib/api.js";
+import { Api, setToken } from "../lib/api.js";
 
 export default function Login(){
   const [email, setEmail] = useState("");
@@ -12,7 +12,7 @@ export default function Login(){
     e.preventDefault();
     setErr("");
     try{
-      const j = await API.post("/auth/login", { email, password });
+      const j = await Api.post("/auth/login", { email, password });
       if(!j?.token){
         setErr(j?.error || "Login failed");
         return;
@@ -20,7 +20,7 @@ export default function Login(){
       setToken(j.token);
       navigate("/");
     }catch(e){
-      setErr(e?.error || "Network error");
+      setErr(e?.message || "Network error");
     }
   }
 
