@@ -3445,6 +3445,13 @@ function AlertsPageSafe(props){
   );
 }
 
+// Expose a safe AlertsPage for any stale chunks that reference window.AlertsPage
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.AlertsPage === 'undefined') {
+    globalThis.AlertsPage = AlertsPageSafe;
+  }
+} catch (_e) { /* no-op */ }
+
 // SafeRegister: wrapper for Register page (global if present, else lazy-load, else placeholder)
 function RegisterSafe(props) {
   try {
@@ -3744,7 +3751,7 @@ function App(){
             <Route path="/policy" element={<RequireAuth><PolicySafe api={API}/></RequireAuth>} />
             <Route path="/pricing" element={<RequireAuth><PricingPage/></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><AccountSafe api={API}/></RequireAuth>} />
-            <Route path="/alerts" element={<RequireAuth><AlertsPage/></RequireAuth>} />
+            <Route path="/alerts" element={<RequireAuth><AlertsPageSafe/></RequireAuth>} />
             <Route path="/autonomy" element={<RequireAuth><AutonomySafe/></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><Admin api={API}/></RequireAuth>} />
 
