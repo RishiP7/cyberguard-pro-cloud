@@ -1,3 +1,94 @@
+/**
+ * Central API helper for CyberGuard Pro frontend
+ */
+
+// Resolve API base:
+//  1) Use VITE_API_BASE if provided
+//  2) If running on *.cyberguardpro.uk, hit the Render backend directly
+//  3) Otherwise (local/dev), use same-origin proxy at /api
+const API_BASE =
+  (import.meta?.env?.VITE_API_BASE)
+    || ((typeof window !== 'undefined' && /\.cyberguardpro\.uk$/.test(window.location.hostname))
+          ? 'https://cyberguard-pro-cloud.onrender.com/api'
+          : '/api');
+
+let currentToken = null;
+
+export function setToken(t) {
+  currentToken = t || '';
+  try {
+    if (t) localStorage.setItem('auth_token', t);
+    else localStorage.removeItem('auth_token');
+  } catch {}
+}
+
+export function getToken() {
+  try {
+    return currentToken || localStorage.getItem('auth_token') || localStorage.getItem('cg_token') || '';
+  } catch {
+    return currentToken || '';
+  }
+}
+
+export async function fetchJSON(path, init = {}) {
+  const headers = new Headers(init.headers || {});
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (!headers.has('Content-Type') && init.body != null && !(init.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const opts = { ...init, headers };
+  if (opts.credentials === undefined) opts.credentials = 'include';
+
+  const url = /^https?:/i.test(path) ? path : `${API_BASE}${path}`;
+
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (_e) {
+    throw new Error('Network request failed');
+  }
+
+  if (res.status === 204) return null;
+
+  const raw = await res.text();
+  const data = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
+
+  if (res.status === 401) {
+    try { localStorage.removeItem('auth_token'); localStorage.removeItem('cg_token'); } catch {}
+    throw new Error(data?.error || data?.message || 'UNAUTHORIZED');
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+  }
+
+  return data;
+}
+
+export function apiGet(path) {
+  return fetchJSON(path, { method: 'GET' });
+}
+
+export function apiPost(path, body = {}) {
+  return fetchJSON(path, { method: 'POST', body: JSON.stringify(body) });
+}
+
+export function apiPostForm(path, formData) {
+  return fetchJSON(path, { method: 'POST', body: formData });
+}
+
+export const Api = {
+  base: API_BASE,
+  get: apiGet,
+  post: apiPost,
+  postForm: apiPostForm,
+  fetchJSON,
+};
+
+// Back-compat exports
+export { API_BASE as API };   // named export for string base
+export default API_BASE;      // default export is the base string
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Api, setToken } from "../lib/api.js";
