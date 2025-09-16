@@ -3212,6 +3212,7 @@ function AuthLogin(){
     </div>
   );
 }
+try { globalThis.AuthLogin = globalThis.AuthLogin || AuthLogin; } catch (_e) {}
 
 function RequireAuth({ children }){
   const [ok, setOk] = React.useState(() => {
@@ -3709,7 +3710,7 @@ function App(){
       <LayoutSafe>
         <>
           <Routes>
-            <Route path="/login" element={<AuthLogin/>}/>
+            <Route path="/login" element={<LoginGuard/>}/>
             <Route path="/register" element={<Register/>}/>
 
             <Route path="/" element={<RequireAuth><Dashboard api={API}/></RequireAuth>} />
