@@ -5325,15 +5325,15 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 app.use((req, res, next) => {
   if (req.path === '/__ping') {
     try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
-    return res.status(200).end('{"ok":true,"ts":' + Date.now() + '}');
+    return res.status(200).end(JSON.stringify({ ok: true, ts: Date.now() }));
   }
   if (req.path === '/__env') {
     try {
-      const keys = ['NODE_ENV','DATABASE_URL','PGHOST','PGUSER','PGDATABASE','PGPORT'];
+      const keys = ['NODE_ENV','RENDER_GIT_COMMIT','PGHOST','PGUSER','PGDATABASE','PGPORT'];
       const env = {};
       for (const k of keys) {
         const v = process.env[k];
-        env[k] = v ? (k === 'DATABASE_URL' ? '(set)' : String(v)) : null;
+        env[k] = v ? String(v) : null;
       }
       try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
       return res.status(200).end(JSON.stringify({ ok: true, env }));
