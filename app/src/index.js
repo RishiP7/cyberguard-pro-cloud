@@ -1390,7 +1390,10 @@ app.post("/auth/login", async (req, res) => {
     } catch {}
     return res.json({ ok: true, token, role: user.role || 'member', is_super });
   } catch (e) {
-    return res.status(500).json({ error: "login failed" });
+    console.error('[auth/login] error:', e?.stack || e);
+    const msg = (e && (e.message || e.error)) ? String(e.message || e.error) : 'login failed';
+    const code = /invalid|missing|credential|password|email/i.test(msg) ? 401 : 500;
+    return res.status(code).json({ ok: false, error: msg });
   }
 });
 
@@ -3787,6 +3790,22 @@ async function requireProPlus(req, res, next) {
   }
 }
 
+// ===== CORS allowlist (frontend) =====
+const ALLOWED_ORIGINS = new Set(
+  [
+    'https://app.cyberguardpro.uk',
+    (process.env.FRONTEND_URL || '').replace(/\/$/, ''),
+    (process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '')
+  ].filter(Boolean)
+);
+function allowOrigin(origin) {
+  if (!origin) return true; // allow same-origin / server-to-server
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  // allow localhost for development
+  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  return false;
+}
+// ===== END CORS allowlist =====
 // ===== EARLY BOOTSTRAP: CORS + /api rewrite + cookie→auth (must be before any routes) =====
 if (!app._early_bootstrap) {
   app._early_bootstrap = true;
