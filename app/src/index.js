@@ -71,6 +71,34 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .filter(Boolean)
   .map(s => s.toLowerCase());
 const app = express();
+
+// ===== ULTRA-EARLY HEALTH HANDLERS (absolute first) =====
+app.use((req, res, next) => {
+  try {
+    if (req.path === "/__ping") {
+      try { res.setHeader("Content-Type","application/json"); } catch (_){}
+      return res.status(200).end(JSON.stringify({ ok: true, ts: Date.now() }));
+    }
+    if (req.path === "/__env") {
+      try {
+        const keys = ["NODE_ENV","RENDER_GIT_COMMIT","PGHOST","PGUSER","PGDATABASE","PGPORT"];
+        const env = {};
+        for (const k of keys) env[k] = process.env[k] ? String(process.env[k]) : null;
+        try { res.setHeader("Content-Type","application/json"); } catch (_){}
+        return res.status(200).end(JSON.stringify({ ok: true, env }));
+      } catch (_e) {
+        try { res.setHeader("Content-Type","application/json"); } catch(_){}
+        return res.status(200).end("{"ok":false,"error":"env_failed"}");
+      }
+    }
+  } catch (_fatal) {
+    try { res.setHeader("Content-Type","application/json"); } catch(_){}
+    return res.status(200).end("{"ok":true}");
+  }
+  return next();
+});
+// ===== END ULTRA-EARLY HEALTH HANDLERS =====
+
 app.use('/billing/webhook', express.raw({ type: '*/*' }));
 // After app is defined, setup Sentry Express error handler (v8+)
 if (Sentry && process.env.SENTRY_DSN) {
@@ -5328,31 +5356,7 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 // ---------- start ----------
 
 
-// ===== ULTRA-EARLY HEALTH HANDLERS (must be the very first middleware) =====
-// Guarantees health endpoints work even if later middleware throws (CORS, auth, DB, etc.)
-app.use((req, res, next) => {
-  if (req.path === '/__ping') {
-    try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
-    return res.status(200).end(JSON.stringify({ ok: true, ts: Date.now() }));
-  }
-  if (req.path === '/__env') {
-    try {
-      const keys = ['NODE_ENV','RENDER_GIT_COMMIT','PGHOST','PGUSER','PGDATABASE','PGPORT'];
-      const env = {};
-      for (const k of keys) {
-        const v = process.env[k];
-        env[k] = v ? String(v) : null;
-      }
-      try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
-      return res.status(200).end(JSON.stringify({ ok: true, env }));
-    } catch (_e) {
-      try { res.setHeader('Content-Type', 'application/json'); } catch(_) {}
-      return res.status(200).end('{"ok":false,"error":"env_failed"}');
-    }
-  }
-  return next();
-});
-// ===== END ULTRA-EARLY HEALTH HANDLERS =====
+
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
