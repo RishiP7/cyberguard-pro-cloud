@@ -5319,31 +5319,28 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 
 // ---------- start ----------
 
-// ===== ULTRA-EARLY HARD FAILSAFE PROBES (before any middleware/import side effects) =====
-if (!globalThis.__ultra_early_probes__) {
-  globalThis.__ultra_early_probes__ = true;
-  // Lightweight liveness check that never touches DB or middleware
-  app.get('/__ping', (_req, res) => {
-    try { res.setHeader('Content-Type','application/json'); } catch(_) {}
-    res.status(200).end('{"ok":true,"ts":'+Date.now()+'}');
-  });
-  // Minimal env visibility (redacted). Does not reference DB or any app state.
-  app.get('/__env', (_req, res) => {
-    try {
-      const keys = ['NODE_ENV','DATABASE_URL','PGHOST','PGUSER','PGDATABASE','PGPORT'];
-      const env = {};
-      for (const k of keys) {
-        const v = process.env[k];
-        env[k] = v ? (k === 'DATABASE_URL' ? '(set)' : String(v)) : null;
-      }
-      res.json({ ok: true, env });
-    } catch (e) {
-      try { res.setHeader('Content-Type','application/json'); } catch(_) {}
-      res.status(200).end('{"ok":false,"error":"env_failed"}');
+
+// ===== EARLIEST HEALTH PROBES (must be before any middleware/routes) =====
+app.get('/__ping', (_req, res) => {
+  try { res.setHeader('Content-Type','application/json'); } catch(_) {}
+  res.status(200).end('{"ok":true,"ts":'+Date.now()+'}');
+});
+
+app.get('/__env', (_req, res) => {
+  try {
+    const keys = ['NODE_ENV','DATABASE_URL','PGHOST','PGUSER','PGDATABASE','PGPORT'];
+    const env = {};
+    for (const k of keys) {
+      const v = process.env[k];
+      env[k] = v ? (k === 'DATABASE_URL' ? '(set)' : String(v)) : null;
     }
-  });
-}
-// ===== END ULTRA-EARLY HARD FAILSAFE PROBES =====
+    res.json({ ok: true, env });
+  } catch (e) {
+    try { res.setHeader('Content-Type','application/json'); } catch(_) {}
+    res.status(200).end('{"ok":false,"error":"env_failed"}');
+  }
+});
+// ===== END EARLIEST HEALTH PROBES =====
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
