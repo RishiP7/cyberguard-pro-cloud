@@ -5319,16 +5319,15 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 
 // ---------- start ----------
 
-// ===== ULTRA-EARLY DEBUG PROBES (before any middleware) =====
-if (!app._early_dbg_routes) {
-  app._early_dbg_routes = true;
-
-  // Simple liveness check that bypasses other middleware
+// ===== ULTRA-EARLY HARD FAILSAFE PROBES (before any middleware/import side effects) =====
+if (!globalThis.__ultra_early_probes__) {
+  globalThis.__ultra_early_probes__ = true;
+  // Lightweight liveness check that never touches DB or middleware
   app.get('/__ping', (_req, res) => {
-    res.json({ ok: true, ts: Date.now() });
+    try { res.setHeader('Content-Type','application/json'); } catch(_) {}
+    res.status(200).end('{"ok":true,"ts":'+Date.now()+'}');
   });
-
-  // Minimal env visibility (redacted) to confirm DB config is present at runtime
+  // Minimal env visibility (redacted). Does not reference DB or any app state.
   app.get('/__env', (_req, res) => {
     try {
       const keys = ['NODE_ENV','DATABASE_URL','PGHOST','PGUSER','PGDATABASE','PGPORT'];
@@ -5339,12 +5338,12 @@ if (!app._early_dbg_routes) {
       }
       res.json({ ok: true, env });
     } catch (e) {
-      res.status(500).json({ ok: false, error: 'env_failed', detail: String(e?.message || e) });
+      try { res.setHeader('Content-Type','application/json'); } catch(_) {}
+      res.status(200).end('{"ok":false,"error":"env_failed"}');
     }
   });
 }
-// ===== END ULTRA-EARLY DEBUG PROBES =====
-// ===== EARLY BOOTSTRAP: CORS + /api rewrite + cookie→auth (must be before any routes) =====
+// ===== END ULTRA-EARLY HARD FAILSAFE PROBES =====
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
