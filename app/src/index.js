@@ -5319,7 +5319,32 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 
 // ---------- start ----------
 
-// ===== Cookie-based session helpers (idempotent, no external deps) =====
+// ===== ULTRA-EARLY DEBUG PROBES (before any middleware) =====
+if (!app._early_dbg_routes) {
+  app._early_dbg_routes = true;
+
+  // Simple liveness check that bypasses other middleware
+  app.get('/__ping', (_req, res) => {
+    res.json({ ok: true, ts: Date.now() });
+  });
+
+  // Minimal env visibility (redacted) to confirm DB config is present at runtime
+  app.get('/__env', (_req, res) => {
+    try {
+      const keys = ['NODE_ENV','DATABASE_URL','PGHOST','PGUSER','PGDATABASE','PGPORT'];
+      const env = {};
+      for (const k of keys) {
+        const v = process.env[k];
+        env[k] = v ? (k === 'DATABASE_URL' ? '(set)' : String(v)) : null;
+      }
+      res.json({ ok: true, env });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: 'env_failed', detail: String(e?.message || e) });
+    }
+  });
+}
+// ===== END ULTRA-EARLY DEBUG PROBES =====
+// ===== EARLY BOOTSTRAP: CORS + /api rewrite + cookie→auth (must be before any routes) =====
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
@@ -5512,6 +5537,7 @@ app.post('/auth/login_dbg', async (req, res) => {
 
     return res.json({ ok:true, db_ok, now: now_val, found: !!row, columns: cols, has_password_hash, has_password, has_tenant, samples });
   } catch (e) {
+    try { console.error('[login_dbg] failed', e?.message || e, e?.stack || ''); } catch (_e) {}
     return res.status(500).json({ ok:false, error:'dbg_failed', detail: String(e?.message || e) });
   }
 });
@@ -5522,6 +5548,7 @@ app.get('/health/db', async (_req, res) => {
     const r = await q('SELECT 1 AS ok');
     return res.json({ ok: true, db: r.rows?.[0]?.ok === 1 });
   } catch(e) {
+    try { console.error('[health/db] failed', e?.message || e, e?.stack || ''); } catch (_) {}
     return res.status(500).json({ ok:false, error:'db_failed', detail: String(e?.message || e) });
   }
 });
