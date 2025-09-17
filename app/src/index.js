@@ -93,7 +93,7 @@ app.use((req, res, next) => {
     }
   } catch (_fatal) {
     try { res.setHeader("Content-Type","application/json"); } catch(_){}
-    return res.status(200).end("{"ok":true}");
+    return res.status(200).end(JSON.stringify({ ok: true }));
   }
   return next();
 });
