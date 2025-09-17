@@ -5479,6 +5479,53 @@ if (!app._api_prefix_rewrite) {
     next();
   });
 }
+// ===== AUTH/DB DIAGNOSTICS (temporary, safe to keep) =====
+// POST /auth/login_dbg  — does NOT sign in; inspects DB state for the given email
+// Returns details so we can see why /auth/login may fail with 500
+app.post('/auth/login_dbg', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ ok:false, error:'missing email' });
+  try {
+    // Basic DB connectivity probe
+    let db_ok = false; let now_val = null;
+    try { const r0 = await q('SELECT NOW() as now'); db_ok = true; now_val = r0.rows?.[0]?.now || null; } catch(_e) {}
+
+    // Try to find user by email (any tenant)
+    let row = null; let cols = null;
+    try {
+      const r1 = await q('SELECT * FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
+      row = (r1.rows && r1.rows[0]) ? r1.rows[0] : null;
+      cols = row ? Object.keys(row) : [];
+    } catch(_e) {}
+
+    // Shape checks
+    const has_password_hash = !!(row && (row.password_hash || row.passhash || row.pwhash));
+    const has_password      = !!(row && (row.password || row.pass || row.pw));
+    const has_tenant        = !!(row && (row.tenant_id || row.tenant));
+
+    // Sample values (redacted)
+    const samples = {
+      password_hash_sample: row && (row.password_hash || row.passhash || row.pwhash) ? String(row.password_hash || row.passhash || row.pwhash).slice(0, 16) + '…' : null,
+      tenant_id: row && (row.tenant_id || row.tenant) || null,
+      role: row && (row.role || null)
+    };
+
+    return res.json({ ok:true, db_ok, now: now_val, found: !!row, columns: cols, has_password_hash, has_password, has_tenant, samples });
+  } catch (e) {
+    return res.status(500).json({ ok:false, error:'dbg_failed', detail: String(e?.message || e) });
+  }
+});
+
+// GET /health/db — quick DB probe
+app.get('/health/db', async (_req, res) => {
+  try {
+    const r = await q('SELECT 1 AS ok');
+    return res.json({ ok: true, db: r.rows?.[0]?.ok === 1 });
+  } catch(e) {
+    return res.status(500).json({ ok:false, error:'db_failed', detail: String(e?.message || e) });
+  }
+});
+// ===== END AUTH/DB DIAGNOSTICS =====
 // Sentry error handler (must be before any other error middleware)
 if (Sentry && process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
