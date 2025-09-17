@@ -109,23 +109,35 @@ const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 const GOOGLE_REDIRECT      = process.env.GOOGLE_REDIRECT || process.env.GOOGLE_REDIRECT_URI || ""; // e.g. https://your-api.onrender.com/auth/google/callback
 
-// ----- CORS (explicit allowlist) -----
-const ALLOWED_ORIGINS = Array.from(new Set(
-  (`${process.env.CORS_ORIGINS||''},https://cyberguard-pro-cloud.onrender.com,https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173`)
-    .split(/[\,\s]+/)
-    .map(s => (s||'').trim().toLowerCase().replace(/\/$/, ''))
-    .filter(Boolean)
-));
+// ===== Unified CORS allowlist =====
+const ALLOWED_ORIGINS = new Set(
+  [
+    'https://app.cyberguardpro.uk',
+    (process.env.FRONTEND_URL || '').replace(/\/$/, ''),
+    (process.env.PUBLIC_SITE_URL || '').replace(/\/$/, ''),
+    ...(`${process.env.CORS_ORIGINS || ''},https://cyberguard-pro-cloud.onrender.com,https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173`)
+      .split(/[\,\s]+/)
+      .map(s => (s || '').trim().toLowerCase().replace(/\/$/, ''))
+      .filter(Boolean)
+  ]
+);
 
-// Frontend URL for post-auth redirects
-const FRONTEND_URL = process.env.FRONTEND_URL || ALLOWED_ORIGINS[0] || "http://localhost:5173";
+// Default frontend URL for post-auth redirects
+const FRONTEND_URL = (
+  process.env.FRONTEND_URL ||
+  [...ALLOWED_ORIGINS][0] ||
+  'http://localhost:5173'
+).replace(/\/$/, '');
 
-function corsOrigin(origin, cb){
-  if (!origin) return cb(null, true); // non-browser / same-host
+function corsOrigin(origin, cb) {
+  if (!origin) return cb(null, true); // allow server-to-server
   const norm = String(origin).trim().toLowerCase().replace(/\/$/, '');
-  const allowed = ALLOWED_ORIGINS.has(norm);
+  const allowed =
+    ALLOWED_ORIGINS.has(norm) ||
+    /^https?:\/\/localhost(:\d+)?$/.test(norm);
   return cb(null, allowed);
 }
+// ===== END Unified CORS allowlist =====
 
 app.use(cors({
   origin: corsOrigin,
