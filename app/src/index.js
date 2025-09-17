@@ -88,7 +88,7 @@ app.use((req, res, next) => {
         return res.status(200).end(JSON.stringify({ ok: true, env }));
       } catch (_e) {
         try { res.setHeader("Content-Type","application/json"); } catch(_){}
-        return res.status(200).end("{"ok":false,"error":"env_failed"}");
+        return res.status(200).end(JSON.stringify({ ok:false, error:"env_failed" }));
       }
     }
   } catch (_fatal) {
