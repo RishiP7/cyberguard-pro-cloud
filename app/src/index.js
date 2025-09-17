@@ -1,3 +1,11 @@
+// ===== ultra-early crash logger (must be first) =====
+process.on("uncaughtException", (err) => {
+  try { console.error("[uncaughtException]", err && err.stack ? err.stack : err); } catch(_) {}
+});
+process.on("unhandledRejection", (err) => {
+  try { console.error("[unhandledRejection]", err && err.stack ? err.stack : err); } catch(_) {}
+});
+// ===== end ultra-early crash logger =====
 import express from "express";
 import * as billing from "./billing.js";
 const setupBilling = billing.setupBilling ?? billing.default ?? (() => {});
