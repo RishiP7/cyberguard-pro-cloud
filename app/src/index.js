@@ -5320,27 +5320,31 @@ app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
 // ---------- start ----------
 
 
-// ===== EARLIEST HEALTH PROBES (must be before any middleware/routes) =====
-app.get('/__ping', (_req, res) => {
-  try { res.setHeader('Content-Type','application/json'); } catch(_) {}
-  res.status(200).end('{"ok":true,"ts":'+Date.now()+'}');
-});
-
-app.get('/__env', (_req, res) => {
-  try {
-    const keys = ['NODE_ENV','DATABASE_URL','PGHOST','PGUSER','PGDATABASE','PGPORT'];
-    const env = {};
-    for (const k of keys) {
-      const v = process.env[k];
-      env[k] = v ? (k === 'DATABASE_URL' ? '(set)' : String(v)) : null;
-    }
-    res.json({ ok: true, env });
-  } catch (e) {
-    try { res.setHeader('Content-Type','application/json'); } catch(_) {}
-    res.status(200).end('{"ok":false,"error":"env_failed"}');
+// ===== ULTRA-EARLY HEALTH HANDLERS (must be the very first middleware) =====
+// Guarantees health endpoints work even if later middleware throws (CORS, auth, DB, etc.)
+app.use((req, res, next) => {
+  if (req.path === '/__ping') {
+    try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
+    return res.status(200).end('{"ok":true,"ts":' + Date.now() + '}');
   }
+  if (req.path === '/__env') {
+    try {
+      const keys = ['NODE_ENV','DATABASE_URL','PGHOST','PGUSER','PGDATABASE','PGPORT'];
+      const env = {};
+      for (const k of keys) {
+        const v = process.env[k];
+        env[k] = v ? (k === 'DATABASE_URL' ? '(set)' : String(v)) : null;
+      }
+      try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
+      return res.status(200).end(JSON.stringify({ ok: true, env }));
+    } catch (_e) {
+      try { res.setHeader('Content-Type', 'application/json'); } catch(_) {}
+      return res.status(200).end('{"ok":false,"error":"env_failed"}');
+    }
+  }
+  return next();
 });
-// ===== END EARLIEST HEALTH PROBES =====
+// ===== END ULTRA-EARLY HEALTH HANDLERS =====
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
