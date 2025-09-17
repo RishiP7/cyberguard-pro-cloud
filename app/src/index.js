@@ -109,24 +109,42 @@ const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 const GOOGLE_REDIRECT      = process.env.GOOGLE_REDIRECT || process.env.GOOGLE_REDIRECT_URI || ""; // e.g. https://your-api.onrender.com/auth/google/callback
 
-// ----- CORS (explicit allowlist) -----
-const ALLOWED_ORIGINS = Array.from(new Set(
-  (`${process.env.CORS_ORIGINS||''},https://cyberguard-pro-cloud.onrender.com,https://cyberguard-pro-cloud-1.onrender.com,http://localhost:5173`)
-    .split(/[\,\s]+/)
-    .map(s => (s||'').trim().toLowerCase().replace(/\/$/, ''))
-    .filter(Boolean)
-));
-
-// Frontend URL for post-auth redirects
-const FRONTEND_URL = process.env.FRONTEND_URL || ALLOWED_ORIGINS[0] || "http://localhost:5173";
-
-function corsOrigin(origin, cb){
   if (!origin) return cb(null, true); // non-browser / same-host
   const norm = String(origin).trim().toLowerCase().replace(/\/$/, '');
   const allowed = ALLOWED_ORIGINS.includes(norm);
   return cb(null, allowed);
 }
 
+// ===== Unified CORS allowlist =====n
+const ALLOWED_ORIGINS = new Set(n
+  [n
+    "https://app.cyberguardpro.uk",n
+    "https://cyberguard-pro-cloud.onrender.com",n
+    "https://cyberguard-pro-cloud-1.onrender.com",n
+    "http://localhost:5173",n
+    (process.env.FRONTEND_URL || "").replace(/\/$/, ""),n
+    (process.env.PUBLIC_SITE_URL || "").replace(/\/$/, ""),n
+    ...(process.env.CORS_ORIGINS || "")n
+      .split(/[,s]+/)n
+      .map(s => (s || "").trim().toLowerCase().replace(/\/$/, ""))n
+  ].filter(Boolean)n
+);n
+n
+const FRONTEND_URL = (n
+  process.env.FRONTEND_URL ||n
+  [...ALLOWED_ORIGINS][0] ||n
+  "http://localhost:5173"n
+).replace(/\/$/, "");n
+n
+function corsOrigin(origin, cb){n
+  if (!origin) return cb(null, true);n
+  const norm = String(origin).trim().toLowerCase().replace(/\/$/, "");n
+  const allowed =n
+    ALLOWED_ORIGINS.has(norm) ||n
+    /^https?:\/\/localhost(:\d+)?$/.test(norm);n
+  return cb(null, allowed);n
+}n
+// ===== END Unified CORS allowlist =====n
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
@@ -3775,22 +3793,6 @@ async function requireProPlus(req, res, next) {
   }
 }
 
-// ===== CORS allowlist (frontend) =====
-const ALLOWED_ORIGINS = new Set(
-  [
-    'https://app.cyberguardpro.uk',
-    (process.env.FRONTEND_URL || '').replace(/\/$/, ''),
-    (process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '')
-  ].filter(Boolean)
-);
-function allowOrigin(origin) {
-  if (!origin) return true; // allow same-origin / server-to-server
-  if (ALLOWED_ORIGINS.has(origin)) return true;
-  // allow localhost for development
-  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
-  return false;
-}
-// ===== END CORS allowlist =====
 // ===== EARLY BOOTSTRAP: CORS + /api rewrite + cookie→auth (must be before any routes) =====
 if (!app._early_bootstrap) {
   app._early_bootstrap = true;
