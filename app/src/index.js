@@ -2008,3 +2008,16 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 }
 // ===== END DEV LOGIN =====
 import express from 'express';
+
+// ---- Safe Sentry shim (optional) ----
+let Sentry = null;
+try {
+  const mod = await import('@sentry/node');
+  Sentry = mod?.default || mod;
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0 });
+  }
+} catch (_e) {
+  Sentry = null; // Sentry not available; all Sentry calls are guarded below
+}
+// ---- End Sentry shim ----
