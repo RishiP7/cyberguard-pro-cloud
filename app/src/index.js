@@ -2007,17 +2007,11 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: false }));
 }
 // ===== END DEV LOGIN =====
-import express from 'express';
+import express from "express";
 
-// ---- Safe Sentry shim (optional) ----
 let Sentry = null;
 try {
-  const mod = await import('@sentry/node');
-  Sentry = mod?.default || mod;
-  if (process.env.SENTRY_DSN) {
-    Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0 });
-  }
-} catch (_e) {
-  Sentry = null; // Sentry not available; all Sentry calls are guarded below
+  Sentry = await import("@sentry/node");
+} catch (_) {
+  console.warn("Sentry not available, continuing without it.");
 }
-// ---- End Sentry shim ----
