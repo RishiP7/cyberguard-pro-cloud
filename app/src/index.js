@@ -16,7 +16,7 @@ if (!globalThis.__cg_app__) {
 // Bind the shared instance locally for this module
 const app = globalThis.__cg_app__;
 // ===== end ultra-early bootstrap =====
-st('/ai/propose', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+app.post('/ai/propose', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
 // ===== DB bootstrap (idempotent, safe in ESM) =====
 if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined') {
   try {
