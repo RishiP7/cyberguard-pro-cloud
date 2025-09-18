@@ -1,3 +1,7 @@
+import * as Sentry from '@sentry/node';
+if (process.env.SENTRY_DSN) {
+  try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_) {}
+}
 // ===== ultra-early bootstrap (ensure Express app exists) =====
 // Use unique identifiers + dynamic imports to avoid collisions with any later imports.
 const __cg_express = (await import('express')).default;
@@ -2007,11 +2011,3 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: false }));
 }
 // ===== END DEV LOGIN =====
-import express from "express";
-
-let Sentry = null;
-try {
-  Sentry = await import("@sentry/node");
-} catch (_) {
-  console.warn("Sentry not available, continuing without it.");
-}
