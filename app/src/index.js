@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import express from 'express';
 if (process.env.SENTRY_DSN) {
   try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_e) {}
@@ -1784,7 +1785,7 @@ app.get('/health/db', async (_req, res) => {
 });
 // ===== END AUTH/DB DIAGNOSTICS =====
 // Sentry error handler (must be before any other error middleware)
-if (Sentry && process.env.SENTRY_DSN) {
+if (typeof Sentry !== 'undefined' && process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
 // Minimal fallback error handler to avoid leaking internals
