@@ -1,3 +1,8 @@
+import express from 'express';
+import * as Sentry from '@sentry/node';
+if (process.env.SENTRY_DSN) {
+  try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_e) {}
+}
 import * as Sentry from '@sentry/node';
 if (process.env.SENTRY_DSN) {
   try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_) {}
