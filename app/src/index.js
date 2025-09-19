@@ -2003,6 +2003,3 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: false }));
 }
 
-// Remove duplicate Stripe import and key/client declarations below the first guard block
-
-// Remove any duplicate Stripe imports
