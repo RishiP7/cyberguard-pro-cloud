@@ -1,8 +1,9 @@
-import * as Sentry from '@sentry/node';
 import express from 'express';
+import * as Sentry from '@sentry/node';
 if (process.env.SENTRY_DSN) {
   try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_e) {}
 }
+import * as Sentry from '@sentry/node';
 if (process.env.SENTRY_DSN) {
   try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_) {}
 }
@@ -1793,7 +1794,7 @@ app.use((err, _req, res, _next) => {
   try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
   res.status(500).json({ ok:false, error: "internal_error" });
 });
-app.listen(PORT,()=>console.log(`${BRAND} listening on :${PORT}`));
+app.listen(Number(process.env.PORT) || 10000,()=>console.log(`${BRAND} listening on :${process.env.PORT||10000}`));
 
 // ---------- Super Admin DB diagnostics ----------
 app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
