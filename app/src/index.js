@@ -1991,6 +1991,3 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   // In locked mode, expose a status endpoint for quick debugging
   app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: false }));
 }
-// ===== END DEV LOGIN =====
-// Ensure Stripe import at top if not present
-// (If already present, will not duplicate)
