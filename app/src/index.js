@@ -1,3 +1,13 @@
+// Core imports (canonical, single-source)
+import * as Sentry from '@sentry/node';
+// Middleware imports (canonical, single-source)
+// --- Stripe init (guarded) ---
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || process.env.STRIPE_API_KEY || '';
+if (STRIPE_KEY) {
+  stripe = new Stripe(STRIPE_KEY, { apiVersion: '2024-06-20' });
+} else {
+  console.warn('[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501.');
+}
 import Stripe from "stripe";
 
 const STRIPE_KEY =
@@ -5,8 +15,6 @@ const STRIPE_KEY =
   process.env.STRIPE_SECRET ||
   process.env.STRIPE_API_KEY ||
   "";
-
-let stripe = null;
 if (STRIPE_KEY) {
   stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
 } else {
@@ -16,14 +24,8 @@ if (STRIPE_KEY) {
 }
 'import authMiddleware from \'./middleware/auth.js\';\nimport { enforceActive, requireProPlus, requireSuper } from \'./middleware/guards.js\';\n'
 // Ensure Stripe import at top if not present
-import express from 'express';
-import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import Stripe from 'stripe';
-
 // Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2024-06-20' });
-
 // Initialize Sentry once
 import * as Sentry from '@sentry/node';
 if (process.env.SENTRY_DSN) {
