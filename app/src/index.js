@@ -19,7 +19,7 @@ if (STRIPE_KEY) {
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import Stripe from 'stripe';
+
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2024-06-20' });
