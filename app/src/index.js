@@ -1,92 +1,53 @@
 import express from 'express';
+import cors from 'cors';
+import jwt from 'jsonwebtoken';
+import Stripe from 'stripe';
+
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2024-06-20' });
+
+// Initialize Sentry once
 import * as Sentry from '@sentry/node';
 if (process.env.SENTRY_DSN) {
-  try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_e) {}
-}
-import * as Sentry from '@sentry/node';
-if (process.env.SENTRY_DSN) {
-  try { Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch (_) {}
-}
-// ===== ultra-early bootstrap (ensure Express app exists) =====
-// Use unique identifiers + dynamic imports to avoid collisions with any later imports.
-const __cg_express = (await import('express')).default;
-const __cg_cors = (await import('cors')).default;
-const __cg_bodyParser = (await import('body-parser')).default;
-
-if (!globalThis.__cg_app__) {
-  const _app = __cg_express();
-  _app.disable('x-powered-by');
-  _app.use(__cg_cors({ origin: true, credentials: true }));
-  _app.use(__cg_bodyParser.json({ limit: process.env.JSON_LIMIT || '2mb' }));
-  _app.use(__cg_bodyParser.urlencoded({ extended: true }));
-  globalThis.__cg_app__ = _app;
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
 }
 
-// Bind the shared instance locally for this module
-const app = globalThis.__cg_app__;
-// ===== end ultra-early bootstrap =====
-
-// ===== middleware + guards (safe dynamic imports to avoid boot-time crashes) =====
-const __DEV_LOGIN = String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1';
-
-// Try to import real middleware. If unavailable, provide safe fallbacks.
-// authMiddleware: in dev mode, inject a demo super-admin user; otherwise 401 to prevent unsafe access.
-let authMiddleware = null;
+// Attempt to import auth-related middlewares, fallback to null if unavailable
+let authMiddleware = null, enforceActive = null, requireProPlus = null, requireSuper = null;
 try {
-  const mod = await import('./middleware/auth.js');
-  authMiddleware = mod.default || mod.authMiddleware || null;
-} catch (_e) { /* no-op, will fallback */ }
-if (!authMiddleware) {
-  authMiddleware = (req, res, next) => {
-    if (__DEV_LOGIN) {
-      req.user = req.user || {
-        tenant_id: 'demo',
-        email: 'demo-admin@demo',
-        role: 'admin',
-        is_super: true
-      };
-      return next();
-    }
-    return res.status(401).json({ ok: false, error: 'auth unavailable' });
-  };
-}
+  const mod = await import('./auth.js');
+  authMiddleware = mod.authMiddleware || null;
+  enforceActive  = mod.enforceActive  || null;
+  requireProPlus = mod.requireProPlus || null;
+  requireSuper   = mod.requireSuper   || null;
+} catch {}
 
-// Plan guards: prefer real implementations; else become permissive no-ops (to keep app booting)
-let enforceActive = null, requireProPlus = null, requireSuper = null;
-try {
-  const mod = await import('./middleware/plan.js');
-  enforceActive   = mod.enforceActive   || null;
-  requireProPlus  = mod.requireProPlus  || null;
-  requireSuper    = mod.requireSuper    || null;
-} catch (_e) { /* no-op, will fallback */ }
-if (!enforceActive)  enforceActive  = (_req, _res, next) => next();
-if (!requireProPlus) requireProPlus = (_req, _res, next) => next();
-if (!requireSuper)   requireSuper   = (_req, res, next) => res.status(403).json({ ok:false, error:'admin only' });
+// Create app
+const app = express();
 
-// Utility shims used later if not already present in this module/runtime
-// (uuid, now, and ops recorder). These only activate if missing.
-if (typeof globalThis.uuidv4 === 'undefined') {
-  try {
-    const { v4 } = await import('uuid');
-    globalThis.uuidv4 = v4;
-  } catch (_e) {
-    globalThis.uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+// Global middleware
+const allowedOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [
+  process.env.FRONTEND_URL,
+  process.env.PUBLIC_SITE_URL,
+].filter(Boolean);
+
+const corsOrigin = (origin, callback) => {
+  if (!origin || allowedOrigins.includes(origin)) {
+    return callback(null, true);
   }
-}
-const uuidv4 = globalThis.uuidv4;
+  return callback(new Error('CORS not allowed'));
+};
 
-if (typeof globalThis.now === 'undefined') {
-  globalThis.now = () => Math.floor(Date.now() / 1000);
-}
-const now = globalThis.now;
+app.use(cors({
+  origin: corsOrigin,
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Origin','X-Requested-With','Content-Type','Accept','Authorization','x-api-key','x-admin-key','x-plan-preview','x-admin-override','x-admin-plan-preview','x-admin-bypass'],
+}));
 
-if (typeof globalThis.recordOpsRun === 'undefined') {
-  globalThis.recordOpsRun = async (_name, _payload) => { /* noop in fallback */ };
-}
-const recordOpsRun = globalThis.recordOpsRun;
+// JSON body parser (after Stripe webhook raw body setup later)
+app.use(express.json({ limit: '1mb' }));
+
 // ===== end middleware + guards =====
 app.post('/ai/propose', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
 // ===== DB bootstrap (idempotent, safe in ESM) =====
@@ -1786,9 +1747,7 @@ app.get('/health/db', async (_req, res) => {
 });
 // ===== END AUTH/DB DIAGNOSTICS =====
 // Sentry error handler (must be before any other error middleware)
-if (typeof Sentry !== 'undefined' && process.env.SENTRY_DSN) {
-  Sentry.setupExpressErrorHandler(app);
-}
+Sentry.setupExpressErrorHandler(app);
 // Minimal fallback error handler to avoid leaking internals
 app.use((err, _req, res, _next) => {
   try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
