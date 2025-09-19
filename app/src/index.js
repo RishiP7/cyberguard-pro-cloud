@@ -5,6 +5,8 @@ import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 
 // Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2024-06-20' });
+
 // Initialize Sentry once
 import * as Sentry from '@sentry/node';
 if (process.env.SENTRY_DSN) {
@@ -48,6 +50,9 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 
 // ===== end middleware + guards =====
+import authMiddleware from './middleware/auth.js';
+import { enforceActive, requireProPlus, requireSuper } from './middleware/guards.js';
+
 app.post('/ai/propose', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
 // ===== DB bootstrap (idempotent, safe in ESM) =====
 if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined') {
