@@ -1,3 +1,4 @@
+'import authMiddleware from \'./middleware/auth.js\';\nimport { enforceActive, requireProPlus, requireSuper } from \'./middleware/guards.js\';\n'
 // Ensure Stripe import at top if not present
 import express from 'express';
 import cors from 'cors';
@@ -50,8 +51,6 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 
 // ===== end middleware + guards =====
-import authMiddleware from './middleware/auth.js';
-import { enforceActive, requireProPlus, requireSuper } from './middleware/guards.js';
 
 app.post('/ai/propose', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
 // ===== DB bootstrap (idempotent, safe in ESM) =====
