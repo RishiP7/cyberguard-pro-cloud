@@ -1,3 +1,5 @@
+// Ensure Stripe import at top if not present
+import Stripe from 'stripe';
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
@@ -453,8 +455,21 @@ if (process.env.NODE_ENV !== 'production') {
 
 // ---------- Stripe Billing endpoints ----------
 
+// Ensure Stripe import at top if not present
+// (Inserted at top of file below)
+
+// Stripe initialization with env guard
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || process.env.STRIPE_API_KEY || "";
+let stripe = null;
+if (STRIPE_KEY) {
+  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
+} else {
+  console.warn("[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501.");
+}
+
 // Create Stripe Checkout session for subscription
 app.post('/billing/checkout', authMiddleware, async (req, res) => {
+  if (!stripe) { return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" }); }
   try{
     const planReq = normalizePlan(req.body?.plan || 'pro') || 'pro';
     const priceId = planReq === 'pro_plus' ? process.env.STRIPE_PRICE_PRO_PLUS : process.env.STRIPE_PRICE_PRO;
@@ -493,6 +508,7 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
 
 // Stripe webhook endpoint for subscription events
 app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe) { return res.status(501).send("billing disabled (no stripe key)"); }
   const sig = req.headers['stripe-signature'];
   let event;
   try {
@@ -624,6 +640,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
 
 // Billing portal (Stripe)
 app.get('/billing/portal', authMiddleware, async (req,res)=>{
+  if (!stripe) { return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" }); }
   try{
     // Ensure customer exists
     const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
@@ -1975,3 +1992,5 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: false }));
 }
 // ===== END DEV LOGIN =====
+// Ensure Stripe import at top if not present
+// (If already present, will not duplicate)
