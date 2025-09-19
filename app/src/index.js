@@ -1,3 +1,19 @@
+import Stripe from "stripe";
+
+const STRIPE_KEY =
+  process.env.STRIPE_SECRET_KEY ||
+  process.env.STRIPE_SECRET ||
+  process.env.STRIPE_API_KEY ||
+  "";
+
+let stripe = null;
+if (STRIPE_KEY) {
+  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
+} else {
+  console.warn(
+    "[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501."
+  );
+}
 'import authMiddleware from \'./middleware/auth.js\';\nimport { enforceActive, requireProPlus, requireSuper } from \'./middleware/guards.js\';\n'
 // Ensure Stripe import at top if not present
 import express from 'express';
@@ -455,24 +471,12 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ---------- Stripe Billing endpoints ----------
-// Stripe singleton (no duplicate declarations)
-const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || process.env.STRIPE_API_KEY || "";
-const billingStripe = (() => {
-  // Reuse a single client across hot reloads / multiple imports
-  if (globalThis.__stripe_client__) return globalThis.__stripe_client__;
-  if (!STRIPE_KEY) {
-    console.warn("[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501.");
-    globalThis.__stripe_client__ = null;
-    return null;
-  }
-  const client = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
-  globalThis.__stripe_client__ = client;
-  return client;
-})();
 
 // Create Stripe Checkout session for subscription
 app.post('/billing/checkout', authMiddleware, async (req, res) => {
-  if (!billingStripe) { return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" }); }
+  if (!stripe) {
+    return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" });
+  }
   try{
     const planReq = normalizePlan(req.body?.plan || 'pro') || 'pro';
     const priceId = planReq === 'pro_plus' ? process.env.STRIPE_PRICE_PRO_PLUS : process.env.STRIPE_PRICE_PRO;
@@ -482,7 +486,7 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
     const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
     let customer = cur.rows && cur.rows[0] ? cur.rows[0].stripe_customer_id : null;
     if(!customer){
-      const c = await billingStripe.customers.create({
+      const c = await stripe.customers.create({
         name: req.user?.tenant_id || 'Tenant',
         metadata: { tenant_id: req.user.tenant_id }
       });
@@ -493,7 +497,7 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
     const success = (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing/success';
     const cancel  = (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing/cancel';
 
-    const session = await billingStripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer,
       success_url: success || undefined,
@@ -511,12 +515,14 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
 
 // Stripe webhook endpoint for subscription events
 app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  if (!billingStripe) { return res.status(501).send("billing disabled (no stripe key)"); }
+  if (!stripe) {
+    return res.status(501).send("billing disabled (no stripe key)");
+  }
   const sig = req.headers['stripe-signature'];
   let event;
   try {
     const raw = req.rawBody || req.body; // raw body preserved by upstream
-    event = billingStripe.webhooks.constructEvent(raw, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(raw, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     try { await recordOpsRun('stripe_bad_sig', { error: String(err?.message||err) }); } catch(_e) {}
     return res.status(400).send('bad signature');
@@ -531,7 +537,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
     switch (event.type) {
       case 'checkout.session.completed': {
         const sessId = event.data.object.id;
-        const sess = await billingStripe.checkout.sessions.retrieve(sessId, { expand: ['line_items', 'subscription'] });
+        const sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ['line_items', 'subscription'] });
         const tenantId = (sess.metadata && sess.metadata.tenant_id) ? sess.metadata.tenant_id : null;
         const customerId = sess.customer || (sess.customer_details && sess.customer_details.id) || null;
         if (tenantId && customerId) await setTenantStripeCustomerId(tenantId, customerId);
@@ -643,17 +649,19 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
 
 // Billing portal (Stripe)
 app.get('/billing/portal', authMiddleware, async (req,res)=>{
-  if (!billingStripe) { return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" }); }
+  if (!stripe) {
+    return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" });
+  }
   try{
     // Ensure customer exists
     const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
     let customer = cur.rows && cur.rows[0] ? cur.rows[0].stripe_customer_id : null;
     if(!customer){
-      const c = await billingStripe.customers.create({ name: req.user?.tenant_id || 'Tenant', metadata: { tenant_id: req.user.tenant_id } });
+      const c = await stripe.customers.create({ name: req.user?.tenant_id || 'Tenant', metadata: { tenant_id: req.user.tenant_id } });
       customer = c.id;
       await setTenantStripeCustomerId(req.user.tenant_id, customer);
     }
-    const sess = await billingStripe.billingPortal.sessions.create({ customer, return_url: (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing' });
+    const sess = await stripe.billingPortal.sessions.create({ customer, return_url: (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing' });
     return res.json({ ok:true, url: sess.url });
   }catch(e){
     console.error('portal failed', e);
@@ -671,7 +679,7 @@ app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) =
       return res.status(400).json({ ok:false, error: 'no stripe_customer_id on tenant' });
     }
     // Pull latest subscription for this customer
-    const subs = await billingStripe.subscriptions.list({ customer, status: 'all', limit: 1 });
+    const subs = await stripe.subscriptions.list({ customer, status: 'all', limit: 1 });
     if (!subs.data || subs.data.length === 0) {
       await setTenantBillingStatus(tid, null);
       return res.json({ ok:true, updated: false, note: 'no subscriptions found' });
