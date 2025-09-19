@@ -453,9 +453,6 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ---------- Stripe Billing endpoints ----------
-
-// Ensure Stripe import at top if not present
-import Stripe from 'stripe';
 // Stripe initialization with env guard
 const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || process.env.STRIPE_API_KEY || "";
 let stripe = null;
