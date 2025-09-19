@@ -5,8 +5,6 @@ import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 
 // Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2024-06-20' });
-
 // Initialize Sentry once
 import * as Sentry from '@sentry/node';
 if (process.env.SENTRY_DSN) {
