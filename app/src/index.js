@@ -1,5 +1,4 @@
 // Ensure Stripe import at top if not present
-import Stripe from 'stripe';
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
