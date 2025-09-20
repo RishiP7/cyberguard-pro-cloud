@@ -14,12 +14,11 @@ if (STRIPE_KEY) {
     "[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501."
   );
 }
-'import authMiddleware from \'./middleware/auth.js\';\nimport { enforceActive, requireProPlus, requireSuper } from \'./middleware/guards.js\';\n'
+
 // Ensure Stripe import at top if not present
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import Stripe from 'stripe';
 
 // Initialize Sentry once
 import * as Sentry from '@sentry/node';
