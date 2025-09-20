@@ -7,11 +7,7 @@ import * as Sentry from "@sentry/node";
 
 // --- Local modules ---
 import q from "./db/q.js";   // <-- fixes "q is not defined"
-const Guard = {
-  enforceActive: (typeof enforceActive === 'function' ? enforceActive : _noopMw),
-  requireProPlus: (typeof requireProPlus === 'function' ? requireProPlus : _noopMw),
-  requireSuper:   (typeof requireSuper   === 'function' ? requireSuper   : _noopMw),
-};
+
 // --- Initialize Stripe safely ---
 let stripe = null;
 const STRIPE_KEY = process.env.STRIPE_SECRET || "";
