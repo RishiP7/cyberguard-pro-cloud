@@ -95,12 +95,6 @@ if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined')
     try { console.error('[db-bootstrap] failed', e?.message || e); } catch (_){}
   }
 }
-// Create local identifiers only if they were not already declared in this module.
-// Using `var` inside a guard avoids "Identifier has already been declared".
-/* eslint-disable no-var */
-if (typeof q  === 'undefined' && typeof globalThis.q  === 'function') { var q  = globalThis.q; }
-if (typeof db === 'undefined' && typeof globalThis.db !== 'undefined') { var db = globalThis.db; }
-/* eslint-enable no-var */
 // ===== END DB bootstrap =====
   try {
     const context = req.body?.context || {};
