@@ -19,10 +19,7 @@ if (STRIPE_KEY) {
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-
-
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET || '', { apiVersion: '2024-06-20' });
+import Stripe from 'stripe';
 
 // Initialize Sentry once
 import * as Sentry from '@sentry/node';
@@ -30,6 +27,15 @@ if (process.env.SENTRY_DSN) {
   Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
 }
 
+// Attempt to import auth-related middlewares, fallback to null if unavailable
+let authMiddleware = null, enforceActive = null, requireProPlus = null, requireSuper = null;
+try {
+  const mod = await import('./auth.js');
+  authMiddleware = mod.authMiddleware || null;
+  enforceActive  = mod.enforceActive  || null;
+  requireProPlus = mod.requireProPlus || null;
+  requireSuper   = mod.requireSuper   || null;
+} catch {}
 
 // Create app
 const app = express();
