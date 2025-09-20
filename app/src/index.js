@@ -1783,7 +1783,10 @@ app.use((err, _req, res, _next) => {
   try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
   res.status(500).json({ ok:false, error: "internal_error" });
 });
-app.listen(Number(process.env.PORT) || 10000,()=>console.log(`${BRAND} listening on :${process.env.PORT||10000}`));
+app.listen(Number(process.env.PORT) || 10000, () => {
+  const name = process.env.BRAND || 'CyberGuard Pro';
+  console.log(`${name} listening on :${process.env.PORT || 10000}`);
+});
 
 // ---------- Super Admin DB diagnostics ----------
 app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
