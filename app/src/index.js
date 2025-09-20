@@ -1,31 +1,29 @@
-import { q } from './db.js';
-// ===== DB bootstrap helper (idempotent) =====
-async function ensureDb() {
-  try {
-    if (typeof globalThis.q !== 'function' || typeof globalThis.db === 'undefined') {
-      const pg = await import('pg');
-      const { Pool } = pg;
-      const url = process.env.DATABASE_URL || '';
-      const needsSSL = /render\.com|amazonaws\.com|neon\.tech|supabase\.co/i.test(url);
-      const pool = globalThis.__cg_pool__ || new Pool({
-        connectionString: url,
-        ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
-        max: 5,
-        idleTimeoutMillis: 30000,
-      });
-      if (!globalThis.__cg_pool__) globalThis.__cg_pool__ = pool;
-      globalThis.q  = (text, params = []) => globalThis.__cg_pool__.query(text, params);
-      globalThis.db = {
-        any: (text, params = []) => globalThis.__cg_pool__.query(text, params).then(r => r.rows),
-      };
-    }
-    /* eslint-disable no-var */
-    if (typeof q  === 'undefined' && typeof globalThis.q  === 'function') { var q  = globalThis.q; }
-    if (typeof db === 'undefined' && typeof globalThis.db !== 'undefined') { var db = globalThis.db; }
-    /* eslint-enable no-var */
-  } catch (e) {
-    try { console.error('[ensureDb] failed', e?.message || e); } catch (_){}
-  }
+// --- Core imports (must be first) ---
+import express from "express";
+import cors from "cors";
+import jwt from "jsonwebtoken";
+import Stripe from "stripe";
+import * as Sentry from "@sentry/node";
+
+// --- Local modules ---
+import q from "./db/q.js";   // <-- fixes "q is not defined"
+import authMiddleware from "./middleware/auth.js";
+import { enforceActive, requireProPlus, requireSuper } from "./middleware/guards.js";
+
+// --- Initialize Stripe safely ---
+let stripe = null;
+const STRIPE_KEY = process.env.STRIPE_SECRET || "";
+if (STRIPE_KEY) {
+  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
+} else {
+  console.warn(
+    "[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501."
+  );
+}
+
+// --- Initialize Sentry ---
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
 }
 // ===== END DB bootstrap helper =====
 <truncated__content/>if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
