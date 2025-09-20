@@ -1,5 +1,45 @@
-import { q } from './db.js';
-<truncated__content/>if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
+import Stripe from "stripe";
+
+const STRIPE_KEY =
+  process.env.STRIPE_SECRET_KEY ||
+  process.env.STRIPE_SECRET ||
+  process.env.STRIPE_API_KEY ||
+  "";
+
+let stripe = null;
+if (STRIPE_KEY) {
+  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
+} else {
+  console.warn(
+    "[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501."
+  );
+}
+
+// Ensure Stripe import at top if not present
+import express from 'express';
+import cors from 'cors';
+import jwt from 'jsonwebtoken';
+
+// Initialize Sentry once
+import * as Sentry from '@sentry/node';
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
+}
+
+// Attempt to import auth-related middlewares, fallback to null if unavailable
+let authMiddleware = null, enforceActive = null, requireProPlus = null, requireSuper = null;
+try {
+  const mod = await import('./auth.js');
+  authMiddleware = mod.authMiddleware || null;
+  enforceActive  = mod.enforceActive  || null;
+  requireProPlus = mod.requireProPlus || null;
+  requireSuper   = mod.requireSuper   || null;
+} catch {}
+// Ensure each middleware is a function; fall back to a no-op so Express never receives undefined.
+const _noopMw = (req, res, next) => next();
+if (typeof authMiddleware !== 'function') authMiddleware = _noopMw;
+if (typeof enforceActive !== 'function') enforceActive = _noopMw;
+if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
 if (typeof requireSuper !== 'function') requireSuper = _noopMw;
 
 // Create app
