@@ -1958,22 +1958,36 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       _cgSetTokens(res, token, token);
       // Also set cookies explicitly to guarantee persistence behind proxies/CDNs
       try {
-        res.cookie('cg_access', token, {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'none',
-          path: '/',
-          maxAge: 15 * 60 * 1000 // 15 minutes
-        });
-        res.cookie('cg_refresh', token, {
+                res.cookie('cg_refresh', token, {
           httpOnly: true,
           secure: true,
           sameSite: 'none',
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
-      } catch(_e) {
-        // Fallback in case res.cookie is unavailable; append Set-Cookie headers
-        const prev = res.getHeader('Set-Cookie');
-        const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
-       
+      } catch (_e) {
+        /* ignore cookie set errors */
+      }
+
+      return res.json({
+        ok: true,
+        token,
+        user: demoUser,
+        tenant_id: tid
+      });
+    } catch (e) {
+      try { await recordOpsRun('dev_login_error', { err: String(e?.message || e) }); } catch (_e) {}
+      return res.status(500).json({ ok: false, error: 'internal_error' });
+    }
+  });
+
+  // GET /auth/dev-status — indicates if dev login is enabled
+  app.get('/auth/dev-status', (_req, res) => {
+    return res.json({ ok: true, dev_login_enabled: true });
+  });
+} else {
+  // If disabled, expose dev-status as false so UI can hide the button
+  app.get('/auth/dev-status', (_req, res) => {
+    return res.json({ ok: true, dev_login_enabled: false });
+  });
+}
