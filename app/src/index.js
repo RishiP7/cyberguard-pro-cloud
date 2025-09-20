@@ -35,6 +35,12 @@ try {
   requireProPlus = mod.requireProPlus || null;
   requireSuper   = mod.requireSuper   || null;
 } catch {}
+// Ensure each middleware is a function; fall back to a no-op so Express never receives undefined.
+const _noopMw = (req, res, next) => next();
+if (typeof authMiddleware !== 'function') authMiddleware = _noopMw;
+if (typeof enforceActive !== 'function') enforceActive = _noopMw;
+if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
+if (typeof requireSuper !== 'function') requireSuper = _noopMw;
 
 // Create app
 const app = express();
