@@ -24,6 +24,14 @@ if (process.env.SENTRY_DSN) {
   Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
 }
 
+// ---- DB alias bootstrap (idempotent) ----
+// If global q/db were created by our runtime bootstrap, expose local aliases
+/* eslint-disable no-var */
+if (typeof q === 'undefined' && typeof globalThis.q === 'function') { var q = globalThis.q; }
+if (typeof db === 'undefined' && typeof globalThis.db !== 'undefined') { var db = globalThis.db; }
+/* eslint-enable no-var */
+// -----------------------------------------
+
 // No-op guard middleware used if guard imports are missing (keeps routes working)
 const _noopMw = (_req, _res, next) => next();
 
