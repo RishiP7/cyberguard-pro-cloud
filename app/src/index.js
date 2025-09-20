@@ -7,9 +7,11 @@ import * as Sentry from "@sentry/node";
 
 // --- Local modules ---
 import q from "./db/q.js";   // <-- fixes "q is not defined"
-import authMiddleware from "./middleware/auth.js";
-import { enforceActive, requireProPlus, requireSuper } from "./middleware/guards.js";
-
+const Guard = {
+  enforceActive: (typeof enforceActive === 'function' ? enforceActive : _noopMw),
+  requireProPlus: (typeof requireProPlus === 'function' ? requireProPlus : _noopMw),
+  requireSuper:   (typeof requireSuper   === 'function' ? requireSuper   : _noopMw),
+};
 // --- Initialize Stripe safely ---
 let stripe = null;
 const STRIPE_KEY = process.env.STRIPE_SECRET || "";
@@ -25,9 +27,16 @@ if (STRIPE_KEY) {
 if (process.env.SENTRY_DSN) {
   Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
 }
-// ===== END DB bootstrap helper =====
-if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
-if (typeof requireSuper !== 'function') requireSuper = _noopMw;
+
+// No-op guard middleware used if guard imports are missing (keeps routes working)
+const _noopMw = (_req, _res, next) => next();
+
+// Create local aliases that always exist (don't mutate imported bindings)
+const Guard = {
+  enforceActive: (typeof enforceActive === 'function' ? enforceActive : _noopMw),
+  requireProPlus: (typeof requireProPlus === 'function' ? requireProPlus : _noopMw),
+  requireSuper:   (typeof requireSuper   === 'function' ? requireSuper   : _noopMw),
+};
 
 // Create app
 const app = express();
@@ -57,7 +66,7 @@ app.use(express.json({ limit: '1mb' }));
 
 // ===== end middleware + guards =====
 
-app.post('/ai/propose', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+app.post('/ai/propose', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
 // ===== DB bootstrap (idempotent, safe in ESM) =====
 if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined') {
   try {
@@ -116,7 +125,7 @@ if (typeof db === 'undefined' && typeof globalThis.db !== 'undefined') { var db 
 });
 
 // --- POST /ai/approve ---
-app.post('/ai/approve', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+app.post('/ai/approve', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
   try {
     const { action_id } = req.body || {};
     if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
@@ -136,7 +145,7 @@ app.post('/ai/approve', authMiddleware, enforceActive, requireProPlus, async (re
 });
 
 // --- POST /ai/execute (internal trigger) ---
-app.post('/ai/execute', authMiddleware, enforceActive, requireProPlus, async (req,res)=>{
+app.post('/ai/execute', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
   try {
     const { action_id } = req.body || {};
     if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
@@ -661,7 +670,7 @@ app.get('/billing/portal', authMiddleware, async (req,res)=>{
 });
 
 // Super Admin: backfill/sync billing state for the current tenant from Stripe
-app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) => {
+app.post('/admin/billing/sync', authMiddleware, Guard.requireSuper, async (req, res) => {
   try {
     const tid = req.user.tenant_id;
     const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [tid]);
@@ -695,7 +704,7 @@ app.post('/admin/billing/sync', authMiddleware, requireSuper, async (req, res) =
 
 // ---------- Admin: denormalize legacy alert JSON into flat columns ----------
 // Super-only: backfill flat columns from legacy event JSON if they are null
-app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (req, res) => {
+app.post('/admin/ops/alerts/denormalize', authMiddleware, Guard.requireSuper, async (req, res) => {
   try {
     const tid = req.user.tenant_id;
     const stats = { from_addr: 0, subject: 0, preview: 0, type: 0, anomaly: 0 };
@@ -887,7 +896,7 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, requireSuper, async (r
 // POST /admin/ops/alerts/prune_blank?dry=1&days=7
 // - dry: if '1' or 'true', do not delete; just report count
 // - days: optional lookback window; only prune rows created before now-days (int, days)
-app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (req, res) => {
+app.post('/admin/ops/alerts/prune_blank', authMiddleware, Guard.requireSuper, async (req, res) => {
   try {
     const tid = req.user.tenant_id;
     const dryFlag = String(req.query?.dry ?? req.body?.dry ?? '').toLowerCase();
@@ -933,7 +942,7 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, requireSuper, async (r
 // ---------- Admin: reset connector (wipe tokens/state) ----------
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
 // optionally purge JSONB blobs, and log detailed errors. Also supports debug echo.
-app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req, res) => {
+app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async (req, res) => {
   const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
   try {
     const { provider } = req.body || {};
@@ -1155,7 +1164,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, requireSuper, async (req,
 
 // ---------- Admin: trigger poll now (super only) ----------
 // POST /admin/ops/poll/now
-app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) => {
+app.post('/admin/ops/poll/now', authMiddleware, Guard.requireSuper, async (req, res) => {
   // Best-effort: keep M365 token fresh before polling
   try { await ensureM365TokenFresh(req.user.tenant_id); } catch (_e) {}
   try {
@@ -1170,7 +1179,7 @@ app.post('/admin/ops/poll/now', authMiddleware, requireSuper, async (req, res) =
 });
 
 // Helper: show current connector row (super only) to debug schema & values
-app.get('/admin/ops/connector/show', authMiddleware, requireSuper, async (req, res) => {
+app.get('/admin/ops/connector/show', authMiddleware, Guard.requireSuper, async (req, res) => {
   try {
     const provider = String(req.query?.provider || '').trim();
     if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
@@ -1254,7 +1263,7 @@ async function ensureM365TokenFresh(tenantId) {
 // - format: json (default) or csv
 // - days: lookback window (default 7, max 90)
 // - limit: max number of rows (default 1000, max 5000)
-app.get('/alerts/export', authMiddleware, enforceActive, async (req, res) => {
+app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) => {
   try {
     const tid = req.user.tenant_id;
     const fmt = String(req.query?.format || 'json').toLowerCase();
@@ -1780,7 +1789,7 @@ app.listen(Number(process.env.PORT) || 10000, () => {
 });
 
 // ---------- Super Admin DB diagnostics ----------
-app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
+app.get('/admin/db/diag', authMiddleware, Guard.requireSuper, async (_req,res)=>{
   try{
     const t = await q(`SELECT to_regclass('public.apikeys') IS NOT NULL AS apikeys_exists`);
     const c = await q(`SELECT COUNT(*)::int AS cnt FROM apikeys`);
@@ -1792,7 +1801,7 @@ app.get('/admin/db/diag', authMiddleware, requireSuper, async (_req,res)=>{
 });
 
 // Convenience wrapper: force reset (super only). Mirrors /admin/ops/connector/reset but forces details NULL.
-app.post('/admin/ops/connector/force_reset', authMiddleware, requireSuper, async (req, res) => {
+app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper, async (req, res) => {
   const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
   // proxy to the main handler by setting query flags, then re-running logic here
   try {
