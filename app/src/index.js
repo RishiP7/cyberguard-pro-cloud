@@ -26,7 +26,7 @@ if (process.env.SENTRY_DSN) {
   Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
 }
 // ===== END DB bootstrap helper =====
-<truncated__content/>if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
+if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
 if (typeof requireSuper !== 'function') requireSuper = _noopMw;
 
 // Create app
@@ -1971,31 +1971,4 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         // Fallback in case res.cookie is unavailable; append Set-Cookie headers
         const prev = res.getHeader('Set-Cookie');
         const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
-        next.push(
-          `cg_access=${encodeURIComponent(token)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
-        );
-        next.push(
-          `cg_refresh=${encodeURIComponent(token)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`
-        );
-        res.setHeader('Set-Cookie', next);
-      }
-
-      return res.json({
-        ok: true,
-        tenant_id: tid,
-        token,
-        user: { email: demoUser.email, role: demoUser.role, is_super: true }
-      });
-    } catch (e) {
-      try { console.error('[dev-login] failed', e?.message || e); } catch (_e) {}
-      return res.status(500).json({ ok:false, error: 'dev login failed' });
-    }
-  });
-
-  // Simple probe to verify feature toggle
-  app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: true }));
-} else {
-  // In locked mode, expose a status endpoint for quick debugging
-  app.get('/auth/dev-status', (_req, res) => res.json({ ok:true, dev_login_enabled: false }));
-}
-
+       
