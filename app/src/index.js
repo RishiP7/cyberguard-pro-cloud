@@ -1,45 +1,34 @@
-import Stripe from "stripe";
-
-const STRIPE_KEY =
-  process.env.STRIPE_SECRET_KEY ||
-  process.env.STRIPE_SECRET ||
-  process.env.STRIPE_API_KEY ||
-  "";
-
-let stripe = null;
-if (STRIPE_KEY) {
-  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
-} else {
-  console.warn(
-    "[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501."
-  );
+import { q } from './db.js';
+// ===== DB bootstrap helper (idempotent) =====
+async function ensureDb() {
+  try {
+    if (typeof globalThis.q !== 'function' || typeof globalThis.db === 'undefined') {
+      const pg = await import('pg');
+      const { Pool } = pg;
+      const url = process.env.DATABASE_URL || '';
+      const needsSSL = /render\.com|amazonaws\.com|neon\.tech|supabase\.co/i.test(url);
+      const pool = globalThis.__cg_pool__ || new Pool({
+        connectionString: url,
+        ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
+        max: 5,
+        idleTimeoutMillis: 30000,
+      });
+      if (!globalThis.__cg_pool__) globalThis.__cg_pool__ = pool;
+      globalThis.q  = (text, params = []) => globalThis.__cg_pool__.query(text, params);
+      globalThis.db = {
+        any: (text, params = []) => globalThis.__cg_pool__.query(text, params).then(r => r.rows),
+      };
+    }
+    /* eslint-disable no-var */
+    if (typeof q  === 'undefined' && typeof globalThis.q  === 'function') { var q  = globalThis.q; }
+    if (typeof db === 'undefined' && typeof globalThis.db !== 'undefined') { var db = globalThis.db; }
+    /* eslint-enable no-var */
+  } catch (e) {
+    try { console.error('[ensureDb] failed', e?.message || e); } catch (_){}
+  }
 }
-
-// Ensure Stripe import at top if not present
-import express from 'express';
-import cors from 'cors';
-import jwt from 'jsonwebtoken';
-
-// Initialize Sentry once
-import * as Sentry from '@sentry/node';
-if (process.env.SENTRY_DSN) {
-  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
-}
-
-// Attempt to import auth-related middlewares, fallback to null if unavailable
-let authMiddleware = null, enforceActive = null, requireProPlus = null, requireSuper = null;
-try {
-  const mod = await import('./auth.js');
-  authMiddleware = mod.authMiddleware || null;
-  enforceActive  = mod.enforceActive  || null;
-  requireProPlus = mod.requireProPlus || null;
-  requireSuper   = mod.requireSuper   || null;
-} catch {}
-// Ensure each middleware is a function; fall back to a no-op so Express never receives undefined.
-const _noopMw = (req, res, next) => next();
-if (typeof authMiddleware !== 'function') authMiddleware = _noopMw;
-if (typeof enforceActive !== 'function') enforceActive = _noopMw;
-if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
+// ===== END DB bootstrap helper =====
+<truncated__content/>if (typeof requireProPlus !== 'function') requireProPlus = _noopMw;
 if (typeof requireSuper !== 'function') requireSuper = _noopMw;
 
 // Create app
@@ -281,6 +270,7 @@ async function ensureConnectorHealthColumns() {
 
 // ---------- /me route ----------
 async function meRouteHandler(req, res) {
+  await ensureDb();
   {
     try {
       // breadcrumbs for debugging
@@ -432,6 +422,7 @@ app.get('/__version', (_req, res) => {
 
 // Minimal /me variant that always returns error detail to help diagnose
 app.get('/me_dbg', authMiddleware, async (req, res) => {
+  await ensureDb();
   try {
     const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
     const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
@@ -1731,6 +1722,7 @@ if (!app._api_prefix_rewrite) {
 // POST /auth/login_dbg  — does NOT sign in; inspects DB state for the given email
 // Returns details so we can see why /auth/login may fail with 500
 app.post('/auth/login_dbg', async (req, res) => {
+  await ensureDb();
   const email = String(req.body?.email || '').trim().toLowerCase();
   if (!email) return res.status(400).json({ ok:false, error:'missing email' });
   try {
@@ -1767,6 +1759,7 @@ app.post('/auth/login_dbg', async (req, res) => {
 
 // GET /health/db — quick DB probe
 app.get('/health/db', async (_req, res) => {
+  await ensureDb();
   try {
     const r = await q('SELECT 1 AS ok');
     return res.json({ ok: true, db: r.rows?.[0]?.ok === 1 });
