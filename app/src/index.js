@@ -2383,6 +2383,9 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   // Creates a signed JWT for a demo super-admin on the current tenant and sets cookies.
   app.post('/auth/dev-login', async (req, res) => {
     try {
+      // Ensure DB is ready before any provisioning
+      try { await ensureDb(); } catch (_e) {}
+
       // Choose tenant: honor ?tenant_id=... else default "demo"
       const tid = (req.query && req.query.tenant_id) ? String(req.query.tenant_id) : 'demo';
       const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
@@ -2410,14 +2413,13 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 
         // Ensure a demo admin user exists (email unique per tenant via index)
         const demoEmail = `demo-admin@${tid}`;
-        // Attempt insert; ignore if duplicate
         try {
           await q(`
             INSERT INTO users(id, tenant_id, email, role, created_at, updated_at)
             VALUES($1, $2, $3, 'admin', $4, $4)
-          `, ['u_' + uuidv4(), tid, demoEmail, nowEpoch]);
+          `, ['u_' + (typeof uuidv4 === 'function' ? uuidv4() : String(Date.now())), tid, demoEmail, nowEpoch]);
         } catch(_ue) {
-          // best-effort: if a unique constraint exists, ignore
+          // best-effort: ignore duplicates/constraint errors
         }
       } catch(_provErr) {
         // non-fatal: dev-login should still succeed even if provisioning fails
@@ -2425,22 +2427,52 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       }
       // --- End auto-provision ---
 
-      // Issue JWT (1 hour)
-      const token = jwt.sign(demoUser, jwtSecret, { expiresIn: '1h' });
+      // Dynamically import jsonwebtoken (ESM-safe) and sign
+      let _jwt;
+      try {
+        const mod = await import('jsonwebtoken');
+        _jwt = (mod && (mod.default || mod));
+      } catch (_impErr) {
+        try { await recordOpsRun('dev_login_error', { err: 'jwt_import_failed' }); } catch(_e) {}
+        return res.status(500).json({ ok: false, error: 'internal_error' });
+      }
+
+      let token;
+      try {
+        token = _jwt.sign(demoUser, jwtSecret, { expiresIn: '1h' });
+      } catch (_signErr) {
+        try { await recordOpsRun('dev_login_error', { err: 'jwt_sign_failed' }); } catch(_e) {}
+        return res.status(500).json({ ok: false, error: 'internal_error' });
+      }
 
       // Set cookies for both access & refresh (simple compat)
-      _cgSetTokens(res, token, token);
-      // Also set cookies explicitly to guarantee persistence behind proxies/CDNs
       try {
-                res.cookie('cg_refresh', token, {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'none',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-      } catch (_e) {
-        /* ignore cookie set errors */
+        const _cgSetTokens = (globalThis && globalThis.__cg_setTokens__) ? globalThis.__cg_setTokens__ : function _fallbackSetTokens(res, access, refresh) {
+          const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
+          try { res.cookie("cg_access", access,  { ...base, maxAge: 15 * 60 * 1000 }); } catch (_e) {
+            res.setHeader("Set-Cookie", [`cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`]);
+          }
+          try { res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_e) {
+            const prev = res.getHeader("Set-Cookie");
+            const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+            next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`);
+            res.setHeader("Set-Cookie", next);
+          }
+        };
+        _cgSetTokens(res, token, token);
+
+        // Also explicitly set refresh cookie to be extra safe behind proxies/CDNs
+        try {
+          res.cookie('cg_refresh', token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'none',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+        } catch (_e) { /* ignore */ }
+      } catch (_cookieErr) {
+        // non-fatal; continue
       }
 
       return res.json({
