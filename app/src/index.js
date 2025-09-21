@@ -1606,22 +1606,7 @@ app.use((req, res, next) => {
   return next();
 });
 // ===== END ULTRA-EARLY HEALTH HANDLERS =====
-
-// CORS middleware (configured, credentials, allowed headers, etc.)
-app.use(cors({
-  origin: (origin, cb) => cb(null, true), // reflect request origin
-  credentials: true,
-  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-  allowedHeaders: [
-    'Origin','X-Requested-With','Content-Type','Accept','Authorization',
-    'x-api-key','x-admin-key','x-plan-preview','x-admin-override',
-    'x-admin-plan-preview','x-admin-bypass'
-  ],
-  maxAge: 600,
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-}));
-// CORS override to ensure no Access-Control-Allow-Origin: * when credentials are true
+// ---- Unified CORS (no wildcard when credentials=true) ----
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
@@ -1629,8 +1614,21 @@ app.use((req, res, next) => {
     try { res.setHeader('Vary', 'Origin'); } catch (_) {}
     try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
   }
-  next();
+  try { res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS'); } catch (_) {}
+  try {
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      req.headers['access-control-request-headers'] ||
+        'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-api-key, x-admin-key, x-plan-preview, x-admin-override, x-admin-plan-preview, x-admin-bypass'
+    );
+  } catch (_) {}
+  try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  return next();
 });
+// ---- End Unified CORS ----
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
@@ -1827,20 +1825,6 @@ app.post('/auth/login_dbg', async (req, res) => {
     try { console.error('[login_dbg] failed', e?.message || e, e?.stack || ''); } catch (_e) {}
     return res.status(500).json({ ok:false, error:'dbg_failed', detail: String(e?.message || e) });
   }
-});
-
-// Explicit preflight handler for auth login (if present)
-app.options(['/auth/login','/api/auth/login'], (req, res) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
-    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
-    try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
-  }
-  try { res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS'); } catch (_) {}
-  try { res.setHeader('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,x-api-key,x-admin-key,x-plan-preview,x-admin-override,x-admin-plan-preview,x-admin-bypass'); } catch (_) {}
-  try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
-  return res.sendStatus(204);
 });
 
 // GET /health/db — quick DB probe
