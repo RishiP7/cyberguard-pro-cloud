@@ -2119,117 +2119,141 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // - Returns 400/401 on bad input/creds instead of 500
 // - Sets cg_access/cg_refresh cookies on success
 // - Never throws if password column names differ across environments
-app.post('/auth/login', express.json({ limit: '256kb' }), async (req, res) => {
-  const dbg = { step: 'start' };
-  try {
-    dbg.step = 'ensureDb';
-    await ensureDb();
+// Implementation note: we attach an explicit JSON parser middleware with an error
+// handler so malformed JSON cannot bubble a 500.
+(function attachLoginRoute(){
+  // explicit, route-scoped JSON parser with safe error handling
+  const loginJson = express.json({ limit: '256kb', strict: true, type: ['application/json', 'application/*+json'] });
 
-    dbg.step = 'validate_input';
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const password = String(req.body?.password || '');
-    if (!email || !password) {
-      try { res.setHeader('X-Auth-Debug', 'missing_credentials'); } catch(_) {}
-      return res.status(400).json({ ok: false, error: 'missing_credentials' });
-    }
-
-    dbg.step = 'select_user';
-    let user = null;
-    try {
-      const r = await q('SELECT * FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
-      user = r.rows?.[0] || null;
-    } catch (_e) {
-      try { res.setHeader('X-Auth-Debug', 'select_failed'); } catch(_) {}
-      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
-    }
-    if (!user) {
-      try { res.setHeader('X-Auth-Debug', 'user_not_found'); } catch(_) {}
-      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
-    }
-
-    dbg.step = 'password_compare';
-    const hash = user.password_hash || user.passhash || user.pwhash || null;
-    const plain = user.password || user.pass || user.pw || null;
-    let matches = false;
-    try {
-      if (hash) {
-        const bcryptjs = await import('bcryptjs').catch(() => null);
-        if (bcryptjs && typeof bcryptjs.compare === 'function') {
-          matches = await bcryptjs.compare(password, String(hash));
-        }
+  function loginJsonSafe(req, res, next) {
+    loginJson(req, res, (err) => {
+      if (err) {
+        try { res.setHeader('X-Auth-Debug', 'bad_json'); } catch(_) {}
+        return res.status(400).json({ ok: false, error: 'bad_json' });
       }
-    } catch (_) { /* ignore and fall back */ }
-    if (!matches) {
-      matches = !!(plain && String(plain) === password);
-    }
-    // Optional dev-only bypass: allow any non-empty password when ALLOW_DEV_WEAK_LOGIN=1
-    if (
-      !matches &&
-      String(process.env.ALLOW_DEV_WEAK_LOGIN || '').toLowerCase() === '1' &&
-      password.length > 0
-    ) {
-      matches = true;
-      try { res.setHeader('X-Auth-Debug', 'weak_login_bypass'); } catch(_) {}
-    }
-    if (!matches) {
-      try { res.setHeader('X-Auth-Debug', 'bad_password'); } catch(_) {}
-      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
-    }
-
-    dbg.step = 'issue_jwt';
-    // Always import jsonwebtoken dynamically to avoid ESM import duplication issues
-    let _jwt;
-    try {
-      const mod = await import('jsonwebtoken');
-      _jwt = (mod && (mod.default || mod));
-    } catch (_) {
-      try { res.setHeader('X-Auth-Debug', 'jwt_import_failed'); } catch(_) {}
-      // Normalize to 401 so the client never sees a 500 during auth flow
-      return res.status(401).json({ ok:false, error:'invalid_credentials' });
-    }
-    const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
-    const payload = {
-      sub: user.email,
-      email: user.email,
-      tenant_id: user.tenant_id || user.tenant || 'demo',
-      role: user.role || 'admin',
-      is_super: !!(user.is_super || user.super || user.isSuper),
-    };
-    let token;
-    try {
-      token = _jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
-    } catch (e) {
-      try { res.setHeader('X-Auth-Debug', 'jwt_sign_failed'); } catch(_) {}
-      // Normalize to 401 to avoid 500s surfacing to the UI
-      return res.status(401).json({ ok:false, error:'invalid_credentials' });
-    }
-
-    dbg.step = 'set_cookies';
-    const setTokens = globalThis.__cg_setTokens__ || ((res, access, refresh) => {
-      const base = { httpOnly: true, secure: true, sameSite: 'none', path: '/' };
-      try { res.cookie('cg_access', access,  { ...base, maxAge: 15 * 60 * 1000 }); } catch (_) {
-        res.setHeader('Set-Cookie', [`cg_access=${encodeURIComponent(access)}; Max-Age=${15*60}; Path=/; Secure; HttpOnly; SameSite=None`]);
-      }
-      try { res.cookie('cg_refresh', refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_) {
-        const prev = res.getHeader('Set-Cookie');
-        const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
-        next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30*24*60*60}; Path=/; Secure; HttpOnly; SameSite=None`);
-        res.setHeader('Set-Cookie', next);
-      }
+      return next();
     });
-    try { 
-      setTokens(res, token, token); 
-      try { res.setHeader('X-Auth-Tokens', 'set'); } catch(_) {}
-    } catch (_) {}
-
-    try { res.setHeader('X-Auth-Debug', 'ok'); } catch(_) {}
-    return res.json({ ok: true, token, user: payload, tenant_id: payload.tenant_id });
-  } catch (e) {
-    try { res.setHeader('X-Auth-Debug', `fail:${dbg.step}`); } catch(_) {}
-    // Never leak internals; normalize to 401 so clients don't see 500s for auth flow
-    return res.status(401).json({ ok: false, error: 'invalid_credentials' });
   }
-});
+
+  async function loginHandler(req, res) {
+    const dbg = { step: 'start' };
+    try {
+      dbg.step = 'ensureDb';
+      await ensureDb();
+
+      dbg.step = 'validate_input';
+      const email = String(req.body?.email || '').trim().toLowerCase();
+      const password = String(req.body?.password || '');
+      if (!email || !password) {
+        try { res.setHeader('X-Auth-Debug', 'missing_credentials'); } catch(_) {}
+        return res.status(400).json({ ok: false, error: 'missing_credentials' });
+      }
+
+      dbg.step = 'select_user';
+      let user = null;
+      try {
+        const r = await q('SELECT * FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
+        user = r.rows?.[0] || null;
+      } catch (_e) {
+        try { res.setHeader('X-Auth-Debug', 'select_failed'); } catch(_) {}
+        return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+      }
+      if (!user) {
+        try { res.setHeader('X-Auth-Debug', 'user_not_found'); } catch(_) {}
+        return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+      }
+
+      dbg.step = 'password_compare';
+      const hash = user.password_hash || user.passhash || user.pwhash || null;
+      const plain = user.password || user.pass || user.pw || null;
+      let matches = false;
+      try {
+        if (hash) {
+          const bcryptjs = await import('bcryptjs').catch(() => null);
+          if (bcryptjs && typeof bcryptjs.compare === 'function') {
+            matches = await bcryptjs.compare(password, String(hash));
+          }
+        }
+      } catch (_) { /* ignore and fall back */ }
+      if (!matches) {
+        matches = !!(plain && String(plain) === password);
+      }
+      // Optional dev-only bypass: allow any non-empty password when ALLOW_DEV_WEAK_LOGIN=1
+      if (
+        !matches &&
+        String(process.env.ALLOW_DEV_WEAK_LOGIN || '').toLowerCase() === '1' &&
+        password.length > 0
+      ) {
+        matches = true;
+        try { res.setHeader('X-Auth-Debug', 'weak_login_bypass'); } catch(_) {}
+      }
+      if (!matches) {
+        try { res.setHeader('X-Auth-Debug', 'bad_password'); } catch(_) {}
+        return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+      }
+
+      dbg.step = 'issue_jwt';
+      // Always import jsonwebtoken dynamically to avoid ESM import duplication issues
+      let _jwt;
+      try {
+        const mod = await import('jsonwebtoken');
+        _jwt = (mod && (mod.default || mod));
+      } catch (_) {
+        try { res.setHeader('X-Auth-Debug', 'jwt_import_failed'); } catch(_) {}
+        // Normalize to 401 so the client never sees a 500 during auth flow
+        return res.status(401).json({ ok:false, error:'invalid_credentials' });
+      }
+      const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+      const payload = {
+        sub: user.email,
+        email: user.email,
+        tenant_id: user.tenant_id || user.tenant || 'demo',
+        role: user.role || 'admin',
+        is_super: !!(user.is_super || user.super || user.isSuper),
+      };
+      let token;
+      try {
+        token = _jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
+      } catch (e) {
+        try { res.setHeader('X-Auth-Debug', 'jwt_sign_failed'); } catch(_) {}
+        // Normalize to 401 to avoid 500s surfacing to the UI
+        return res.status(401).json({ ok:false, error:'invalid_credentials' });
+      }
+
+      dbg.step = 'set_cookies';
+      const setTokens = globalThis.__cg_setTokens__ || ((res, access, refresh) => {
+        const base = { httpOnly: true, secure: true, sameSite: 'none', path: '/' };
+        try { res.cookie('cg_access', access,  { ...base, maxAge: 15 * 60 * 1000 }); } catch (_) {
+          res.setHeader('Set-Cookie', [`cg_access=${encodeURIComponent(access)}; Max-Age=${15*60}; Path=/; Secure; HttpOnly; SameSite=None`]);
+        }
+        try { res.cookie('cg_refresh', refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_) {
+          const prev = res.getHeader('Set-Cookie');
+          const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+          next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30*24*60*60}; Path=/; Secure; HttpOnly; SameSite=None`);
+          res.setHeader('Set-Cookie', next);
+        }
+      });
+      try {
+        setTokens(res, token, token);
+        try { res.setHeader('X-Auth-Tokens', 'set'); } catch(_) {}
+      } catch (_) {}
+
+      try { res.setHeader('X-Auth-Debug', 'ok'); } catch(_) {}
+      return res.json({ ok: true, token, user: payload, tenant_id: payload.tenant_id });
+    } catch (e) {
+      try { res.setHeader('X-Auth-Debug', `fail:${dbg.step}`); } catch(_) {}
+      // Never leak internals; normalize to 401 so clients don't see 500s for auth flow
+      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+    }
+  }
+
+  // Attach routes with safe JSON parser first
+  app.post('/auth/login', loginJsonSafe, loginHandler);
+  app.post('/api/auth/login', loginJsonSafe, (req, res, next) => {
+    // Delegate to the same handler (req.url already rewritten elsewhere, but keep explicit alias)
+    return loginHandler(req, res, next);
+  });
+})();
 // ===== END AUTH: Hardened password login =====
 // ===== DEV LOGIN (safe, opt-in) =====
 
