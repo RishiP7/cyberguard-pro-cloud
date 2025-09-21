@@ -1630,6 +1630,32 @@ app.use((req, res, next) => {
   return next();
 });
 // ---- End Unified CORS ----
+
+// Explicit preflight for login endpoints — reflect Origin and allow credentials
+// Handles both legacy and /api paths, and always returns 204 with proper headers
+app.options(["/auth/login", "/api/auth/login"], (req, res) => {
+  try {
+    const origin = req.headers.origin;
+    if (origin) {
+      try { res.setHeader("Access-Control-Allow-Origin", origin); } catch (_) {}
+      try { res.setHeader("Vary", "Origin"); } catch (_) {}
+      try { res.setHeader("Access-Control-Allow-Credentials", "true"); } catch (_) {}
+    }
+    try { res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS"); } catch (_) {}
+    try {
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        req.headers["access-control-request-headers"] ||
+          "Origin, X-Requested-With, Content-Type, Accept, Authorization, x-api-key, x-admin-key, x-plan-preview, x-admin-override, x-admin-plan-preview, x-admin-bypass"
+      );
+    } catch (_) {}
+    try { res.setHeader("Access-Control-Max-Age", "600"); } catch (_) {}
+  } catch (_e) {
+    // swallow errors so preflight never fails
+  }
+  return res.sendStatus(204);
+});
+
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
@@ -1955,7 +1981,6 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 
 // ===== DEV LOGIN (safe, opt-in) =====
 
-// --- Replace all other explicit Access-Control-Allow-Origin: '*' with reflection ---
 // (No explicit replacements found in the truncated content. If present elsewhere, replace with:)
 // const __origin = req.headers.origin;
 // if (__origin) {
