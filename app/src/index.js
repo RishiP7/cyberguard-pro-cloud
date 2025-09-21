@@ -2107,7 +2107,26 @@ app.listen(Number(process.env.PORT) || 10000, () => {
   const name = process.env.BRAND || 'CyberGuard Pro';
   console.log(`${name} listening on :${process.env.PORT || 10000}`);
 });
-
+app.get('/__whoami', (req, res) => {
+  try {
+    const raw = req.headers.cookie || '';
+    const cookies = req.cookies || (
+      globalThis.__cg_parseCookiesFromHeader__
+        ? globalThis.__cg_parseCookiesFromHeader__(raw)
+        : {}
+    );
+    return res.json({
+      ok: true,
+      have_user: !!req.user,
+      user: req.user || null,
+      auth_header: req.headers.authorization || null,
+      cookies,
+      raw_cookie: raw || null
+    });
+  } catch (e) {
+    return res.status(500).json({ ok:false, error:'whoami_failed', detail: String(e?.message || e) });
+  }
+});
 // ---------- Super Admin DB diagnostics ----------
 app.get('/admin/db/diag', authMiddleware, Guard.requireSuper, async (_req,res)=>{
   try{
