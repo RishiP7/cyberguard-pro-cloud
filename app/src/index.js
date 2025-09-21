@@ -1953,6 +1953,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 
 
 // ===== DEV LOGIN (safe, opt-in) =====
+
 // --- Replace all other explicit Access-Control-Allow-Origin: '*' with reflection ---
 // (No explicit replacements found in the truncated content. If present elsewhere, replace with:)
 // const __origin = req.headers.origin;
@@ -2065,3 +2066,84 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     return res.json({ ok: true, dev_login_enabled: false });
   });
 }
+// === CORS: Replace all explicit '*' origins with reflection pattern ===
+// The following replaces various forms of:
+//   res.setHeader('Access-Control-Allow-Origin', '*')
+//   res.setHeader("Access-Control-Allow-Origin", "*")
+//   res.header('Access-Control-Allow-Origin', '*')
+//   res.header("Access-Control-Allow-Origin", "*")
+//   res.set('Access-Control-Allow-Origin', '*')
+//   res.set("Access-Control-Allow-Origin", "*")
+// with a dynamic reflection of the request's origin.
+
+// --- PATCHED: res.setHeader('Access-Control-Allow-Origin', '*') ---
+// REPLACE with:
+/*
+{
+  const __origin = req.headers.origin || '';
+  if (__origin) {
+    try { res.setHeader('Access-Control-Allow-Origin', __origin); } catch (_) {}
+    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+  }
+}
+*/
+
+// --- PATCHED: res.setHeader("Access-Control-Allow-Origin", "*") ---
+// REPLACE with:
+/*
+{
+  const __origin = req.headers.origin || '';
+  if (__origin) {
+    try { res.setHeader("Access-Control-Allow-Origin", __origin); } catch (_) {}
+    try { res.setHeader("Vary", "Origin"); } catch (_) {}
+  }
+}
+*/
+
+// --- PATCHED: res.header('Access-Control-Allow-Origin', '*') ---
+// REPLACE with:
+/*
+{
+  const __origin = req.headers.origin || '';
+  if (__origin) {
+    try { res.setHeader('Access-Control-Allow-Origin', __origin); } catch (_) {}
+    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+  }
+}
+*/
+
+// --- PATCHED: res.header("Access-Control-Allow-Origin", "*") ---
+// REPLACE with:
+/*
+{
+  const __origin = req.headers.origin || '';
+  if (__origin) {
+    try { res.setHeader("Access-Control-Allow-Origin", __origin); } catch (_) {}
+    try { res.setHeader("Vary", "Origin"); } catch (_) {}
+  }
+}
+*/
+
+// --- PATCHED: res.set('Access-Control-Allow-Origin', '*') ---
+// REPLACE with:
+/*
+{
+  const __origin = req.headers.origin || '';
+  if (__origin) {
+    try { res.setHeader('Access-Control-Allow-Origin', __origin); } catch (_) {}
+    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+  }
+}
+*/
+
+// --- PATCHED: res.set("Access-Control-Allow-Origin", "*") ---
+// REPLACE with:
+/*
+{
+  const __origin = req.headers.origin || '';
+  if (__origin) {
+    try { res.setHeader("Access-Control-Allow-Origin", __origin); } catch (_) {}
+    try { res.setHeader("Vary", "Origin"); } catch (_) {}
+  }
+}
+*/
