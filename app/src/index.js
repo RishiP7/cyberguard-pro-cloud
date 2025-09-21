@@ -44,6 +44,14 @@ const Guard = {
 
 // Create app
 const app = express();
+app.use((req, res, next) => {
+  try { res.setHeader("Access-Control-Allow-Origin", "*"); } catch (_) {}
+  try { res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS"); } catch (_) {}
+  try { res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept"); } catch (_) {}
+  try { res.setHeader("Access-Control-Allow-Credentials", "true"); } catch (_) {}
+  if (req.method === "OPTIONS") { return res.sendStatus(204); }
+  return next();
+});
 
 // Global middleware
 const allowedOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [
@@ -65,27 +73,6 @@ app.use(cors({
   allowedHeaders: ['Origin','X-Requested-With','Content-Type','Accept','Authorization','x-api-key','x-admin-key','x-plan-preview','x-admin-override','x-admin-plan-preview','x-admin-bypass'],
 }));
 
-// Explicit preflight for /auth/login (and /api/auth/login) to always succeed
-app.options(['/auth/login','/api/auth/login'], (req, res) => {
-  try {
-    const origin = req.headers.origin || '*';
-    try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
-    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
-    try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
-    try { res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS'); } catch (_) {}
-    try {
-      res.setHeader(
-        'Access-Control-Allow-Headers',
-        req.headers['access-control-request-headers'] ||
-          'Origin,X-Requested-With,Content-Type,Accept,Authorization,x-api-key,x-admin-key,x-plan-preview,x-admin-override,x-admin-plan-preview,x-admin-bypass'
-      );
-    } catch (_) {}
-    try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
-  } catch (_e) {
-    // swallow errors so preflight never fails
-  }
-  return res.sendStatus(204);
-});
 
 // Hardened global OPTIONS preflight handler (always 204, never throws)
 app.use((req, res, next) => {
