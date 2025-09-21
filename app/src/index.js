@@ -2177,17 +2177,15 @@ app.post('/auth/login', express.json({ limit: '256kb' }), async (req, res) => {
     }
 
     dbg.step = 'issue_jwt';
-    // Use the already-imported jwt module if present (dev-login worked),
-    // otherwise lazily import jsonwebtoken.
-    let _jwt = (typeof jwt !== 'undefined' && jwt) ? jwt : null;
-    if (!_jwt) {
-      try {
-        const mod = await import('jsonwebtoken');
-        _jwt = mod.default || mod;
-      } catch (_) {
-        try { res.setHeader('X-Auth-Debug', 'jwt_import_failed'); } catch(_) {}
-        return res.status(500).json({ ok:false, error:'internal_error' });
-      }
+    // Always import jsonwebtoken dynamically to avoid ESM import duplication issues
+    let _jwt;
+    try {
+      const mod = await import('jsonwebtoken');
+      _jwt = (mod && (mod.default || mod));
+    } catch (_) {
+      try { res.setHeader('X-Auth-Debug', 'jwt_import_failed'); } catch(_) {}
+      // Normalize to 401 so the client never sees a 500 during auth flow
+      return res.status(401).json({ ok:false, error:'invalid_credentials' });
     }
     const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
     const payload = {
@@ -2202,7 +2200,8 @@ app.post('/auth/login', express.json({ limit: '256kb' }), async (req, res) => {
       token = _jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
     } catch (e) {
       try { res.setHeader('X-Auth-Debug', 'jwt_sign_failed'); } catch(_) {}
-      return res.status(500).json({ ok:false, error:'internal_error' });
+      // Normalize to 401 to avoid 500s surfacing to the UI
+      return res.status(401).json({ ok:false, error:'invalid_credentials' });
     }
 
     dbg.step = 'set_cookies';
