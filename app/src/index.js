@@ -1606,14 +1606,15 @@ app.use((req, res, next) => {
   return next();
 });
 // ===== END ULTRA-EARLY HEALTH HANDLERS =====
-// ---- Unified CORS (no wildcard when credentials=true) ----
+// ---- Unified CORS (reflect caller Origin; never wildcard when credentials=true) ----
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin) {
+  if (origin && typeof origin === 'string') {
     try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
     try { res.setHeader('Vary', 'Origin'); } catch (_) {}
     try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
   }
+
   try { res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS'); } catch (_) {}
   try {
     res.setHeader(
@@ -1623,6 +1624,7 @@ app.use((req, res, next) => {
     );
   } catch (_) {}
   try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
