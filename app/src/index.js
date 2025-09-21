@@ -1606,6 +1606,33 @@ app.use((req, res, next) => {
   return next();
 });
 // ===== END ULTRA-EARLY HEALTH HANDLERS =====
+
+// --- CORS configuration ---
+import cors from 'cors';
+// CORS middleware (configured, credentials, allowed headers, etc.)
+app.use(cors({
+  origin: (origin, cb) => cb(null, true), // reflect request origin
+  credentials: true,
+  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
+  allowedHeaders: [
+    'Origin','X-Requested-With','Content-Type','Accept','Authorization',
+    'x-api-key','x-admin-key','x-plan-preview','x-admin-override',
+    'x-admin-plan-preview','x-admin-bypass'
+  ],
+  maxAge: 600,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}));
+// CORS override to ensure no Access-Control-Allow-Origin: * when credentials are true
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
+    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+    try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
+  }
+  next();
+});
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
@@ -1810,10 +1837,10 @@ app.options(['/auth/login','/api/auth/login'], (req, res) => {
   if (origin) {
     try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
     try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+    try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
   }
-  try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
   try { res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS'); } catch (_) {}
-  try { res.setHeader('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization'); } catch (_) {}
+  try { res.setHeader('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,x-api-key,x-admin-key,x-plan-preview,x-admin-override,x-admin-plan-preview,x-admin-bypass'); } catch (_) {}
   try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
   return res.sendStatus(204);
 });
@@ -1944,6 +1971,13 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 
 
 // ===== DEV LOGIN (safe, opt-in) =====
+// --- Replace all other explicit Access-Control-Allow-Origin: '*' with reflection ---
+// (No explicit replacements found in the truncated content. If present elsewhere, replace with:)
+// const __origin = req.headers.origin;
+// if (__origin) {
+//   try { res.setHeader('Access-Control-Allow-Origin', __origin); } catch (_) {}
+//   try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+// }
 // Enable a one-click login to a demo/super account for debugging environments.
 // Only active if ALLOW_DEV_LOGIN=1 is set. Never enable in production.
 if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
