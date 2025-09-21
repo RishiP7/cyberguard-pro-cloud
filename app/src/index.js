@@ -79,9 +79,11 @@ app.use((req, res, next) => {
   if (req.method !== 'OPTIONS') return next();
 
   try {
-    const origin = req.headers.origin || '*';
-    try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
-    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+    const origin = req.headers.origin;
+    if (origin) {
+      try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
+      try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+    }
 
     const reqMethod  = req.headers['access-control-request-method'];
     const reqHeaders = req.headers['access-control-request-headers'];
@@ -1800,6 +1802,20 @@ app.post('/auth/login_dbg', async (req, res) => {
     try { console.error('[login_dbg] failed', e?.message || e, e?.stack || ''); } catch (_e) {}
     return res.status(500).json({ ok:false, error:'dbg_failed', detail: String(e?.message || e) });
   }
+});
+
+// Explicit preflight handler for auth login (if present)
+app.options(['/auth/login','/api/auth/login'], (req, res) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
+    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+  }
+  try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
+  try { res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS'); } catch (_) {}
+  try { res.setHeader('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization'); } catch (_) {}
+  try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
+  return res.sendStatus(204);
 });
 
 // GET /health/db — quick DB probe
