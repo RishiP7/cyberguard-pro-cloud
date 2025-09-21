@@ -44,8 +44,6 @@ const Guard = {
 
 // Create app
 const app = express();
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   // Early CORS shim: reflect Origin and succeed preflight with credentials
   try {
@@ -1624,6 +1622,54 @@ app.use((req, res, next) => {
   return next();
 });
 // ===== END ULTRA-EARLY HEALTH HANDLERS =====
+// ===== ULTRA-EARLY DB ENSURE (local shim for diagnostics and early routes) =====
+const _ensureDbLocal = (typeof ensureDb === 'function')
+  ? ensureDb
+  : (async function ensureDbLocal(){
+      try{
+        if (!globalThis.q || !globalThis.db) {
+          const pg = await import('pg');
+          const { Pool } = pg;
+          const url = process.env.DATABASE_URL || '';
+          const needsSSL = /render\.com|amazonaws\.com|neon\.tech|supabase\.co/i.test(url);
+          const pool = globalThis.__cg_pool__ || new Pool({
+            connectionString: url,
+            ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
+            max: 5,
+            idleTimeoutMillis: 30000,
+          });
+          if (!globalThis.__cg_pool__) globalThis.__cg_pool__ = pool;
+          globalThis.q  = (text, params = []) => globalThis.__cg_pool__.query(text, params);
+          globalThis.db = {
+            any: (text, params = []) => globalThis.__cg_pool__.query(text, params).then(r => r.rows),
+          };
+        }
+      } catch (e) {
+        try { console.error('[__db_diag.ensureDbLocal] failed', e?.message || e); } catch (_){}
+      }
+    });
+// ===== END ULTRA-EARLY DB ENSURE =====
+
+// ===== ULTRA-EARLY DB DIAGNOSTIC ROUTE =====
+// Lightweight JSON body parser JUST for this endpoint so it always works even if later middleware fails.
+app.post('/__db_diag', express.json({ limit: '256kb' }), async (req, res) => {
+  try {
+    await _ensureDbLocal();
+    const ok = typeof globalThis.q === 'function';
+    let sample = null;
+    if (ok) {
+      try {
+        const r = await globalThis.q('SELECT NOW() as now');
+        sample = (r.rows && r.rows[0]) ? r.rows[0].now : null;
+      } catch(_e) { sample = null; }
+    }
+    return res.json({ ok, body_seen: !!req.body, sample });
+  } catch (e) {
+    try { console.error('[__db_diag] failed', e?.message || e); } catch (_){}
+    return res.status(500).json({ ok:false, error:'diag_failed', detail:String(e?.message||e) });
+  }
+});
+// ===== END ULTRA-EARLY DB DIAGNOSTIC ROUTE =====
 // ===== ULTRA-EARLY LOGIN PREFLIGHT (runs before unified CORS) =====
 // Guarantees ACAO reflection for /auth/login and /api/auth/login preflight with credentials=true.
 app.use((req, res, next) => {
@@ -2113,14 +2159,3 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     return res.json({ ok: true, dev_login_enabled: false });
   });
 }
-
-// --- DB diag ---
-app.post('/__db_diag', async (req, res) => {
-  try {
-    await ensureDb();
-    const now = await q('SELECT NOW() as now').then(r => r.rows?.[0]?.now || null);
-    res.json({ ok: true, body_seen: !!req.body, sample: now });
-  } catch (e) {
-    res.status(500).json({ ok:false, error: String(e?.message || e) });
-  }
-});
