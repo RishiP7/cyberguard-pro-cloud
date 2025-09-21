@@ -430,11 +430,69 @@ if (!app._cg_cookie_bridge_early) {
 /* ===== END EARLY COOKIE → AUTH BRIDGE ===== */
 // ---------- /me route ----------
 async function meRouteHandler(req, res) {
-  // ensure auth present; avoid 500s when token/cookie missing
+  // ---- Soft auth: rebuild req.user from cg_access cookie/JWT if middleware did not set it ----
+  try {
+    if (!req.user) {
+      // Parse cookies (use existing parsed cookies if present)
+      const cgParseCookiesFromHeader =
+        (globalThis && globalThis.__cg_parseCookiesFromHeader__) ||
+        function (cookieHeader) {
+          const out = {};
+          if (!cookieHeader || typeof cookieHeader !== 'string') return out;
+          const parts = cookieHeader.split(/;\s*/g);
+          for (const p of parts) {
+            const i = p.indexOf('=');
+            if (i <= 0) continue;
+            const k = decodeURIComponent(p.slice(0, i).trim());
+            const v = decodeURIComponent(p.slice(i + 1));
+            if (k) out[k] = v;
+          }
+          return out;
+        };
+
+      const cookieHeader = req.headers.cookie || '';
+      const cookies = (req.cookies && Object.keys(req.cookies).length)
+        ? req.cookies
+        : cgParseCookiesFromHeader(cookieHeader);
+
+      // Prefer Authorization header if present; otherwise cg_access cookie
+      let token = '';
+      const auth = String(req.headers.authorization || '');
+      if (/^Bearer\s+/i.test(auth)) {
+        token = auth.replace(/^Bearer\s+/i, '').trim();
+      } else if (cookies && cookies.cg_access) {
+        token = cookies.cg_access;
+      }
+
+      if (token) {
+        try {
+          const secret =
+            process.env.JWT_SECRET ||
+            process.env.JWT_SIGNING_KEY ||
+            'dev_secret_do_not_use_in_prod';
+          const decoded = jwt.verify(token, secret);
+          if (decoded && typeof decoded === 'object') {
+            req.user = {
+              sub: decoded.sub || decoded.email || null,
+              email: decoded.email || decoded.sub || null,
+              tenant_id: decoded.tenant_id || 'demo',
+              role: decoded.role || (decoded.is_super ? 'super_admin' : 'member'),
+              is_super: !!decoded.is_super
+            };
+          }
+        } catch (_e_jwt) {
+          // ignore, will return 401 below if still no user
+        }
+      }
+    }
+  } catch (_e_softauth) { /* non-fatal */ }
+
+  // If still no user, respond 401 cleanly
   if (!req.user || !req.user.tenant_id) {
     try { res.setHeader('X-ME', 'unauthorized'); } catch(_) {}
     return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
+  // ---- End soft auth block ----
   await ensureDb();
   {
     try {
@@ -552,8 +610,8 @@ async function meRouteHandler(req, res) {
 }
 
 // Register the handler on both legacy and /api paths
-app.get('/me', authMiddleware, meRouteHandler);
-app.get('/api/me', authMiddleware, meRouteHandler);
+app.get('/me', meRouteHandler);
+app.get('/api/me', meRouteHandler);
 
 // Remove any older duplicate /me routes so only this handler remains (but DO NOT remove /api/me)
 try {
