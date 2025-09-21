@@ -118,7 +118,8 @@ const corsOrigin = (origin, callback) => {
   if (!origin || allowedOrigins.includes(origin)) {
     return callback(null, true);
   }
-  return callback(new Error('CORS not allowed'));
+  // Patched: never error here; unified CORS middleware below handles reflection & credentials
+      return callback(null, true);
 };
 
 app.use(cors({
