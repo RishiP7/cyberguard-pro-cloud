@@ -45,10 +45,27 @@ const Guard = {
 // Create app
 const app = express();
 app.use((req, res, next) => {
-  try { res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS"); } catch (_) {}
-  try { res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept"); } catch (_) {}
-  try { res.setHeader("Access-Control-Allow-Credentials", "true"); } catch (_) {}
-  if (req.method === "OPTIONS") { return res.sendStatus(204); }
+  // Early CORS shim: reflect Origin and succeed preflight with credentials
+  try {
+    const origin = req.headers.origin;
+    if (origin) {
+      try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
+      try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+      try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
+    }
+    // Echo requested method/headers when provided, else send a safe default
+    const reqMethod  = req.headers['access-control-request-method'];
+    const reqHeaders = req.headers['access-control-request-headers'];
+    try { res.setHeader('Access-Control-Allow-Methods', reqMethod || 'GET,POST,PUT,PATCH,DELETE,OPTIONS'); } catch (_) {}
+    try {
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        reqHeaders || 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      );
+    } catch (_) {}
+    try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
+  } catch (_) {}
+  if (req.method === 'OPTIONS') { return res.sendStatus(204); }
   return next();
 });
 
