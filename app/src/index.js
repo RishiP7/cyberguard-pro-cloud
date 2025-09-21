@@ -65,32 +65,8 @@ app.use(cors({
   allowedHeaders: ['Origin','X-Requested-With','Content-Type','Accept','Authorization','x-api-key','x-admin-key','x-plan-preview','x-admin-override','x-admin-plan-preview','x-admin-bypass'],
 }));
 
-// Explicit preflight handler (fixes 500s on OPTIONS)
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  // reflect allowed origin (if provided and permitted by our corsOrigin helper)
-  try {
-    if (!origin) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    } else if (!Array.isArray(origin) && typeof origin === 'string') {
-      // We still run our corsOrigin check to be consistent with main CORS policy
-      if (!Array.isArray(globalThis.__allowedOriginsCache__)) globalThis.__allowedOriginsCache__ = null;
-      // Use the same logic as corsOrigin to decide
-      const allowedOrigins = (process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [process.env.FRONTEND_URL, process.env.PUBLIC_SITE_URL]).filter(Boolean);
-      if (!origin || allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-      } else {
-        // fall back to not reflecting if disallowed (still return 204 so browsers can proceed correctly if same-origin)
-        res.setHeader('Access-Control-Allow-Origin', 'null');
-      }
-      res.setHeader('Vary', 'Origin');
-    }
-  } catch (_) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-api-key, x-admin-key, x-plan-preview, x-admin-override, x-admin-plan-preview, x-admin-bypass');
+// Explicit preflight handler (Express 5–compatible catch-all, minimal, no headers)
+app.options('/:rest(.*)', (_req, res) => {
   return res.sendStatus(204);
 });
 
