@@ -370,8 +370,37 @@ async function ensureConnectorHealthColumns() {
 }
 
 
+/* ===== EARLY COOKIE → AUTH BRIDGE (for /me) ===== */
+if (!app._cg_cookie_bridge_early) {
+  app.use((req, res, next) => {
+    try {
+      if (!req.headers.authorization && typeof req.headers.cookie === 'string' && req.headers.cookie.length) {
+        const parts = req.headers.cookie.split(/;\s*/g);
+        const cookies = {};
+        for (const p of parts) {
+          const i = p.indexOf('=');
+          if (i <= 0) continue;
+          const k = decodeURIComponent(p.slice(0, i));
+          const v = decodeURIComponent(p.slice(i + 1));
+          cookies[k] = v;
+        }
+        if (cookies.cg_access && !req.headers.authorization) {
+          req.headers.authorization = `Bearer ${cookies.cg_access}`;
+        }
+      }
+    } catch (_) { /* no-op */ }
+    return next();
+  });
+  app._cg_cookie_bridge_early = true;
+}
+/* ===== END EARLY COOKIE → AUTH BRIDGE ===== */
 // ---------- /me route ----------
 async function meRouteHandler(req, res) {
+  // ensure auth present; avoid 500s when token/cookie missing
+  if (!req.user || !req.user.tenant_id) {
+    try { res.setHeader('X-ME', 'unauthorized'); } catch(_) {}
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
   await ensureDb();
   {
     try {
