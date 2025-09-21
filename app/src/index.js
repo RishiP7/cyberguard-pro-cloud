@@ -4,6 +4,8 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
 import * as Sentry from "@sentry/node";
+import authMiddleware from "./middleware/auth.js";
+import { enforceActive, requireProPlus, requireSuper } from "./middleware/guards.js";
 
 // --- Local modules ---
 
