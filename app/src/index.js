@@ -10,7 +10,46 @@ try {
   const _auth = await import('./middleware/auth.js');
   authMiddleware = _auth.default || _auth.authMiddleware || authMiddleware;
 } catch (e) {
-  console.warn("[auth] ./middleware/auth.js not found; using no-op auth (dev-only).");
+  console.warn("[auth] ./middleware/auth.js not found; enabling built-in JWT verifier (fallback).");
+  // If no auth module, install a JWT-based fallback
+  if (typeof authMiddleware !== 'function' || authMiddleware === undefined) {
+    function _extractBearer(req) {
+      const h = req.headers && req.headers.authorization;
+      if (h && /^Bearer\s+/i.test(h)) return h.replace(/^Bearer\s+/i, '').trim();
+      // try cookies (cg_access), both parsed and raw header
+      if (req.cookies && req.cookies.cg_access) return req.cookies.cg_access;
+      const ch = req.headers && req.headers.cookie;
+      if (ch) {
+        const m = ch.match(/(?:^|;\s*)cg_access=([^;]+)/i);
+        if (m) return decodeURIComponent(m[1]);
+      }
+      return null;
+    }
+    authMiddleware = (req, res, next) => {
+      try {
+        const token = _extractBearer(req);
+        if (!token) return res.status(401).json({ ok:false, error:'unauthorized' });
+        const secret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+        let payload;
+        try {
+          payload = jwt.verify(token, secret);
+        } catch (_e) {
+          return res.status(401).json({ ok:false, error:'unauthorized' });
+        }
+        req.user = {
+          sub: payload.sub || payload.email || null,
+          email: payload.email || payload.sub || null,
+          tenant_id: payload.tenant_id || payload.tenant || 'demo',
+          role: payload.role || 'member',
+          is_super: !!(payload.is_super || payload.super || payload.isSuper)
+        };
+        return next();
+      } catch (err) {
+        try { console.error('[auth-fallback]', err && (err.message || err)); } catch (_){}
+        return res.status(401).json({ ok:false, error:'unauthorized' });
+      }
+    };
+  }
 }
 
 // --- Local modules ---
