@@ -2162,6 +2162,15 @@ app.post('/auth/login', express.json({ limit: '256kb' }), async (req, res) => {
     if (!matches) {
       matches = !!(plain && String(plain) === password);
     }
+    // Optional dev-only bypass: allow any non-empty password when ALLOW_DEV_WEAK_LOGIN=1
+    if (
+      !matches &&
+      String(process.env.ALLOW_DEV_WEAK_LOGIN || '').toLowerCase() === '1' &&
+      password.length > 0
+    ) {
+      matches = true;
+      try { res.setHeader('X-Auth-Debug', 'weak_login_bypass'); } catch(_) {}
+    }
     if (!matches) {
       try { res.setHeader('X-Auth-Debug', 'bad_password'); } catch(_) {}
       return res.status(401).json({ ok: false, error: 'invalid_credentials' });
@@ -2209,7 +2218,10 @@ app.post('/auth/login', express.json({ limit: '256kb' }), async (req, res) => {
         res.setHeader('Set-Cookie', next);
       }
     });
-    try { setTokens(res, token, token); } catch (_) {}
+    try { 
+      setTokens(res, token, token); 
+      try { res.setHeader('X-Auth-Tokens', 'set'); } catch(_) {}
+    } catch (_) {}
 
     try { res.setHeader('X-Auth-Debug', 'ok'); } catch(_) {}
     return res.json({ ok: true, token, user: payload, tenant_id: payload.tenant_id });
