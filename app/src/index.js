@@ -66,7 +66,7 @@ app.use(cors({
 }));
 
 // Explicit preflight handler (Express 5–compatible catch-all, minimal, no headers)
-app.options('/:rest(.*)', (_req, res) => {
+app.options('/*', (_req, res) => {
   return res.sendStatus(204);
 });
 
