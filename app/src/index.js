@@ -6,7 +6,6 @@ import Stripe from "stripe";
 import * as Sentry from "@sentry/node";
 
 // --- Local modules ---
-import q from "./db/q.js";   // <-- fixes "q is not defined"
 
 // --- Initialize Stripe safely ---
 let stripe = null;
