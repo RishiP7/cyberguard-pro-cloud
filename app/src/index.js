@@ -1607,8 +1607,6 @@ app.use((req, res, next) => {
 });
 // ===== END ULTRA-EARLY HEALTH HANDLERS =====
 
-// --- CORS configuration ---
-import cors from 'cors';
 // CORS middleware (configured, credentials, allowed headers, etc.)
 app.use(cors({
   origin: (origin, cb) => cb(null, true), // reflect request origin
