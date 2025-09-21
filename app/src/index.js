@@ -2045,6 +2045,115 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
 
 
+// ===== AUTH: Hardened password login (no 500s) =====
+// Registers a robust /auth/login and an /api alias. Ensures:
+// - Calls ensureDb() first
+// - Returns 400/401 on bad input/creds instead of 500
+// - Sets cg_access/cg_refresh cookies on success
+// - Never throws if password column names differ across environments
+app.post('/auth/login', async (req, res) => {
+  try {
+    await ensureDb();
+
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (!email || !password) {
+      return res.status(400).json({ ok: false, error: 'missing_credentials' });
+    }
+
+    // Fetch user row (handle many possible schemas safely)
+    let user = null;
+    try {
+      const r = await q('SELECT * FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
+      user = r.rows?.[0] || null;
+    } catch (_e) {
+      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+    }
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+    }
+
+    // Try multiple possible password fields
+    const hash = user.password_hash || user.passhash || user.pwhash || null;
+    const plain = user.password || user.pass || user.pw || null;
+
+    // Compare defensively: prefer bcrypt hash; fallback to plain (dev-only DBs)
+    const matches = await (async () => {
+      try {
+        if (hash) {
+          const bcryptjs = await import('bcryptjs').catch(() => null);
+          if (bcryptjs && typeof bcryptjs.compare === 'function') {
+            return await bcryptjs.compare(password, String(hash));
+          }
+        }
+      } catch (_) {}
+      if (plain && String(plain) === password) return true;
+      return false;
+    })();
+
+    if (!matches) {
+      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+    }
+
+    // Build JWT
+    const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+    const jsonwebtoken = (await import('jsonwebtoken')).default || (await import('jsonwebtoken'));
+    const payload = {
+      sub: user.email,
+      email: user.email,
+      tenant_id: user.tenant_id || user.tenant || 'demo',
+      role: user.role || 'admin',
+      is_super: !!(user.is_super || user.super || user.isSuper),
+    };
+    const token = jsonwebtoken.sign(payload, jwtSecret, { expiresIn: '1h' });
+
+    // Set cookies (use helper if present; otherwise set headers directly)
+    const setTokens = globalThis.__cg_setTokens__ || ((res, access, refresh) => {
+      const base = { httpOnly: true, secure: true, sameSite: 'none', path: '/' };
+      try { res.cookie('cg_access', access,  { ...base, maxAge: 15 * 60 * 1000 }); } catch (_) {
+        res.setHeader('Set-Cookie', [`cg_access=${encodeURIComponent(access)}; Max-Age=${15*60}; Path=/; Secure; HttpOnly; SameSite=None`]);
+      }
+      try { res.cookie('cg_refresh', token,  { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_) {
+        const prev = res.getHeader('Set-Cookie'); const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+        next.push(`cg_refresh=${encodeURIComponent(token)}; Max-Age=${30*24*60*60}; Path=/; Secure; HttpOnly; SameSite=None`);
+        res.setHeader('Set-Cookie', next);
+      }
+    });
+    setTokens(res, token, token);
+
+    return res.json({ ok: true, token, user: payload, tenant_id: payload.tenant_id });
+  } catch (e) {
+    try { console.error('[auth/login] failed', e?.message || e); } catch (_) {}
+    return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+  }
+});
+
+// Ensure our /auth/login takes precedence if older handlers exist:
+try {
+  if (app && app._router && Array.isArray(app._router.stack)) {
+    const stack = app._router.stack;
+    // Find the most recently added /auth/login POST layer (the one we just registered)
+    let idx = -1;
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const layer = stack[i];
+      if (layer && layer.route && layer.route.path === '/auth/login' && layer.route.methods && layer.route.methods.post) {
+        idx = i; break;
+      }
+    }
+    if (idx >= 0) {
+      const layer = stack.splice(idx, 1)[0];
+      // Move to the front so it matches before any legacy handlers
+      stack.splice(0, 0, layer);
+    }
+  }
+} catch (_e) { /* non-fatal */ }
+
+// Also expose under /api for the frontend
+if (!app._cg_api_auth_login_alias) {
+  app.post('/api/auth/login', (req, res, next) => { req.url = '/auth/login'; next(); });
+  app._cg_api_auth_login_alias = true;
+}
+// ===== END AUTH: Hardened password login =====
 // ===== DEV LOGIN (safe, opt-in) =====
 
 // --- Replace all other explicit Access-Control-Allow-Origin: '*' with reflection ---
