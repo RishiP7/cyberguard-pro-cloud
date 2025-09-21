@@ -65,12 +65,32 @@ app.use(cors({
   allowedHeaders: ['Origin','X-Requested-With','Content-Type','Accept','Authorization','x-api-key','x-admin-key','x-plan-preview','x-admin-override','x-admin-plan-preview','x-admin-bypass'],
 }));
 
-// Global OPTIONS preflight handler (Express 5-safe, no extra headers)
+// Global OPTIONS preflight handler (CORS-compliant, reflects origin and requested headers/methods)
 app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
+  if (req.method !== 'OPTIONS') return next();
+
+  // Reflect the requesting origin so credentials can be allowed
+  const origin = req.headers.origin || '';
+  if (origin) {
+    try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
+    try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+  } else {
+    // Fallback for environments without Origin (non-browser clients)
+    try { res.setHeader('Access-Control-Allow-Origin', '*'); } catch (_) {}
   }
-  return next();
+
+  // Echo requested method/headers if provided
+  const reqMethod  = req.headers['access-control-request-method'];
+  const reqHeaders = req.headers['access-control-request-headers'];
+
+  try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
+  try { res.setHeader('Access-Control-Allow-Methods', reqMethod || 'GET,POST,PUT,PATCH,DELETE,OPTIONS'); } catch (_) {}
+  try { res.setHeader('Access-Control-Allow-Headers', reqHeaders || 'Origin,X-Requested-With,Content-Type,Accept,Authorization,x-api-key,x-admin-key,x-plan-preview,x-admin-override,x-admin-plan-preview,x-admin-bypass'); } catch (_) {}
+
+  // Cache preflight for a short time to reduce browser churn
+  try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
+
+  return res.sendStatus(204);
 });
 
 // JSON body parser (after Stripe webhook raw body setup later)
