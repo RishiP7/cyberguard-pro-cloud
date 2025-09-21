@@ -118,8 +118,7 @@ const corsOrigin = (origin, callback) => {
   if (!origin || allowedOrigins.includes(origin)) {
     return callback(null, true);
   }
-  // Patched: never error here; unified CORS middleware below handles reflection & credentials
-      return callback(null, true);
+  return callback(new Error('CORS not allowed'));
 };
 
 app.use(cors({
@@ -1717,7 +1716,13 @@ const _ensureDbLocal = (typeof ensureDb === 'function')
         try { console.error('[__db_diag.ensureDbLocal] failed', e?.message || e); } catch (_){}
       }
     });
-// ===== END ULTRA-EARLY DB ENSURE =====
+
+// Promote local ensureDb shim to global if missing, and bind a local reference
+if (typeof globalThis.ensureDb !== 'function') {
+  globalThis.ensureDb = _ensureDbLocal;
+}
+// Local alias so downstream calls to `ensureDb()` work regardless of where it's defined
+const ensureDb = globalThis.ensureDb;
 
 // ===== ULTRA-EARLY DB DIAGNOSTIC ROUTE =====
 // Lightweight JSON body parser JUST for this endpoint so it always works even if later middleware fails.
