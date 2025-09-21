@@ -1,3 +1,37 @@
+// ===== HOISTED ensureDb shim (must be declared before any usage) =====
+async function ensureDb() {
+  try {
+    // If a global ensureDb already exists (e.g., set later), delegate to it
+    if (globalThis.ensureDb && globalThis.ensureDb !== ensureDb && typeof globalThis.ensureDb === 'function') {
+      return globalThis.ensureDb();
+    }
+    // Bootstrap pg pool and helpers if missing
+    if (!globalThis.q || !globalThis.db) {
+      const pg = await import('pg');
+      const { Pool } = pg;
+      const url = process.env.DATABASE_URL || '';
+      const needsSSL = /render\.com|amazonaws\.com|neon\.tech|supabase\.co/i.test(url);
+      const pool = globalThis.__cg_pool__ || new Pool({
+        connectionString: url,
+        ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
+        max: 5,
+        idleTimeoutMillis: 30000,
+      });
+      if (!globalThis.__cg_pool__) globalThis.__cg_pool__ = pool;
+      globalThis.q  = (text, params = []) => globalThis.__cg_pool__.query(text, params);
+      globalThis.db = {
+        any: (text, params = []) => globalThis.__cg_pool__.query(text, params).then(r => r.rows),
+      };
+    }
+  } catch (e) {
+    try { console.error('[ensureDb shim]', e?.message || e); } catch (_){}
+  }
+}
+// Expose globally for callers that use globalThis.ensureDb
+if (typeof globalThis.ensureDb !== 'function') {
+  globalThis.ensureDb = ensureDb;
+}
+// ===== END HOISTED ensureDb shim =====
 // --- Core imports (must be first) ---
 import express from "express";
 import cors from "cors";
@@ -1716,13 +1750,11 @@ const _ensureDbLocal = (typeof ensureDb === 'function')
         try { console.error('[__db_diag.ensureDbLocal] failed', e?.message || e); } catch (_){}
       }
     });
-
-// Promote local ensureDb shim to global if missing, and bind a local reference
+// Promote local ensureDb shim to global if missing (hoisted ensureDb already exists above)
 if (typeof globalThis.ensureDb !== 'function') {
   globalThis.ensureDb = _ensureDbLocal;
 }
-// Local alias so downstream calls to `ensureDb()` work regardless of where it's defined
-const ensureDb = globalThis.ensureDb;
+// Note: no local `const ensureDb` here to avoid TDZ; use the hoisted function declared at top.
 
 // ===== ULTRA-EARLY DB DIAGNOSTIC ROUTE =====
 // Lightweight JSON body parser JUST for this endpoint so it always works even if later middleware fails.
