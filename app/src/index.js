@@ -65,9 +65,12 @@ app.use(cors({
   allowedHeaders: ['Origin','X-Requested-With','Content-Type','Accept','Authorization','x-api-key','x-admin-key','x-plan-preview','x-admin-override','x-admin-plan-preview','x-admin-bypass'],
 }));
 
-// Explicit preflight handler (Express 5–compatible catch-all, minimal, no headers)
-app.options('/*', (_req, res) => {
-  return res.sendStatus(204);
+// Global OPTIONS preflight handler (Express 5-safe, no extra headers)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  return next();
 });
 
 // JSON body parser (after Stripe webhook raw body setup later)
