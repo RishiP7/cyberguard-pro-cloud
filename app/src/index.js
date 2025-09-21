@@ -44,6 +44,8 @@ const Guard = {
 
 // Create app
 const app = express();
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   // Early CORS shim: reflect Origin and succeed preflight with credentials
   try {
@@ -2111,3 +2113,14 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     return res.json({ ok: true, dev_login_enabled: false });
   });
 }
+
+// --- DB diag ---
+app.post('/__db_diag', async (req, res) => {
+  try {
+    await ensureDb();
+    const now = await q('SELECT NOW() as now').then(r => r.rows?.[0]?.now || null);
+    res.json({ ok: true, body_seen: !!req.body, sample: now });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: String(e?.message || e) });
+  }
+});
