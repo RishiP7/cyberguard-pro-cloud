@@ -2127,45 +2127,6 @@ app.get('/__whoami', (req, res) => {
     return res.status(500).json({ ok:false, error:'whoami_failed', detail: String(e?.message || e) });
   }
 });
-
-  
-// === DEBUG: dev-login probe (temporary) ===
-app.post('/__dev_login_dbg', async (req, res) => {
-  const out = { ok:false, steps:{} };
-  try {
-    out.steps.env = {
-      allow_dev_login: String(process.env.ALLOW_DEV_LOGIN||'').toLowerCase(),
-      node_env: process.env.NODE_ENV || null
-    };
-    try { await ensureDb(); out.steps.ensureDb = 'ok'; } catch(e){ out.steps.ensureDb = String(e?.message||e); }
-    let jwtMod=null;
-    try { const mod = await import('jsonwebtoken'); jwtMod = (mod && (mod.default||mod)); out.steps.jwt_import = 'ok'; }
-    catch(e){ out.steps.jwt_import = String(e?.message||e); }
-    const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
-    const demo = { sub:'demo-admin@demo', email:'demo-admin@demo', tenant_id:'demo', role:'admin', is_super:true, iat: Math.floor(Date.now()/1000) };
-    let token1=null, token2=null;
-    if (jwtMod && typeof jwtMod.sign === 'function') {
-      try { token1 = jwtMod.sign(demo, jwtSecret, { algorithm:'HS256', expiresIn:'10m' }); out.steps.jwt_sign='ok'; }
-      catch(e){ out.steps.jwt_sign=String(e?.message||e); }
-    }
-    try {
-      const base64url = (buf) => Buffer.from(buf).toString('base64').replace(/=/g,'').replace(/+/g,'-').replace(///g,'_');
-      const header = { alg:'HS256', typ:'JWT' };
-      const payload = { ...demo, exp: Math.floor(Date.now()/1000) + 600 };
-      const h = base64url(JSON.stringify(header));
-      const p = base64url(JSON.stringify(payload));
-      const data = h + '.' + p;
-      const crypto = await import('crypto');
-      const sig = crypto.createHmac('sha256', jwtSecret).update(data).digest('base64').replace(/=/g,'').replace(/+/g,'-').replace(///g,'_');
-      token2 = data + '.' + sig; out.steps.local_sign='ok';
-    } catch(e){ out.steps.local_sign = String(e?.message||e); }
-    return res.status(200).json({ ok:true, steps: out.steps, token_from_jsonwebtoken: !!token1, token_from_local_signer: !!token2 });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error:'dbg_failed', detail:String(e?.message||e) });
-  }
-});
-// === END DEBUG: dev-login probe ===
-
 // ---------- Super Admin DB diagnostics ----------
 app.get('/admin/db/diag', authMiddleware, Guard.requireSuper, async (_req,res)=>{
   try{
@@ -2517,7 +2478,10 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 
       if (!token) {
         // Dependency-free HS256 signer
-        const base64url = (buf) => Buffer.from(buf).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+        const base64url = (buf) => Buffer.from(buf).toString('base64')
+  .replace(/=/g, '')
+  .replace(/\+/g, '-')
+  .replace(/\//g, '_');
         const header = { alg: 'HS256', typ: 'JWT' };
         const payload = Object.assign({}, demoUser, { exp: Math.floor(Date.now()/1000) + 3600 });
         const h = base64url(JSON.stringify(header));
@@ -2550,7 +2514,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     } catch (e) {
       try { await recordOpsRun('dev_login_error', { err: String(e?.message || e) }); } catch (_e) {}
       try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
-      const body = { ok: false, error: "internal_error", detail: String(e?.message || e) }; return res.status(500).json(body);
+      return res.status(500).json({ ok: false, error: 'internal_error' });
     }
   });
 
