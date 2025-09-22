@@ -1886,6 +1886,47 @@ app.use((req, res, next) => {
   return next();
 });
 // ---- End Unified CORS ----
+
+// ===== EARLY AUTH PRIMER (runs before routes) =====
+app.use(async (req, _res, next) => {
+  try {
+    // If an upstream already set req.user, keep it
+    if (req.user) return next();
+
+    // Extract token: Authorization header first, then cg_access cookie
+    let token = null;
+    const ah = req.headers && req.headers.authorization;
+    if (ah && /^Bearer\s+/i.test(ah)) {
+      token = ah.replace(/^Bearer\s+/i, '').trim();
+    }
+    if (!token && req.headers && req.headers.cookie) {
+      const m = req.headers.cookie.match(/(?:^|;\s*)cg_access=([^;]+)/);
+      if (m) token = decodeURIComponent(m[1]);
+    }
+    if (!token) return next();
+
+    // Verify JWT (do not throw to client; swallow errors and continue)
+    try {
+      const mod = await import('jsonwebtoken').catch(() => null);
+      const _jwt = mod && (mod.default || mod);
+      if (_jwt && typeof _jwt.verify === 'function') {
+        const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+        const p = _jwt.verify(token, jwtSecret);
+        // Attach a normalized user
+        req.user = {
+          sub: p.sub || p.email || null,
+          email: p.email || null,
+          tenant_id: p.tenant_id || 'demo',
+          role: p.role || 'admin',
+          is_super: !!p.is_super
+        };
+      }
+    } catch (_e) { /* ignore */ }
+  } catch (_e) { /* ignore */ }
+  return next();
+});
+// ===== END EARLY AUTH PRIMER =====
+
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
