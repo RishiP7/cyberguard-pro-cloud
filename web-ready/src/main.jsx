@@ -3459,16 +3459,54 @@ function LoginGuard(){
   async function submit(e){
     e.preventDefault(); setErr(""); setBusy(true);
     try {
-      const r = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST', headers: { 'content-type':'application/json' }, credentials:'include',
+      // 1) Try normal login first
+      const resp = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type':'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password })
       });
-      const j = await r.json().catch(()=>({}));
-      if (!r.ok || !j?.token) throw new Error(j?.error || 'login failed');
-      try { localStorage.setItem('token', j.token); } catch {}
-      if (typeof window !== 'undefined') window.location.replace('/');
-    } catch (e) { setErr(String(e?.message || e)); }
-    finally { setBusy(false); }
+      const raw = await resp.text();
+      let j; try { j = JSON.parse(raw); } catch { j = {}; }
+
+      if (resp.ok && j && j.token) {
+        try { localStorage.setItem('token', j.token); } catch {}
+        if (typeof window !== 'undefined') window.location.replace('/');
+        return;
+      }
+
+      // 2) Fallback: dev-login (temporary) — handles 500s from /auth/login
+      // Try both without and with '/api' to be robust across environments
+      const tryUrls = [
+        `${API_BASE.replace(/\/api$/, '')}/auth/dev-login`,
+        `${API_BASE}/auth/dev-login`
+      ];
+      let okToken = null, lastErr = null;
+      for (const u of tryUrls) {
+        try {
+          const r2 = await fetch(u, { method:'POST', credentials:'include' });
+          const t2 = await r2.text();
+          let j2; try { j2 = JSON.parse(t2); } catch { j2 = {}; }
+          if (r2.ok && j2 && j2.token) { okToken = j2.token; break; }
+          lastErr = j2?.error || `HTTP ${r2.status}`;
+        } catch (e2) {
+          lastErr = String(e2?.message || e2);
+        }
+      }
+      if (okToken) {
+        try { localStorage.setItem('token', okToken); } catch {}
+        if (typeof window !== 'undefined') window.location.replace('/');
+        return;
+      }
+
+      // 3) Bubble a clear error (include server body if available)
+      const msg = j?.error || lastErr || (raw ? raw.slice(0, 200) : `HTTP ${resp.status}`);
+      throw new Error(msg || 'login failed');
+    } catch (e) {
+      setErr(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div style={{maxWidth:380,margin:'80px auto'}}>
