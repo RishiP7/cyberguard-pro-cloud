@@ -1,6 +1,10 @@
 import Login from "./pages/Login.jsx";
 // --- API base path ---
-const API_BASE = '/api';
+const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
 /* === SAFETY BOOTSTRAP (do not remove) ================================
    Ensures required React/Router imports and minimal API helpers exist.
    This prevents blank screens when a module didn't tree-shake in.
@@ -1045,7 +1049,11 @@ function AIDock({ me }) {
 function TopBadges(){
   const [me, setMe] = React.useState(null);
 
-  const API_BASE = '/api';
+  const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
 
   React.useEffect(()=>{
     (async()=>{
@@ -1848,7 +1856,11 @@ function Pricing(){
 
   React.useEffect(()=>{ apiGet("/me").then(setMe).catch(()=>{}); },[]);
 
-  const API_BASE = '/api';
+  const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
 
   async function checkout(plan){
     setErr(""); setMsg(""); setBusy(true);
@@ -2891,7 +2903,11 @@ function LiveEmailScan(){
     setLoading(true); setErr("");
     try{
       const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-      const API_BASE = '/api';
+      const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
       const r = await fetch(`${API_BASE}/alerts/export?days=1&limit=200`, {
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include'
@@ -3103,6 +3119,13 @@ try { if (typeof LiveStatusTicker === 'undefined') {
   // eslint-disable-next-line no-var
   var LiveStatusTicker = function LiveStatusTickerFallback(){ return null; };
 } } catch(_e) {}
+// --- Dynamic API base (prod -> Render backend; dev -> local /api) ---
+const __CG_DYNAMIC_API_BASE =
+  (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+    ? 'https://cyberguard-pro-cloud.onrender.com/api'
+    : '/api';
+// expose globally so every component can reuse the same value
+try { globalThis.API_BASE = globalThis.API_BASE || __CG_DYNAMIC_API_BASE; } catch (_e) {}
 // DashboardWithOnboarding: wrapper for Dashboard with onboarding/tips sections
 function DashboardWithOnboarding(props){
   return (
@@ -3165,7 +3188,11 @@ function AuthLogin(){
     background: "rgba(255,255,255,.12)",
     cursor: "pointer"
   };
-  const API_BASE = '/api';
+  const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
   async function onSubmit(e){
     e.preventDefault();
     setErr('');
@@ -3223,7 +3250,11 @@ function RequireAuth({ children }){
 
   React.useEffect(() => {
     if (ok) return;
-    const API_BASE = '/api';
+    const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
     (async () => {
       try {
         const r = await fetch(`${API_BASE}/me`, { credentials: 'include' });
@@ -3362,7 +3393,11 @@ function LoginGuard(){
   const [password,setPassword] = React.useState("");
   const [err,setErr] = React.useState("");
   const [busy,setBusy] = React.useState(false);
-  const API_BASE = '/api';
+  const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
   async function submit(e){
     e.preventDefault(); setErr(""); setBusy(true);
     try {
@@ -3602,7 +3637,11 @@ function Dashboard(props){
   const [me, setMe] = React.useState(null);
   const [err, setErr] = React.useState('');
 
-  const API_BASE = '/api';
+  const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
 
   React.useEffect(() => {
     let alive = true;
@@ -3677,7 +3716,11 @@ function SafeDashboard(props){
         const token = (()=>{ try { return !!localStorage.getItem('token'); } catch { return false; } })();
         let meOk = null, plan = null;
         try {
-          const API_BASE = '/api';
+          const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
           const r = await fetch(`${API_BASE}/me`, { credentials: 'include' });
           meOk = r.ok;
           if (r.ok) {
@@ -4529,7 +4572,11 @@ function BillingPanel() {
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
 
-  const API_BASE = '/api';
+  const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
 
   async function api(path, opts = {}) {
     const token = localStorage.getItem("token") || "";
@@ -4708,7 +4755,11 @@ function Support(){
   const [sent, setSent] = React.useState(false);
   const [err, setErr] = React.useState("");
 
-  const API_BASE = '/api';
+  const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+  ? globalThis.API_BASE
+  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+      : '/api');
 
   async function submit(e){
     e.preventDefault();
