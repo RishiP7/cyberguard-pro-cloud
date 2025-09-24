@@ -3217,6 +3217,13 @@ function AuthLogin(){
       }
 
       const data = await (res ? res.json().catch(() => ({})) : Promise.resolve({}));
+      // If JSON parsing failed (data empty), try to read text and surface it
+      if (!data || Object.keys(data).length === 0) {
+        try {
+          const raw = await res.clone().text();
+          console.warn('[login raw body]', raw.slice(0, 300));
+        } catch (_e) {}
+      }
       if (!res.ok || !data?.token) throw new Error(data?.error || 'login failed');
       // Cookies are set by the server; store token for header-based calls as a backup
       try { localStorage.setItem('token', data.token); } catch {}
@@ -3228,6 +3235,50 @@ function AuthLogin(){
     }
   }
 
+  // --- TEMP: dev-login helper for troubleshooting auth (removable) ---
+  async function devLogin(){
+    const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+      ? globalThis.API_BASE
+      : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
+          ? 'https://cyberguard-pro-cloud.onrender.com/api'
+          : '/api');
+    try{
+      // Try both /auth/dev-login and legacy /api/auth/dev-login just in case
+      const tryUrls = [
+        `${API_BASE.replace(/\/api$/, '')}/auth/dev-login`,
+        `${API_BASE}/auth/dev-login`
+      ];
+      let res = null, text = '';
+      for (const u of tryUrls) {
+        try {
+          res = await fetch(u, { method:'POST', credentials:'include' });
+          text = await res.text();
+          if (res.ok) break;
+        } catch (_) { /* try next */ }
+      }
+      if (!res) throw new Error('no response');
+      let j; try { j = JSON.parse(text); } catch { j = { ok:false, error:text }; }
+
+      // Log full response to help diagnose 500/HTML cases
+      try { console.log('[dev-login]', res.status, j || text); } catch {}
+
+      if (!res.ok || !j?.token) throw new Error(j?.error || `HTTP ${res.status}`);
+
+      try { localStorage.setItem('token', j.token); } catch {}
+      // quick sanity check that /me works via cookie or header
+      try {
+        const me1 = await fetch(`${API_BASE}/me`, { credentials:'include' });
+        const t2  = await fetch(`${API_BASE}/me`, { headers:{ Authorization:`Bearer ${j.token}` } });
+        console.log('[me-cookie]', me1.status, await me1.text());
+        console.log('[me-bearer]', t2.status, await t2.text());
+      } catch(_e){}
+      if (typeof window !== 'undefined') window.location.replace('/');
+    }catch(e){
+      try { setErr(String(e?.message || e)); } catch(_){}
+      try { console.error('[dev-login failed]', e); } catch(_){}
+    }
+  }
+
   return (
     <div style={{ maxWidth: 380, margin: '80px auto' }}>
       <h1 style={{ marginBottom: 16 }}>Sign in</h1>
@@ -3236,6 +3287,13 @@ function AuthLogin(){
         <input style={inp} type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Password" />
         {err && <div style={{ color: '#ff7777', marginBottom: 10 }}>{err}</div>}
         <button style={btn} disabled={loading} type="submit">{loading ? 'Signing in…' : 'Save & Continue'}</button>
+        <button
+          type="button"
+          onClick={devLogin}
+          style={{ ...btn, marginTop: 8 }}
+        >
+          Dev login (temp)
+        </button>
       </form>
     </div>
   );
