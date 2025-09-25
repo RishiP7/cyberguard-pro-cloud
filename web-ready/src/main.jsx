@@ -4920,6 +4920,17 @@ if (typeof window !== 'undefined') {
   const API_HOST  = 'cyberguard-pro-cloud.onrender.com';
   const API_HTTP  = 'http://localhost:8080';
   const API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
+const PUBLIC_NOAUTH = [
+    /\/__ping\b/,
+    /\/__env\b/,
+    /\/__routes\b/,
+    /\/__whoami\b/,
+    /\/auth\/dev-status\b/,
+    /\/auth\/dev-login\b/,
+    /\/auth\/login\b/,
+    /\/auth\/logout\b/,
+    /\/auth\/refresh\b/
+  ];
 
   function looksLikeApi(u){
     try {
@@ -4928,11 +4939,11 @@ if (typeof window !== 'undefined') {
       return s.startsWith(API_HTTP) || s.startsWith(API_HTTPS) || s.startsWith('/api') || s.includes(API_HOST);
     } catch { return false; }
   }
-  const isAuthPath = (u) => /\/auth\/(login|logout|refresh|dev-login)\b/.test(String(u||''));
+    const isAuthPath = (u) => /\/auth\/(login|logout|refresh|dev-login|dev-status)\b/.test(String(u||''));
 
-  async function refreshIfNeeded() {
+    async function refreshIfNeeded() {
     try {
-      const r = await orig('/api/auth/refresh', { method:'POST', credentials:'include' });
+      const r = await orig(API_HTTPS + '/api/auth/refresh', { method:'POST', credentials:'include' });
       return r.ok;
     } catch { return false; }
   }
@@ -4980,11 +4991,20 @@ if (typeof window !== 'undefined') {
       init = { credentials: 'include', ...init };
       if (!init.credentials) init.credentials = 'include';
 
-      // If caller hasn't provided Authorization and we have a stored token, attach it for NON-auth endpoints
+      // Attach Authorization only for protected API calls:
+      // - must be API
+      // - not an auth route
+      // - not a public diagnostics route (e.g. __ping, __whoami, __env, __routes)
       if (!isAuth) {
         try {
-          const tok = localStorage.getItem('token');
-          if (tok) init.headers = setHeader(init.headers, 'Authorization', 'Bearer ' + tok);
+          const pathStr = String(url || '');
+          const isPublic = PUBLIC_NOAUTH.some(rx => rx.test(pathStr));
+          if (!isPublic) {
+            const tok = localStorage.getItem('token');
+            if (tok) {
+              init.headers = setHeader(init.headers, 'Authorization', 'Bearer ' + tok);
+            }
+          }
         } catch {}
       }
     }
