@@ -4917,13 +4917,18 @@ if (typeof window !== 'undefined') {
   if (typeof window === 'undefined' || window.__authFetchShim) return;
   window.__authFetchShim = true;
   const orig = window.fetch.bind(window);
-  const API_HOST = 'cyberguard-pro-cloud.onrender.com';
-  const API_HTTP = 'http://localhost:8080';
+  const API_HOST  = 'cyberguard-pro-cloud.onrender.com';
+  const API_HTTP  = 'http://localhost:8080';
   const API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
 
   function looksLikeApi(u){
-    return u.startsWith(API_HTTP) || u.startsWith(API_HTTPS) || u.startsWith('/api') || u.includes(API_HOST);
+    try {
+      if (!u) return false;
+      const s = String(u);
+      return s.startsWith(API_HTTP) || s.startsWith(API_HTTPS) || s.startsWith('/api') || s.includes(API_HOST);
+    } catch { return false; }
   }
+  const isAuthPath = (u) => /\/auth\/(login|logout|refresh|dev-login)\b/.test(String(u||''));
 
   async function refreshIfNeeded() {
     try {
@@ -4932,28 +4937,67 @@ if (typeof window !== 'undefined') {
     } catch { return false; }
   }
 
+  // small helper to safely set a header whether headers is a Headers object or a plain object
+  function setHeader(hdrs, k, v){
+    try {
+      if (hdrs && typeof hdrs.set === 'function') { hdrs.set(k, v); return hdrs; }
+      const h2 = Object.assign({}, hdrs || {});
+      h2[k] = v;
+      return h2;
+    } catch { 
+      const h2 = Object.assign({}, hdrs || {});
+      h2[k] = v;
+      return h2;
+    }
+  }
+
+  // Best-effort diagnostic logger for 500s on auth routes
+  async function logAuth500(url, res) {
+    try {
+      const body = await res.clone().text();
+      console.error('[auth 500]', url, res.status, body.slice(0, 400));
+      // Try to gather quick diagnostics (non-fatal)
+      const who = await orig(`${API_HTTPS}/__whoami`, { credentials:'include' }).catch(()=>null);
+      if (who) {
+        const t = await who.text().catch(()=> '');
+        console.warn('[whoami]', who.status, t.slice(0, 300));
+      }
+      const st = await orig(`${API_HTTPS}/auth/dev-status`, { credentials:'include' }).catch(()=>null);
+      if (st) {
+        const t = await st.text().catch(()=> '');
+        console.warn('[dev-status]', st.status, t.slice(0, 200));
+      }
+    } catch (_) {}
+  }
+
   window.fetch = async (input, init = {}) => {
     let url = typeof input === 'string' ? input : (input && input.url) || '';
     const isApi = looksLikeApi(url);
+    const isAuth = isAuthPath(url);
+
     if (isApi) {
       // Ensure cookies are sent
       init = { credentials: 'include', ...init };
       if (!init.credentials) init.credentials = 'include';
 
-      // Keep backward-compat: if an explicit Bearer is provided by caller, leave it
-      // Otherwise, do not force Authorization here; the cookie should be enough
+      // If caller hasn't provided Authorization and we have a stored token, attach it for NON-auth endpoints
+      if (!isAuth) {
+        try {
+          const tok = localStorage.getItem('token');
+          if (tok) init.headers = setHeader(init.headers, 'Authorization', 'Bearer ' + tok);
+        } catch {}
+      }
     }
 
     let res = await orig(input, init);
-    // If login is failing with a 500, attempt a transparent dev-login fallback once.
+
+    // Transparent fallback: if /auth/login 500s, attempt /auth/dev-login once and retry original request
     try {
-      const isAuthLogin = (() => {
-        const u = typeof input === 'string' ? input : (input && input.url) || '';
-        return /\/auth\/login\b/.test(u);
-      })();
-      const alreadyTried = init && init.headers && (init.headers['X-CG-DevLogin-Retry'] || (init.headers.get && init.headers.get('X-CG-DevLogin-Retry')));
+      const isAuthLogin = /\/auth\/login\b/.test(String(url||''));
+      const alreadyTried = !!(init && (init.headers?.['X-CG-DevLogin-Retry'] || (typeof init.headers?.get === 'function' && init.headers.get('X-CG-DevLogin-Retry'))));
       if (isApi && isAuthLogin && res.status === 500 && !alreadyTried) {
-        // Try both variants: without and with /api to support different deployments
+        await logAuth500(url, res);
+        // Try both variants to support deployments with and without /api
         const tryUrls = [
           (API_HTTPS + '/auth/dev-login'),
           (API_HTTPS + '/api/auth/dev-login')
@@ -4965,32 +5009,28 @@ if (typeof window !== 'undefined') {
             const t2 = await r2.text();
             let j2; try { j2 = JSON.parse(t2); } catch { j2 = {}; }
             if (r2.ok && j2 && j2.token) { ok = true; token = j2.token; break; }
-          } catch (_e) { /* keep trying */ }
+            if (r2.status >= 500) await logAuth500(u, r2);
+          } catch (_e) { /* continue */ }
         }
         if (ok && token) {
           try { localStorage.setItem('token', token); } catch (_) {}
           // Re-run the original /auth/login request once to keep the caller flow consistent,
           // but mark it so we don't loop this fallback.
           const newInit = { ...(init || {}) };
-          // Set a header safely whether headers is a Headers object or plain object
-          try {
-            if (newInit.headers && typeof newInit.headers.set === 'function') {
-              newInit.headers.set('X-CG-DevLogin-Retry', '1');
-            } else {
-              newInit.headers = Object.assign({}, newInit.headers, { 'X-CG-DevLogin-Retry': '1' });
-            }
-          } catch { newInit.headers = Object.assign({}, newInit.headers, { 'X-CG-DevLogin-Retry': '1' }); }
+          newInit.headers = setHeader(newInit.headers, 'X-CG-DevLogin-Retry', '1');
           res = await orig(input, newInit);
-          // Also nudge the app home so the new session is picked up if the caller ignores the response
-          try { if (typeof window !== 'undefined') window.dispatchEvent(new Event('me-updated')); } catch {}
+          // Let the app know session likely changed
+          try { window.dispatchEvent(new Event('me-updated')); } catch {}
         }
       }
-    } catch (_e) { /* non-fatal */ }
+    } catch (_e) { /* ignore */ }
+
+    // If an API call came back 401, try a silent cookie refresh once and retry
     if (isApi && res.status === 401) {
-      // try silent refresh once and retry
       const ok = await refreshIfNeeded();
       if (ok) res = await orig(input, init);
     }
+
     return res;
   };
 })();
