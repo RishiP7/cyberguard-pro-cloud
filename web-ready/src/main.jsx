@@ -4915,6 +4915,15 @@ if (typeof window !== 'undefined') {
 // --- SAFETY NET: global fetch shim to always attach Authorization and avoid stray preview header ---
 (() => {
   if (typeof window === 'undefined' || window.__authFetchShim) return;
+  // Runtime kill-switch: allow disabling the shim via ?noShim=1 or localStorage "debug:disable_shim" = "1"
+  try {
+    const qp = new URLSearchParams(String(window.location && window.location.search || ''));
+    const disableShim = qp.has('noShim') || (localStorage.getItem('debug:disable_shim') === '1');
+    if (disableShim) {
+      console.warn('[authFetchShim] disabled by flag (?noShim=1 or localStorage debug:disable_shim=1)');
+      return;
+    }
+  } catch (_e) { /* ignore */ }
   window.__authFetchShim = true;
   const orig = window.fetch.bind(window);
   const API_HOST  = 'cyberguard-pro-cloud.onrender.com';
@@ -4939,9 +4948,68 @@ const PUBLIC_NOAUTH = [
       return s.startsWith(API_HTTP) || s.startsWith(API_HTTPS) || s.startsWith('/api') || s.includes(API_HOST);
     } catch { return false; }
   }
-    const isAuthPath = (u) => /\/auth\/(login|logout|refresh|dev-login|dev-status)\b/.test(String(u||''));
+  const isAuthPath = (u) => /\/auth\/(login|logout|refresh|dev-login|dev-status)\b/.test(String(u||''));
 
-    async function refreshIfNeeded() {
+  // Expose a tiny XHR-based diagnostic that bypasses this fetch shim entirely.
+  // Usage from DevTools: await window.__cg_xhrDiag()
+  try {
+    window.__cg_xhrDiag = async function __cg_xhrDiag() {
+      function xhr(method, url, body) {
+        return new Promise((resolve) => {
+          try {
+            const x = new XMLHttpRequest();
+            x.open(method, url, true);
+            x.withCredentials = true; // include cookies if any
+            x.onreadystatechange = function() {
+              if (x.readyState === 4) {
+                resolve({ status: x.status, body: x.responseText, headers: x.getAllResponseHeaders() });
+              }
+            };
+            if (body) {
+              x.setRequestHeader('Content-Type', 'application/json');
+              x.send(JSON.stringify(body));
+            } else {
+              x.send();
+            }
+          } catch (e) {
+            resolve({ status: 0, body: String(e && (e.message || e)), headers: '' });
+          }
+        });
+      }
+      const base = 'https://cyberguard-pro-cloud.onrender.com';
+      const ping   = await xhr('GET',  base + '/__ping');
+      const status = await xhr('GET',  base + '/auth/dev-status');
+      const login  = await xhr('POST', base + '/auth/dev-login');
+      let me = { status: 0, body: '' };
+      try {
+        const j = JSON.parse(login.body || '{}');
+        if (j && j.token) {
+          me = await (async () => {
+            return new Promise((resolve) => {
+              try {
+                const x = new XMLHttpRequest();
+                x.open('GET', base + '/api/me', true);
+                x.setRequestHeader('Authorization', 'Bearer ' + j.token);
+                x.onreadystatechange = function(){
+                  if (x.readyState === 4) resolve({ status: x.status, body: x.responseText, headers: x.getAllResponseHeaders() });
+                };
+                x.send();
+              } catch (e) {
+                resolve({ status: 0, body: String(e && (e.message || e)), headers: '' });
+              }
+            });
+          })();
+        }
+      } catch (_) {}
+      try { console.log('[xhrDiag] __ping', ping.status, ping.body && ping.body.slice(0, 200)); } catch (_) {}
+      try { console.log('[xhrDiag] dev-status', status.status, status.body && status.body.slice(0, 200)); } catch (_) {}
+      try { console.log('[xhrDiag] dev-login', login.status, login.body && login.body.slice(0, 200)); } catch (_) {}
+      try { console.log('[xhrDiag] me (with Authorization)', me.status, me.body && me.body.slice(0, 200)); } catch (_) {}
+      return { ping, status, login, me };
+    };
+  } catch (_e) { /* ignore */ }
+
+  async function refreshIfNeeded() {
     try {
       const r = await orig(API_HTTPS + '/api/auth/refresh', { method:'POST', credentials:'include' });
       return r.ok;
