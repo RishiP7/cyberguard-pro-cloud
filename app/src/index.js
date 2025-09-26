@@ -2645,3 +2645,43 @@ app.post('/__dev_login_dbg', async (req, res) => {
 })();
 // === END AI auto-exec guard ===
 
+
+// === BG poll — guarded & opt-out via DISABLE_BG ===
+(function scheduleBgPoll(){
+  try {
+    if (String(process.env.DISABLE_BG || '').toLowerCase() === '1') {
+      try { console.log('[bg-poll] disabled via DISABLE_BG=1'); } catch {}
+      return;
+    }
+    if (globalThis.__cg_bg_poll_started__) { return; }
+    globalThis.__cg_bg_poll_started__ = true;
+
+    // Define hasDb() if it doesn't exist yet
+    if (typeof globalThis.hasDb !== 'function') {
+      globalThis.hasDb = function hasDb() {
+        return typeof globalThis.q === 'function' &&
+               globalThis.db && typeof globalThis.db.any === 'function';
+      };
+    }
+
+    const BG_EVERY_MS = 60_000;
+    setInterval(async () => {
+      try {
+        await ensureDb();
+        if (!hasDb()) { console.warn('[bg-poll] skip: db not ready'); return; }
+
+        console.log('[bg-poll] starting background poll cycle');
+        // SAFE: tiny health check; replace with your real work
+        try { await globalThis.q('select 1'); } catch(_) {}
+
+        // TODO: place your real bg work here (guard with hasDb())
+      } catch (e) {
+        console.warn('[bg-poll] failed to run background poll', String(e?.message || e));
+      }
+    }, BG_EVERY_MS);
+  } catch (e) {
+    try { console.warn('[bg-poll] setup error', String(e?.message || e)); } catch {}
+  }
+})();
+// === END BG poll guard ===
+
