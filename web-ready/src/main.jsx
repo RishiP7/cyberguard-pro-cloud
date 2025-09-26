@@ -5124,6 +5124,84 @@ const PUBLIC_NOAUTH = [
 })();
 
 // --- Silent session refresher to keep cookies alive ---
+// --- STAGING DEV-LOGIN HELPERS (adds token-based sign-in on Render/cyberguardpro.uk) ---
+try {
+  // Global API constant for routes/components that pass `api={API}`
+  const __API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
+  if (typeof window !== 'undefined') {
+    if (typeof globalThis.API === 'undefined') {
+      globalThis.API = __API_HTTPS;
+    }
+  }
+
+  // Consider Render and cyberguardpro.uk as staging
+  const STAGING = (typeof window !== 'undefined')
+    ? /cyberguardpro\.uk|onrender\.com/i.test(String(window.location.hostname || ''))
+    : false;
+
+  // Dev sign-in: call /auth/dev-login, stash token, refresh app
+  async function devSignIn() {
+    const base = __API_HTTPS;
+    try {
+      const r = await fetch(base + '/auth/dev-login', { method: 'POST', credentials: 'include' });
+      const t = await r.text();
+      let j; try { j = JSON.parse(t); } catch { j = {}; }
+      if (j && j.token) {
+        try { localStorage.setItem('token', j.token); } catch {}
+        try { window.dispatchEvent(new Event('me-updated')); } catch {}
+        location.replace('/'); // reload so guards pick up session
+        return;
+      }
+      console.warn('[devSignIn] dev-login did not return a token:', t.slice(0, 200));
+      alert('Dev login failed (no token). Check server logs.');
+    } catch (e) {
+      console.warn('[devSignIn] error', e && (e.message || e));
+      alert('Dev login error: ' + String(e && (e.message || e)));
+    }
+  }
+
+  // Make available in console and for buttons
+  try { globalThis.devSignIn = globalThis.devSignIn || devSignIn; } catch {}
+
+  // On /login in staging, add a visible “Sign in (staging)” and intercept the form
+  if (STAGING) {
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        if (String(location.pathname || '/') !== '/login') return;
+        if (document.getElementById('__dev-login-btn')) return; // avoid duplicates
+
+        const btn = document.createElement('button');
+        btn.id = '__dev-login-btn';
+        btn.textContent = 'Sign in (staging)';
+        btn.onclick = (e) => { e.preventDefault(); devSignIn(); };
+        Object.assign(btn.style, {
+          position: 'fixed',
+          right: '16px',
+          top: '16px',
+          zIndex: 100000,
+          padding: '8px 12px',
+          borderRadius: '8px',
+          border: '1px solid rgba(255,255,255,.25)',
+          background: '#1f6feb',
+          color: '#fff',
+          cursor: 'pointer',
+          boxShadow: '0 4px 14px rgba(0,0,0,.25)'
+        });
+        document.body.appendChild(btn);
+
+        // Also fall back to dev-login if the page’s form is submitted
+        const form = document.querySelector('form');
+        if (form && !form.__cgPatched) {
+          form.__cgPatched = true;
+          form.addEventListener('submit', (ev) => {
+            try { ev.preventDefault(); devSignIn(); } catch (_) {}
+          });
+        }
+      } catch (_) {}
+    });
+  }
+} catch (_e) { /* ignore */ }
+// --- END STAGING DEV-LOGIN HELPERS ---
 (function startSilentRefresh(){
   try {
     const tick = async ()=>{
