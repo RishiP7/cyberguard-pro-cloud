@@ -2618,3 +2618,30 @@ app.post('/__dev_login_dbg', async (req, res) => {
 });
 // === END DEBUG: dev-login probe ===
 
+
+// === AI auto-exec — guarded & opt-out via DISABLE_AI_AUTO ===
+(function scheduleAiAuto(){
+  try {
+    if (String(process.env.DISABLE_AI_AUTO||'').toLowerCase() === '1') {
+      console.log('[ai/auto-exec] disabled via DISABLE_AI_AUTO=1');
+      return;
+    }
+    const AI_EVERY_MS = 60_000;
+    setInterval(async () => {
+      try {
+        await ensureDb();
+        if (!hasDb()) {
+          console.warn('[ai/auto-exec] skip: db not ready');
+          return;
+        }
+        // ----- existing AI auto-exec body goes here -----
+      } catch (e) {
+        console.warn('[ai/auto-exec] error', String(e?.message||e));
+      }
+    }, AI_EVERY_MS);
+  } catch (e) {
+    console.warn('[ai/auto-exec] setup error', String(e?.message||e));
+  }
+})();
+// === END AI auto-exec guard ===
+
