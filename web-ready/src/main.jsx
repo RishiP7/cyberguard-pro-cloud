@@ -3701,7 +3701,11 @@ function Dashboard(props){
     let alive = true;
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/me`, { credentials: 'include' });
+        const tok = (()=>{ try { return localStorage.getItem('token') || ''; } catch { return ''; } })();
+        const r = await fetch(`${API_BASE}/me`, {
+          credentials: tok ? 'omit' : 'include',
+          headers: tok ? { Authorization: 'Bearer ' + tok } : undefined
+        });
         const j = await r.json().catch(()=>({}));
         if (!alive) return;
         if (r.ok) setMe(j); else setErr(j?.error || `HTTP ${r.status}`);
@@ -3775,7 +3779,11 @@ function SafeDashboard(props){
   : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
       ? 'https://cyberguard-pro-cloud.onrender.com/api'
       : '/api');
-          const r = await fetch(`${API_BASE}/me`, { credentials: 'include' });
+          const tok2 = (()=>{ try { return localStorage.getItem('token') || ''; } catch { return ''; } })();
+          const r = await fetch(`${API_BASE}/me`, {
+            credentials: tok2 ? 'omit' : 'include',
+            headers: tok2 ? { Authorization: 'Bearer ' + tok2 } : undefined
+          });
           meOk = r.ok;
           if (r.ok) {
             const j = await r.json().catch(()=>({}));
@@ -4820,9 +4828,14 @@ function Support(){
     setErr("");
     try{
       if (hp) { setSent(true); return; } // bot trap
+      const tok3 = (()=>{ try { return localStorage.getItem('token') || ''; } catch { return ''; } })();
       const r = await fetch(`${API_BASE}/support/send`, {
         method: "POST",
-        headers: { "Content-Type":"application/json" },
+        credentials: tok3 ? 'omit' : 'include',
+        headers: {
+          "Content-Type":"application/json",
+          ...(tok3 ? { Authorization: 'Bearer ' + tok3 } : {})
+        },
         body: JSON.stringify({ name, email, message, hp })
       });
       const t = await r.text();
