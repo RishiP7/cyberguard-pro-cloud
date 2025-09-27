@@ -5125,6 +5125,24 @@ const PUBLIC_NOAUTH = [
 
 // --- Silent session refresher to keep cookies alive ---
 // --- STAGING DEV-LOGIN HELPERS (adds token-based sign-in on Render/cyberguardpro.uk) ---
+// Accept ?token=... in the URL to bootstrap a session on staging (bypasses cookies)
+(function __cg_tokenFromQuery(){
+  try {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(String(window.location && window.location.search || ''));
+    const tok = sp.get('token');
+    if (!tok) return;
+    // Stash token and clean URL
+    try { localStorage.setItem('token', tok); } catch (_) {}
+    sp.delete('token');
+    const qs = sp.toString();
+    const clean = window.location.origin + window.location.pathname + (qs ? ('?' + qs) : '');
+    window.history.replaceState({}, '', clean);
+    try { window.dispatchEvent(new Event('me-updated')); } catch (_){}
+    // Reload so guards and routes see the new session
+    try { location.replace('/'); } catch (_){}
+  } catch (_) {}
+})();
 try {
   // Global API constant for routes/components that pass `api={API}`
   const __API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
