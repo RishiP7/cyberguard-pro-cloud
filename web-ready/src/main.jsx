@@ -5150,6 +5150,9 @@ try {
     if (typeof globalThis.API === 'undefined') {
       globalThis.API = __API_HTTPS;
     }
+    if (typeof globalThis.API_BASE === 'undefined') {
+      globalThis.API_BASE = __API_HTTPS + '/api';
+    }
   }
 
   // Consider Render and cyberguardpro.uk as staging
