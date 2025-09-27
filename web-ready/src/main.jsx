@@ -5139,21 +5139,47 @@ try {
     ? /cyberguardpro\.uk|onrender\.com/i.test(String(window.location.hostname || ''))
     : false;
 
-  // Dev sign-in: call /auth/dev-login, stash token, refresh app
+  // Dev sign-in: call /auth/dev-login, stash token/cookie, refresh app
   async function devSignIn() {
     const base = __API_HTTPS;
     try {
       const r = await fetch(base + '/auth/dev-login', { method: 'POST', credentials: 'include' });
       const t = await r.text();
       let j; try { j = JSON.parse(t); } catch { j = {}; }
+
+      let ok = false;
+
+      // Primary: token-in-body path
       if (j && j.token) {
         try { localStorage.setItem('token', j.token); } catch {}
+        ok = true;
+      }
+
+      // Fallback: cookie-only session (Render sometimes strips body on 200s)
+      if (!ok) {
+        try {
+          const me = await fetch(base + '/api/me', { credentials: 'include' });
+          if (me.ok) {
+            ok = true;
+            // Optional: log who we are to console (non-fatal if it fails)
+            try {
+              const mj = await me.clone().json().catch(()=>null);
+              if (mj && (mj.email || mj.user?.email)) {
+                console.log('[devSignIn] cookie session for', mj.email || mj.user?.email);
+              }
+            } catch (_e) {}
+          }
+        } catch (_e) {}
+      }
+
+      if (ok) {
         try { window.dispatchEvent(new Event('me-updated')); } catch {}
         location.replace('/'); // reload so guards pick up session
         return;
       }
-      console.warn('[devSignIn] dev-login did not return a token:', t.slice(0, 200));
-      alert('Dev login failed (no token). Check server logs.');
+
+      console.warn('[devSignIn] dev-login returned no token and cookie session not detected. Raw:', t.slice(0, 200));
+      alert('Dev login failed (no token/cookie). Check server logs.');
     } catch (e) {
       console.warn('[devSignIn] error', e && (e.message || e));
       alert('Dev login error: ' + String(e && (e.message || e)));
