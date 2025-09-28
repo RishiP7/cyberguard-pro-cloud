@@ -5137,131 +5137,7 @@ const PUBLIC_NOAUTH = [
 })();
 
 // --- Silent session refresher to keep cookies alive ---
-// --- STAGING DEV-LOGIN HELPERS (adds token-based sign-in on Render/cyberguardpro.uk) ---
-// Accept ?token=... in the URL to bootstrap a session on staging (bypasses cookies)
-(function __cg_tokenFromQuery(){
-  try {
-    if (typeof window === 'undefined') return;
-    const sp = new URLSearchParams(String(window.location && window.location.search || ''));
-    const tok = sp.get('token');
-    if (!tok) return;
-    // Stash token and clean URL
-    try { localStorage.setItem('token', tok); } catch (_) {}
-    sp.delete('token');
-    const qs = sp.toString();
-    const clean = window.location.origin + window.location.pathname + (qs ? ('?' + qs) : '');
-    window.history.replaceState({}, '', clean);
-    try { window.dispatchEvent(new Event('me-updated')); } catch (_){}
-    // Reload so guards and routes see the new session
-    try { location.replace('/'); } catch (_){}
-  } catch (_) {}
-})();
-try {
-  // Global API constant for routes/components that pass `api={API}`
-  const __API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
-  if (typeof window !== 'undefined') {
-    if (typeof globalThis.API === 'undefined') {
-      globalThis.API = __API_HTTPS;
-    }
-    if (typeof globalThis.API_BASE === 'undefined') {
-      globalThis.API_BASE = __API_HTTPS + '/api';
-    }
-  }
-
-  // Consider Render and cyberguardpro.uk as staging
-  const STAGING = (typeof window !== 'undefined')
-    ? /cyberguardpro\.uk|onrender\.com/i.test(String(window.location.hostname || ''))
-    : false;
-
-  // Dev sign-in: call /auth/dev-login, stash token/cookie, refresh app
-  async function devSignIn() {
-    const base = __API_HTTPS;
-    try {
-      const r = await fetch(base + '/auth/dev-login', { method: 'POST', credentials: 'include' });
-      const t = await r.text();
-      let j; try { j = JSON.parse(t); } catch { j = {}; }
-
-      let ok = false;
-
-      // Primary: token-in-body path
-      if (j && j.token) {
-        try { localStorage.setItem('token', j.token); } catch {}
-        ok = true;
-      }
-
-      // Fallback: cookie-only session (Render sometimes strips body on 200s)
-      if (!ok) {
-        try {
-          const me = await fetch(base + '/api/me', { credentials: 'include' });
-          if (me.ok) {
-            ok = true;
-            // Optional: log who we are to console (non-fatal if it fails)
-            try {
-              const mj = await me.clone().json().catch(()=>null);
-              if (mj && (mj.email || mj.user?.email)) {
-                console.log('[devSignIn] cookie session for', mj.email || mj.user?.email);
-              }
-            } catch (_e) {}
-          }
-        } catch (_e) {}
-      }
-
-      if (ok) {
-        try { window.dispatchEvent(new Event('me-updated')); } catch {}
-        location.replace('/'); // reload so guards pick up session
-        return;
-      }
-
-      console.warn('[devSignIn] dev-login returned no token and cookie session not detected. Raw:', t.slice(0, 200));
-      alert('Dev login failed (no token/cookie). Check server logs.');
-    } catch (e) {
-      console.warn('[devSignIn] error', e && (e.message || e));
-      alert('Dev login error: ' + String(e && (e.message || e)));
-    }
-  }
-
-  // Make available in console and for buttons
-  try { globalThis.devSignIn = globalThis.devSignIn || devSignIn; } catch {}
-
-  // On /login in staging, add a visible “Sign in (staging)” and intercept the form
-  if (STAGING) {
-    document.addEventListener('DOMContentLoaded', () => {
-      try {
-        if (String(location.pathname || '/') !== '/login') return;
-        if (document.getElementById('__dev-login-btn')) return; // avoid duplicates
-
-        const btn = document.createElement('button');
-        btn.id = '__dev-login-btn';
-        btn.textContent = 'Sign in (staging)';
-        btn.onclick = (e) => { e.preventDefault(); devSignIn(); };
-        Object.assign(btn.style, {
-          position: 'fixed',
-          right: '16px',
-          top: '16px',
-          zIndex: 100000,
-          padding: '8px 12px',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,.25)',
-          background: '#1f6feb',
-          color: '#fff',
-          cursor: 'pointer',
-          boxShadow: '0 4px 14px rgba(0,0,0,.25)'
-        });
-        document.body.appendChild(btn);
-
-        // Also fall back to dev-login if the page’s form is submitted
-        const form = document.querySelector('form');
-        if (form && !form.__cgPatched) {
-          form.__cgPatched = true;
-          form.addEventListener('submit', (ev) => {
-            try { ev.preventDefault(); devSignIn(); } catch (_) {}
-          });
-        }
-      } catch (_) {}
-    });
-  }
-} catch (_e) { /* ignore */ }
-// --- END STAGING DEV-LOGIN HELPERS ---
+__STAGING_BLOCK__
 (function startSilentRefresh(){
   try {
     const tick = async ()=>{
@@ -5395,3 +5271,66 @@ if (typeof window !== 'undefined') {
 }
 
 // Only a single BrandLogo definition should exist in this file.
+// === __CG_DEV_SIGNIN_V2__ ===
+// Staging-only dev login that avoids cookies & CORS preflight.
+// Tries GET first (simple CORS), then POST. Stores token to localStorage.
+(function(){
+  try {
+    const __API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
+    const STAGING = /cyberguardpro\.uk|onrender\.com/i.test(String(window.location.hostname||''));
+
+    async function devSignIn() {
+      const url = __API_HTTPS + '/auth/dev-login';
+
+      async function tryMethod(method){
+        try {
+          // No credentials, no custom headers -> simple CORS, no preflight
+          const r = await fetch(url, { method, credentials: 'omit' });
+          const t = await r.text();
+          let j; try { j = JSON.parse(t); } catch { j = {}; }
+          return (r.ok && j && j.token) ? j.token : null;
+        } catch(_){ return null; }
+      }
+
+      let token = await tryMethod('GET');
+      if (!token) token = await tryMethod('POST');
+
+      if (token) {
+        try { localStorage.setItem('token', token); } catch {}
+        try { window.dispatchEvent(new Event('me-updated')); } catch {}
+        location.replace('/');
+        return;
+      }
+      alert('Dev login failed (no token). Please retry or run the terminal one-liner to open with ?token=…');
+    }
+
+    // Expose to console & buttons
+    try { globalThis.devSignIn = globalThis.devSignIn || devSignIn; } catch {}
+
+    // If you land on /login in staging, add a visible button
+    if (STAGING) {
+      document.addEventListener('DOMContentLoaded', () => {
+        if (String(location.pathname||'/') !== '/login') return;
+        if (document.getElementById('__dev-login-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = '__dev-login-btn';
+        btn.textContent = 'Sign in (staging)';
+        btn.onclick = (e)=>{ e.preventDefault(); devSignIn(); };
+        Object.assign(btn.style, {
+          position:'fixed', right:'16px', top:'16px', zIndex:100000,
+          padding:'8px 12px', borderRadius:'8px', border:'1px solid rgba(255,255,255,.25)',
+          background:'#1f6feb', color:'#fff', cursor:'pointer', boxShadow:'0 4px 14px rgba(0,0,0,.25)'
+        });
+        document.body.appendChild(btn);
+
+        // If the page has a form, intercept to use devSignIn
+        const form = document.querySelector('form');
+        if (form && !form.__cgPatched) {
+          form.__cgPatched = true;
+          form.addEventListener('submit', (ev) => { try { ev.preventDefault(); devSignIn(); } catch(_){ } });
+        }
+      });
+    }
+  } catch(_){}
+})();
+// === END __CG_DEV_SIGNIN_V2__ ===
