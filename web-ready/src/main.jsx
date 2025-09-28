@@ -5240,26 +5240,46 @@ try {
   // Dev sign-in: call /auth/dev-login, stash token/cookie, refresh app
   async function devSignIn() {
     const base = __API_HTTPS;
+
+    // Fallback that performs a cross-origin navigational POST via a form.
+    // This bypasses CORS/fetch and lets the server set cookies, even on Safari.
+    async function devSignInForm() {
+      return new Promise((resolve) => {
+        try {
+          const f = document.createElement('form');
+          f.method = 'POST';
+          f.action = base + '/auth/dev-login';
+          f.target = '_self';
+          f.style.display = 'none';
+          document.body.appendChild(f);
+          f.submit();
+          setTimeout(() => resolve(), 1500);
+        } catch (_e) {
+          resolve();
+        }
+      });
+    }
+
     try {
+      // Primary attempt: JSON fetch
       const r = await fetch(base + '/auth/dev-login', { method: 'POST', credentials: 'include' });
       const t = await r.text();
       let j; try { j = JSON.parse(t); } catch { j = {}; }
 
       let ok = false;
 
-      // Primary: token-in-body path
+      // token-in-body path
       if (j && j.token) {
         try { localStorage.setItem('token', j.token); } catch {}
         ok = true;
       }
 
-      // Fallback: cookie-only session (Render sometimes strips body on 200s)
+      // cookie-only path
       if (!ok) {
         try {
           const me = await fetch(base + '/api/me', { credentials: 'include' });
           if (me.ok) {
             ok = true;
-            // Optional: log who we are to console (non-fatal if it fails)
             try {
               const mj = await me.clone().json().catch(()=>null);
               if (mj && (mj.email || mj.user?.email)) {
@@ -5272,15 +5292,17 @@ try {
 
       if (ok) {
         try { window.dispatchEvent(new Event('me-updated')); } catch {}
-        location.replace('/'); // reload so guards pick up session
+        location.replace('/');
         return;
       }
 
-      console.warn('[devSignIn] dev-login returned no token and cookie session not detected. Raw:', t.slice(0, 200));
-      alert('Dev login failed (no token/cookie). Check server logs.');
+      console.warn('[devSignIn] fetch-based dev-login failed. Trying form POST fallback…');
+      await devSignInForm();
+      try { location.replace('/'); } catch (_e) {}
     } catch (e) {
       console.warn('[devSignIn] error', e && (e.message || e));
-      alert('Dev login error: ' + String(e && (e.message || e)));
+      await devSignInForm();
+      try { location.replace('/'); } catch (_e) {}
     }
   }
 
@@ -5312,6 +5334,42 @@ try {
           boxShadow: '0 4px 14px rgba(0,0,0,.25)'
         });
         document.body.appendChild(btn);
+
+        // Secondary button: explicit form POST fallback (bypasses fetch/CORS entirely)
+        const btn2 = document.createElement('button');
+        btn2.id = '__dev-login-form-btn';
+        btn2.textContent = 'Sign in (form fallback)';
+        btn2.onclick = (e) => {
+          try { e.preventDefault(); } catch (_e) {}
+          (async () => {
+            try {
+              const f = document.createElement('form');
+              f.method = 'POST';
+              f.action = __API_HTTPS + '/auth/dev-login';
+              f.target = '_self';
+              f.style.display = 'none';
+              document.body.appendChild(f);
+              f.submit();
+              setTimeout(() => { try { location.replace('/'); } catch(_e) {} }, 1500);
+            } catch (_e) {
+              try { location.replace('/'); } catch(__e) {}
+            }
+          })();
+        };
+        Object.assign(btn2.style, {
+          position: 'fixed',
+          right: '16px',
+          top: '56px',
+          zIndex: 100000,
+          padding: '8px 12px',
+          borderRadius: '8px',
+          border: '1px solid rgba(255,255,255,.25)',
+          background: '#30363d',
+          color: '#fff',
+          cursor: 'pointer',
+          boxShadow: '0 4px 14px rgba(0,0,0,.25)'
+        });
+        document.body.appendChild(btn2);
 
         // Also fall back to dev-login if the page’s form is submitted
         const form = document.querySelector('form');
