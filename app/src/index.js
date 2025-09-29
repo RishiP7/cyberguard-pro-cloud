@@ -35,8 +35,6 @@ if (typeof globalThis.ensureDb !== 'function') {
 }
 // ===== END HOISTED ensureDb shim =====
 // --- Core imports (must be first) ---
-import express from "express";
-import cors from "cors";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
 import * as Sentry from "@sentry/node";
