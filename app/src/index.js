@@ -1,3 +1,5 @@
+import express from 'express';
+import cors from 'cors';
 // ===== HOISTED ensureDb shim (must be declared before any usage) =====
 async function ensureDb() {
   try {
