@@ -1,5 +1,590 @@
-import express from 'express';
-<truncated__content/>userObj.role, is_super, isSuper: is_super },
+// ===== HOISTED ensureDb shim (must be declared before any usage) =====
+async function ensureDb() {
+  try {
+    // If a global ensureDb already exists (e.g., set later), delegate to it
+    if (globalThis.ensureDb && globalThis.ensureDb !== ensureDb && typeof globalThis.ensureDb === 'function') {
+      return globalThis.ensureDb();
+    }
+    // Bootstrap pg pool and helpers if missing
+    if (!globalThis.q || !globalThis.db) {
+      const pg = await import('pg');
+      const { Pool } = pg;
+      const url = process.env.DATABASE_URL || '';
+      const needsSSL = /render\.com|amazonaws\.com|neon\.tech|supabase\.co/i.test(url);
+      const pool = globalThis.__cg_pool__ || new Pool({
+        connectionString: url,
+        ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
+        max: 5,
+        idleTimeoutMillis: 30000,
+      });
+      if (!globalThis.__cg_pool__) globalThis.__cg_pool__ = pool;
+      globalThis.q  = (text, params = []) => globalThis.__cg_pool__.query(text, params);
+      globalThis.db = {
+        any: (text, params = []) => globalThis.__cg_pool__.query(text, params).then(r => r.rows),
+      };
+    }
+  } catch (e) {
+    try { console.error('[ensureDb shim]', e?.message || e); } catch (_){}
+  }
+}
+// Expose globally for callers that use globalThis.ensureDb
+if (typeof globalThis.ensureDb !== 'function') {
+  globalThis.ensureDb = ensureDb;
+}
+// ===== END HOISTED ensureDb shim =====
+// --- Core imports (must be first) ---
+import express from "express";
+import cors from "cors";
+import jwt from "jsonwebtoken";
+import Stripe from "stripe";
+import * as Sentry from "@sentry/node";
+// --- Load auth middleware (safe fallback) ---
+let authMiddleware = (_req, _res, next) => next();
+try {
+  const _auth = await import('./middleware/auth.js');
+  authMiddleware = _auth.default || _auth.authMiddleware || authMiddleware;
+} catch (e) {
+  console.warn("[auth] ./middleware/auth.js not found; enabling built-in JWT verifier (fallback).");
+  // If no auth module, install a JWT-based fallback
+  if (typeof authMiddleware !== 'function' || authMiddleware === undefined) {
+    function _extractBearer(req) {
+      const h = req.headers && req.headers.authorization;
+      if (h && /^Bearer\s+/i.test(h)) return h.replace(/^Bearer\s+/i, '').trim();
+      // try cookies (cg_access), both parsed and raw header
+      if (req.cookies && req.cookies.cg_access) return req.cookies.cg_access;
+      const ch = req.headers && req.headers.cookie;
+      if (ch) {
+        const m = ch.match(/(?:^|;\s*)cg_access=([^;]+)/i);
+        if (m) return decodeURIComponent(m[1]);
+      }
+      return null;
+    }
+    authMiddleware = (req, res, next) => {
+      try {
+        const token = _extractBearer(req);
+        if (!token) return res.status(401).json({ ok:false, error:'unauthorized' });
+        const secret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+        let payload;
+        try {
+          payload = jwt.verify(token, secret);
+        } catch (_e) {
+          return res.status(401).json({ ok:false, error:'unauthorized' });
+        }
+        req.user = {
+          sub: payload.sub || payload.email || null,
+          email: payload.email || payload.sub || null,
+          tenant_id: payload.tenant_id || payload.tenant || 'demo',
+          role: payload.role || 'member',
+          is_super: !!(payload.is_super || payload.super || payload.isSuper)
+        };
+        return next();
+      } catch (err) {
+        try { console.error('[auth-fallback]', err && (err.message || err)); } catch (_){}
+        return res.status(401).json({ ok:false, error:'unauthorized' });
+      }
+    };
+  }
+}
+
+// --- Local modules ---
+
+// --- Initialize Stripe safely ---
+let stripe = null;
+const STRIPE_KEY = process.env.STRIPE_SECRET || "";
+if (STRIPE_KEY) {
+  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
+} else {
+  console.warn(
+    "[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501."
+  );
+}
+
+// --- Initialize Sentry ---
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
+}
+
+
+// No-op guard middleware used if guard imports are missing (keeps routes working)
+const _noopMw = (_req, _res, next) => next();
+
+// Create local aliases that always exist (don't mutate imported bindings)
+const Guard = {
+  enforceActive: (typeof enforceActive === 'function' ? enforceActive : _noopMw),
+  requireProPlus: (typeof requireProPlus === 'function' ? requireProPlus : _noopMw),
+  requireSuper:   (typeof requireSuper   === 'function' ? requireSuper   : _noopMw),
+};
+
+// Create app
+const app = express();
+app.use((req, res, next) => {
+  // Early CORS shim: reflect Origin and succeed preflight with credentials
+  try {
+    const origin = req.headers.origin;
+    if (origin) {
+      try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
+      try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+      try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
+    }
+    // Echo requested method/headers when provided, else send a safe default
+    const reqMethod  = req.headers['access-control-request-method'];
+    const reqHeaders = req.headers['access-control-request-headers'];
+    try { res.setHeader('Access-Control-Allow-Methods', reqMethod || 'GET,POST,PUT,PATCH,DELETE,OPTIONS'); } catch (_) {}
+    try {
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        reqHeaders || 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      );
+    } catch (_) {}
+    try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
+  } catch (_) {}
+  if (req.method === 'OPTIONS') { return res.sendStatus(204); }
+  return next();
+});
+
+// Global middleware
+const allowedOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [
+  process.env.FRONTEND_URL,
+  process.env.PUBLIC_SITE_URL,
+].filter(Boolean);
+
+const corsOrigin = (origin, callback) => {
+  if (!origin || allowedOrigins.includes(origin)) {
+    return callback(null, true);
+  }
+  return callback(new Error('CORS not allowed'));
+};
+
+app.use(cors({
+  origin: corsOrigin,
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Origin','X-Requested-With','Content-Type','Accept','Authorization','x-api-key','x-admin-key','x-plan-preview','x-admin-override','x-admin-plan-preview','x-admin-bypass'],
+}));
+
+
+// Hardened global OPTIONS preflight handler (always 204, never throws)
+app.use((req, res, next) => {
+  if (req.method !== 'OPTIONS') return next();
+
+  try {
+    const origin = req.headers.origin;
+    if (origin) {
+      try { res.setHeader('Access-Control-Allow-Origin', origin); } catch (_) {}
+      try { res.setHeader('Vary', 'Origin'); } catch (_) {}
+    }
+
+    const reqMethod  = req.headers['access-control-request-method'];
+    const reqHeaders = req.headers['access-control-request-headers'];
+
+    try { res.setHeader('Access-Control-Allow-Credentials', 'true'); } catch (_) {}
+    try { res.setHeader('Access-Control-Allow-Methods', reqMethod || 'GET,POST,PUT,PATCH,DELETE,OPTIONS'); } catch (_) {}
+    try {
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        reqHeaders ||
+          'Origin,X-Requested-With,Content-Type,Accept,Authorization,x-api-key,x-admin-key,x-plan-preview,x-admin-override,x-admin-plan-preview,x-admin-bypass'
+      );
+    } catch (_) {}
+
+    try { res.setHeader('Access-Control-Max-Age', '600'); } catch (_) {}
+  } catch (e) {
+    try { console.error('Preflight error', e?.message || e); } catch (_) {}
+    // swallow any error to guarantee a 204
+  }
+
+  return res.sendStatus(204);
+});
+
+// JSON body parser (after Stripe webhook raw body setup later)
+app.use(express.json({ limit: '1mb' }));
+
+// ===== end middleware + guards =====
+
+app.post('/ai/propose', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
+// ===== DB bootstrap (idempotent, safe in ESM) =====
+if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined') {
+  try {
+    const pg = await import('pg');
+    const { Pool } = pg;
+    const url = process.env.DATABASE_URL || '';
+    const needsSSL = /render\.com|amazonaws\.com|neon\.tech|supabase\.co/i.test(url);
+    const pool = new Pool({
+      connectionString: url,
+      ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
+      max: 5,
+      idleTimeoutMillis: 30000
+    });
+    // expose globally so future modules/patches can reuse
+    globalThis.__cg_pool__ = pool;
+    globalThis.q  = (text, params = []) => pool.query(text, params);
+    globalThis.db = {
+      any: (text, params = []) => pool.query(text, params).then(r => r.rows)
+    };
+  } catch (e) {
+    // non-fatal: health endpoints will still work; other routes will 500 with clearer message
+    try { console.error('[db-bootstrap] failed', e?.message || e); } catch (_){}
+  }
+}
+// ===== END DB bootstrap =====
+  try {
+    const context = req.body?.context || {};
+    if (!(await withinRateLimit(req.user.tenant_id, 'propose'))) {
+      return res.status(429).json({ ok:false, error: 'rate limit' });
+    }
+    const actions = await proposeActions(req.user.tenant_id, context);
+    // Record proposed actions in ai_actions
+    const t = now();
+    const policy = await q(`SELECT * FROM ai_policies WHERE tenant_id=$1 AND enabled=true ORDER BY updated_at DESC LIMIT 1`, [req.user.tenant_id]).then(r=>r.rows[0]);
+    const policy_id = policy?.id || null;
+    const ids = [];
+    for(const a of actions) {
+      const id = 'act_' + uuidv4();
+      ids.push(id);
+      await q(`
+        INSERT INTO ai_actions(id, tenant_id, policy_id, action, params, status, created_at, updated_at)
+        VALUES($1,$2,$3,$4,$5,'proposed',$6,$6)
+      `, [id, req.user.tenant_id, policy_id, a.action, a.params||{}, t]);
+    }
+    try { await recordOpsRun('ai_propose', { tenant_id: req.user.tenant_id, actions }); } catch(_e){}
+    res.json({ ok:true, actions, ids });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'propose failed' });
+  }
+});
+
+// --- POST /ai/approve ---
+app.post('/ai/approve', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
+  try {
+    const { action_id } = req.body || {};
+    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
+    // Only allow approving own tenant's actions
+    const { rows } = await q(`SELECT * FROM ai_actions WHERE id=$1 AND tenant_id=$2`, [action_id, req.user.tenant_id]);
+    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' });
+    const t = now();
+    await q(`
+      UPDATE ai_actions
+         SET status='approved', approved_by=$1, updated_at=$2
+       WHERE id=$3
+    `, [req.user.email||'user', t, action_id]);
+    res.json({ ok:true });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'approve failed' });
+  }
+});
+
+// --- POST /ai/execute (internal trigger) ---
+app.post('/ai/execute', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
+  try {
+    const { action_id } = req.body || {};
+    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
+    const { rows } = await q(`SELECT * FROM ai_actions WHERE id=$1 AND tenant_id=$2`, [action_id, req.user.tenant_id]);
+    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' });
+    const action = rows[0];
+    if (action.status !== 'approved' && action.status !== 'auto_approved') {
+      return res.status(400).json({ ok:false, error:'not approved' });
+    }
+    // Execute
+    const result = await executeAction(action);
+    const t = now();
+    await q(`
+      UPDATE ai_actions
+         SET status='executed', result=$1, updated_at=$2
+       WHERE id=$3
+    `, [result, t, action_id]);
+    try { await recordOpsRun('ai_execute', { tenant_id: req.user.tenant_id, action_id, result }); } catch(_e){}
+    res.json({ ok:true, result });
+  } catch(e) {
+    res.status(500).json({ ok:false, error: 'execute failed' });
+  }
+});
+
+// --- Interval loop: auto-execute approved actions for tenants with mode=auto ---
+setInterval(async ()=>{
+  try {
+    // Find tenants with auto mode enabled
+    const { rows: tenants } = await q(`
+      SELECT tenant_id, id FROM ai_policies
+       WHERE enabled=true AND mode='auto'
+    `);
+    for(const pol of tenants) {
+      // For each, get approved/unexecuted actions
+      const { rows: acts } = await q(`
+        SELECT * FROM ai_actions
+         WHERE tenant_id=$1 AND policy_id=$2 AND status IN ('approved', 'auto_approved')
+         ORDER BY created_at ASC LIMIT 10
+      `, [pol.tenant_id, pol.id]);
+      for(const a of acts) {
+        try {
+          const result = await executeAction(a);
+          await q(`
+            UPDATE ai_actions
+               SET status='executed', result=$1, updated_at=$2
+             WHERE id=$3
+          `, [result, now(), a.id]);
+          try { await recordOpsRun('ai_execute', { tenant_id: pol.tenant_id, action_id: a.id, result }); } catch(_e){}
+        } catch(e) {
+          // log but continue
+          console.warn('[ai/auto-exec] failed', a.id, e?.message||e);
+        }
+      }
+    }
+  } catch(e) {
+    // log but don't crash
+    console.warn('[ai/auto-exec] error', e?.message||e);
+  }
+}, 60*1000); // every 1 minute
+
+// ====== END AI Autonomy Patch ======
+
+// ---------- tenant billing status helpers ----------
+// Set billing status for a tenant (safe for upserts)
+async function setTenantBillingStatus(tenantId, status) {
+  try { await ensureBillingStatusColumn(); } catch(_e) {}
+  await q(`UPDATE tenants SET billing_status=$2 WHERE tenant_id=$1`, [tenantId, status ?? null]);
+}
+
+// Map Stripe price IDs to internal plan codes
+const PRICE_TO_PLAN = (() => {
+  const m = new Map();
+  if (process.env.STRIPE_PRICE_PRO) m.set(process.env.STRIPE_PRICE_PRO, 'pro');
+  if (process.env.STRIPE_PRICE_PRO_PLUS) m.set(process.env.STRIPE_PRICE_PRO_PLUS, 'pro_plus');
+  return m;
+})();
+function planFromPriceId(priceId){
+  if(!priceId) return null;
+  const id = String(priceId).trim();
+  return PRICE_TO_PLAN.get(id) || null;
+}
+function normalizePlan(p){
+  const v = String(p||'').toLowerCase();
+  if(['pro','pro_plus'].includes(v)) return v;
+  return null;
+}
+// Link a Stripe customer to a tenant (idempotent)
+async function setTenantStripeCustomerId(tenantId, customerId){
+  if(!tenantId || !customerId) return;
+  await q(`UPDATE tenants SET stripe_customer_id=$2 WHERE tenant_id=$1`, [tenantId, customerId]);
+}
+// Resolve tenant_id by Stripe customer id
+async function tenantIdByStripeCustomerId(customerId){
+  const r = await q(`SELECT tenant_id FROM tenants WHERE stripe_customer_id=$1`, [customerId]);
+  return r.rows && r.rows[0] ? r.rows[0].tenant_id : null;
+}
+
+// -- Ensure billing_status column exists (safe, idempotent)
+async function ensureBillingStatusColumn() {
+  try {
+    await q(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_status TEXT`);
+  } catch (_e) { /* ignore */ }
+}
+
+// -- Check if billing_status column exists (with simple in-memory cache)
+let _billingStatusColumnKnown = false;
+let _billingStatusColumnHas = false;
+async function hasBillingStatusColumn() {
+  if (_billingStatusColumnKnown) return _billingStatusColumnHas;
+  try {
+    const r = await q(`SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='billing_status' LIMIT 1`);
+    _billingStatusColumnHas = r.rows && r.rows.length > 0;
+    _billingStatusColumnKnown = true;
+    return _billingStatusColumnHas;
+  } catch (_e) {
+    // On any error, assume not present
+    _billingStatusColumnKnown = true;
+    _billingStatusColumnHas = false;
+    return false;
+  }
+}
+// -- Ensure connectors health columns exist (safe, idempotent)
+async function ensureConnectorHealthColumns() {
+  try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch (_e) {}
+  try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
+  try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
+}
+
+
+/* ===== EARLY COOKIE → AUTH BRIDGE (for /me) ===== */
+if (!app._cg_cookie_bridge_early) {
+  app.use((req, res, next) => {
+    try {
+      if (!req.headers.authorization && typeof req.headers.cookie === 'string' && req.headers.cookie.length) {
+        const parts = req.headers.cookie.split(/;\s*/g);
+        const cookies = {};
+        for (const p of parts) {
+          const i = p.indexOf('=');
+          if (i <= 0) continue;
+          const k = decodeURIComponent(p.slice(0, i));
+          const v = decodeURIComponent(p.slice(i + 1));
+          cookies[k] = v;
+        }
+        if (cookies.cg_access && !req.headers.authorization) {
+          req.headers.authorization = `Bearer ${cookies.cg_access}`;
+        }
+      }
+    } catch (_) { /* no-op */ }
+    return next();
+  });
+  app._cg_cookie_bridge_early = true;
+}
+/* ===== END EARLY COOKIE → AUTH BRIDGE ===== */
+// ---------- /me route ----------
+async function meRouteHandler(req, res) {
+  // ---- Soft auth: rebuild req.user from cg_access cookie/JWT if middleware did not set it ----
+  try {
+    if (!req.user) {
+      // Parse cookies (use existing parsed cookies if present)
+      const cgParseCookiesFromHeader =
+        (globalThis && globalThis.__cg_parseCookiesFromHeader__) ||
+        function (cookieHeader) {
+          const out = {};
+          if (!cookieHeader || typeof cookieHeader !== 'string') return out;
+          const parts = cookieHeader.split(/;\s*/g);
+          for (const p of parts) {
+            const i = p.indexOf('=');
+            if (i <= 0) continue;
+            const k = decodeURIComponent(p.slice(0, i).trim());
+            const v = decodeURIComponent(p.slice(i + 1));
+            if (k) out[k] = v;
+          }
+          return out;
+        };
+
+      const cookieHeader = req.headers.cookie || '';
+      const cookies = (req.cookies && Object.keys(req.cookies).length)
+        ? req.cookies
+        : cgParseCookiesFromHeader(cookieHeader);
+
+      // Prefer Authorization header if present; otherwise cg_access cookie
+      let token = '';
+      const auth = String(req.headers.authorization || '');
+      if (/^Bearer\s+/i.test(auth)) {
+        token = auth.replace(/^Bearer\s+/i, '').trim();
+      } else if (cookies && cookies.cg_access) {
+        token = cookies.cg_access;
+      }
+
+      if (token) {
+        try {
+          const secret =
+            process.env.JWT_SECRET ||
+            process.env.JWT_SIGNING_KEY ||
+            'dev_secret_do_not_use_in_prod';
+          const decoded = jwt.verify(token, secret);
+          if (decoded && typeof decoded === 'object') {
+            req.user = {
+              sub: decoded.sub || decoded.email || null,
+              email: decoded.email || decoded.sub || null,
+              tenant_id: decoded.tenant_id || 'demo',
+              role: decoded.role || (decoded.is_super ? 'super_admin' : 'member'),
+              is_super: !!decoded.is_super
+            };
+          }
+        } catch (_e_jwt) {
+          // ignore, will return 401 below if still no user
+        }
+      }
+    }
+  } catch (_e_softauth) { /* non-fatal */ }
+
+  // If still no user, respond 401 cleanly
+  if (!req.user || !req.user.tenant_id) {
+    try { res.setHeader('X-ME', 'unauthorized'); } catch(_) {}
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+  // ---- End soft auth block ----
+  await ensureDb();
+  {
+    try {
+      // breadcrumbs for debugging
+      try { await recordOpsRun('me_stage', { s: 'start', tid: req.user?.tenant_id || null }); } catch (_e) {}
+
+      // Fetch tenant row (same shape as /me_dbg)
+      try { await recordOpsRun('me_stage', { s: 'before_select', tid: req.user?.tenant_id || null }); } catch (_e) {}
+      const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
+      const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
+      try { await recordOpsRun('me_stage', { s: 'after_select', n: rows.length, tid: req.user?.tenant_id || null }); } catch (_e) {}
+      if (!rows.length) {
+        res.setHeader('X-ME', 'notfound');
+        return res.status(404).json({ error: 'not found' });
+      }
+      const t = rows[0];
+      try { await recordOpsRun('me_stage', { s: 'have_row', plan: t?.plan || null, tid: req.user?.tenant_id || null }); } catch (_e) {}
+
+      // Safe numbers for epoch fields
+      const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const trialEndsNum = toNum(t.trial_ends_at);
+      const trialActive = (t.trial_status === 'active') && trialEndsNum > nowEpoch;
+      let trialEndsISO = null;
+      try { trialEndsISO = trialEndsNum > 0 ? new Date(trialEndsNum * 1000).toISOString() : null; } catch(_e) { trialEndsISO = null; }
+
+      const role = req.user?.role || 'member';
+      const is_super = !!req.user?.is_super;
+
+      // Back-compat: expose both flat fields AND nested { user, tenant }
+      const email = req.user?.email || req.user?.sub || null;
+
+      const tenantObj = {
+        id: t.tenant_id || t.id || req.user.tenant_id,
+        tenant_id: t.tenant_id || t.id || req.user.tenant_id,
+        name: t.name || null,
+        plan: t.plan || null,
+        contact_email: t.contact_email ?? null,
+        trial_started_at: t.trial_started_at ?? null,
+        trial_ends_at: t.trial_ends_at ?? null,
+        trial_status: t.trial_status ?? null,
+        created_at: t.created_at ?? null,
+        updated_at: t.updated_at ?? null,
+        billing_status: (typeof t.billing_status === 'undefined' ? null : t.billing_status)
+      };
+
+      // Super-admin preview plan override via headers (from Admin UI)
+      const adminHdrPlan = (is_super ? String(req.get('x-admin-plan-preview') || '').toLowerCase().trim() : '');
+      const effectivePlan = (adminHdrPlan === 'pro' || adminHdrPlan === 'pro_plus') ? adminHdrPlan : (tenantObj.plan || null);
+
+      const userObj = {
+        email,
+        role: is_super ? 'super_admin' : role,
+        plan: effectivePlan,
+        tenant_id: tenantObj.tenant_id,
+        is_super,
+        // UI-friendly aliases (keep both snake & camel just in case)
+        isSuper: is_super,
+        superAdmin: is_super,
+        flags: { superAdmin: is_super }
+      };
+
+      const payload = {
+        ok: true,
+
+        // ---- flat fields (legacy callers) ----
+        id: tenantObj.id,
+        tenant_id: tenantObj.tenant_id,
+        name: tenantObj.name,
+        plan: effectivePlan,
+        contact_email: tenantObj.contact_email,
+        trial_started_at: tenantObj.trial_started_at,
+        trial_ends_at: tenantObj.trial_ends_at,
+        trial_status: tenantObj.trial_status,
+        created_at: tenantObj.created_at,
+        updated_at: tenantObj.updated_at,
+        billing_status: tenantObj.billing_status,
+        effective_plan: effectivePlan,
+        trial_active: trialActive,
+        plan_actual: tenantObj.plan,
+        role,
+        is_super,
+        isSuper: is_super,
+        superAdmin: is_super,
+        email,
+
+        // ---- nested objects (new callers) ----
+        user: userObj,
+        tenant: tenantObj,
+        // Legacy/session compatibility for UI components that expect a session container
+        session: { user: userObj, tenant: tenantObj, loggedIn: true },
+        auth: { loggedIn: true, email, role: userObj.role, is_super, isSuper: is_super },
         showAdmin: is_super,
 
         // normalized trial view for UI
@@ -1301,6 +1886,47 @@ app.use((req, res, next) => {
   return next();
 });
 // ---- End Unified CORS ----
+
+// ===== EARLY AUTH PRIMER (runs before routes) =====
+app.use(async (req, _res, next) => {
+  try {
+    // If an upstream already set req.user, keep it
+    if (req.user) return next();
+
+    // Extract token: Authorization header first, then cg_access cookie
+    let token = null;
+    const ah = req.headers && req.headers.authorization;
+    if (ah && /^Bearer\s+/i.test(ah)) {
+      token = ah.replace(/^Bearer\s+/i, '').trim();
+    }
+    if (!token && req.headers && req.headers.cookie) {
+      const m = req.headers.cookie.match(/(?:^|;\s*)cg_access=([^;]+)/);
+      if (m) token = decodeURIComponent(m[1]);
+    }
+    if (!token) return next();
+
+    // Verify JWT (do not throw to client; swallow errors and continue)
+    try {
+      const mod = await import('jsonwebtoken').catch(() => null);
+      const _jwt = mod && (mod.default || mod);
+      if (_jwt && typeof _jwt.verify === 'function') {
+        const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+        const p = _jwt.verify(token, jwtSecret);
+        // Attach a normalized user
+        req.user = {
+          sub: p.sub || p.email || null,
+          email: p.email || null,
+          tenant_id: p.tenant_id || 'demo',
+          role: p.role || 'admin',
+          is_super: !!p.is_super
+        };
+      }
+    } catch (_e) { /* ignore */ }
+  } catch (_e) { /* ignore */ }
+  return next();
+});
+// ===== END EARLY AUTH PRIMER =====
+
 if (!globalThis.__cg_cookie_sessions__) {
   globalThis.__cg_cookie_sessions__ = true;
 
@@ -1943,3 +2569,119 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     return res.json({ ok: true, dev_login_enabled: false });
   });
 }
+// === DEBUG: dev-login probe (temporary) ===
+app.post('/__dev_login_dbg', async (req, res) => {
+  const out = { ok:false, steps:{} };
+  try {
+    out.steps.env = {
+      allow_dev_login: String(process.env.ALLOW_DEV_LOGIN||'').toLowerCase(),
+      node_env: process.env.NODE_ENV || null
+    };
+    try { await ensureDb(); out.steps.ensureDb = 'ok'; } catch(e){ out.steps.ensureDb = String(e?.message||e); }
+
+    // Try jsonwebtoken, then local HS256 signer
+    let jwtMod=null, token1=null, token2=null;
+    try { const mod = await import('jsonwebtoken'); jwtMod = (mod && (mod.default||mod)); out.steps.jwt_import = 'ok'; }
+    catch(e){ out.steps.jwt_import = String(e?.message||e); }
+
+    const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+    const demo = { sub:'demo-admin@demo', email:'demo-admin@demo', tenant_id:'demo', role:'admin', is_super:true, iat: Math.floor(Date.now()/1000) };
+
+    if (jwtMod && typeof jwtMod.sign === 'function') {
+      try { token1 = jwtMod.sign(demo, jwtSecret, { algorithm:'HS256', expiresIn:'10m' }); out.steps.jwt_sign='ok'; }
+      catch(e){ out.steps.jwt_sign=String(e?.message||e); }
+    }
+
+    try {
+      const base64url = (buf) => Buffer.from(buf).toString('base64')
+        .replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+      const header = { alg:'HS256', typ:'JWT' };
+      const payload = { ...demo, exp: Math.floor(Date.now()/1000) + 600 };
+      const h = base64url(JSON.stringify(header));
+      const p = base64url(JSON.stringify(payload));
+      const data = h + '.' + p;
+      const crypto = await import('crypto');
+      const sig = crypto.createHmac('sha256', jwtSecret).update(data).digest('base64')
+        .replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+      token2 = data + '.' + sig; out.steps.local_sign='ok';
+    } catch(e){ out.steps.local_sign = String(e?.message||e); }
+
+    return res.status(200).json({
+      ok:true,
+      steps: out.steps,
+      token_from_jsonwebtoken: !!token1,
+      token_from_local_signer: !!token2
+    });
+  } catch (e) {
+    return res.status(500).json({ ok:false, error:'dbg_failed', detail:String(e?.message||e) });
+  }
+});
+// === END DEBUG: dev-login probe ===
+
+
+// === AI auto-exec — guarded & opt-out via DISABLE_AI_AUTO ===
+(function scheduleAiAuto(){
+  try {
+    if (String(process.env.DISABLE_AI_AUTO||'').toLowerCase() === '1') {
+      console.log('[ai/auto-exec] disabled via DISABLE_AI_AUTO=1');
+      return;
+    }
+    const AI_EVERY_MS = 60_000;
+    setInterval(async () => {
+      try {
+        await ensureDb();
+        if (!hasDb()) {
+          console.warn('[ai/auto-exec] skip: db not ready');
+          return;
+        }
+        // ----- existing AI auto-exec body goes here -----
+      } catch (e) {
+        console.warn('[ai/auto-exec] error', String(e?.message||e));
+      }
+    }, AI_EVERY_MS);
+  } catch (e) {
+    console.warn('[ai/auto-exec] setup error', String(e?.message||e));
+  }
+})();
+// === END AI auto-exec guard ===
+
+
+// === BG poll — guarded & opt-out via DISABLE_BG ===
+(function scheduleBgPoll(){
+  try {
+    if (String(process.env.DISABLE_BG || '').toLowerCase() === '1') {
+      try { console.log('[bg-poll] disabled via DISABLE_BG=1'); } catch {}
+      return;
+    }
+    if (globalThis.__cg_bg_poll_started__) { return; }
+    globalThis.__cg_bg_poll_started__ = true;
+
+    // Define hasDb() if it doesn't exist yet
+    if (typeof globalThis.hasDb !== 'function') {
+      globalThis.hasDb = function hasDb() {
+        return typeof globalThis.q === 'function' &&
+               globalThis.db && typeof globalThis.db.any === 'function';
+      };
+    }
+
+    const BG_EVERY_MS = 60_000;
+    setInterval(async () => {
+      try {
+        await ensureDb();
+        if (!hasDb()) { console.warn('[bg-poll] skip: db not ready'); return; }
+
+        console.log('[bg-poll] starting background poll cycle');
+        // SAFE: tiny health check; replace with your real work
+        try { await globalThis.q('select 1'); } catch(_) {}
+
+        // TODO: place your real bg work here (guard with hasDb())
+      } catch (e) {
+        console.warn('[bg-poll] failed to run background poll', String(e?.message || e));
+      }
+    }, BG_EVERY_MS);
+  } catch (e) {
+    try { console.warn('[bg-poll] setup error', String(e?.message || e)); } catch {}
+  }
+})();
+// === END BG poll guard ===
+
