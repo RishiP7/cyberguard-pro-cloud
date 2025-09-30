@@ -2710,7 +2710,7 @@ app.post('/auth/dev-login', async (req, res) => {
                 Buffer.from(JSON.stringify(tokenPayload)).toString('base64url') + "." +
                 Buffer.from("sig").toString('base64url');
 
-  const cookieOpts = { httpOnly: true, secure: true, sameSite: 'None', maxAge: 1000 * 60 * 15 };
+  const cookieOpts = { httpOnly: true, secure: true, sameSite: 'none', maxAge: 1000 * 60 * 15 };
   res.cookie('cg_access', token, cookieOpts);
   res.cookie('cg_refresh', token, { ...cookieOpts, maxAge: 1000 * 60 * 60 * 24 * 30 });
 
