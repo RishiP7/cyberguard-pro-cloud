@@ -2907,10 +2907,10 @@ function LiveEmailScan(){
     setLoading(true); setErr("");
     try{
       const token = (typeof localStorage!=="undefined" && localStorage.getItem("token")) || "";
-      const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+        const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
   ? globalThis.API_BASE
-  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
-      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+  : ((typeof window !== 'undefined' && window.location.origin)
+      ? (window.location.origin + '/api')
       : '/api');
       const r = await fetch(`${API_BASE}/alerts/export?days=1&limit=200`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -3194,8 +3194,8 @@ function AuthLogin(){
   };
   const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
   ? globalThis.API_BASE
-  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
-      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+  : ((typeof window !== 'undefined' && window.location.origin)
+      ? (window.location.origin + '/api')
       : '/api');
   // --- TEMP: dev-login helper for troubleshooting auth (removable) ---
   async function devLogin(){
@@ -3415,8 +3415,8 @@ function LoginGuard(){
   const [busy,setBusy] = React.useState(false);
   const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
   ? globalThis.API_BASE
-  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
-      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+  : ((typeof window !== 'undefined' && window.location.origin)
+      ? (window.location.origin + '/api')
       : '/api');
   async function submit(e){
     e.preventDefault(); setErr(""); setBusy(true);
@@ -5518,3 +5518,6 @@ if (typeof window !== 'undefined') {
 }
 
 // Only a single BrandLogo definition should exist in this file.
+
+// --- Remove any remaining hardcoded 'cyberguard-pro-cloud.onrender.com' URLs ---
+// (none remain; API_BASE and dev-login logic now uses window.location.origin or same-origin logic)
