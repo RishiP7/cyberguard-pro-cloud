@@ -2140,9 +2140,6 @@ app.get('/health/db', async (_req, res) => {
 // Sentry error handler (must be before any other error middleware)
 Sentry.setupExpressErrorHandler(app);
 // Minimal fallback error handler to avoid leaking internals
-app.use((err, _req, res, _next) => {
-  try { console.error("[unhandled]", err && (err.stack || err)); } catch (_) {}
-  res.status(500).json({ ok:false, error: "internal_error" });
 });
 app.listen(Number(process.env.PORT) || 10000, () => {
   const name = process.env.BRAND || 'CyberGuard Pro';
@@ -2718,5 +2715,26 @@ app.post('/auth/dev-login', async (req, res) => {
     return res.redirect(302, '/');
   } else {
     return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
+  }
+});
+app.use((err, req, res, _next) => {
+  try {
+    const step = (req && req._diag) ? String(req._diag) : "unknown";
+    const rid  = (req && req._reqid) ? String(req._reqid) : "";
+    const errOut = (err && (err.stack || err.message))
+      ? (err.stack || err.message)
+      : (err ? String(err) : "unknown_error");
+
+    try { console.error("[unhandled]", { step, rid, err: errOut }); } catch (_) {}
+
+    if (!res.headersSent) {
+      try { res.setHeader("X-Diag", step); } catch (_) {}
+      try { if (rid) res.setHeader("X-Req-Id", rid); } catch (_) {}
+      try { return res.status(500).json({ ok:false, error: "internal_error" }); } catch (_e) {}
+    }
+  } catch (_outer) {
+    try {
+      if (!res.headersSent) return res.status(500).json({ ok:false, error:"internal_error" });
+    } catch (_) {}
   }
 });
