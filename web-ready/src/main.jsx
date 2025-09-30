@@ -4,10 +4,10 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__STAGING_BLOCK__ ===
 }
 import Login from "./pages/Login.jsx";
 // --- API base path ---
-const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
+        const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
   ? globalThis.API_BASE
-  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
-      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+  : ((typeof window !== 'undefined' && window.location.origin)
+      ? (window.location.origin + '/api')
       : '/api');
 /* === SAFETY BOOTSTRAP (do not remove) ================================
    Ensures required React/Router imports and minimal API helpers exist.
@@ -1055,8 +1055,8 @@ function TopBadges(){
 
   const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
   ? globalThis.API_BASE
-  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
-      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+  : ((typeof window !== 'undefined' && window.location.origin)
+      ? (window.location.origin + '/api')
       : '/api');
 
   React.useEffect(()=>{
@@ -1862,8 +1862,8 @@ function Pricing(){
 
   const API_BASE = (typeof globalThis !== 'undefined' && globalThis.API_BASE)
   ? globalThis.API_BASE
-  : ((typeof window !== 'undefined' && window.location.hostname.includes('onrender.com'))
-      ? 'https://cyberguard-pro-cloud.onrender.com/api'
+  : ((typeof window !== 'undefined' && window.location.origin)
+      ? (window.location.origin + '/api')
       : '/api');
 
   async function checkout(plan){
@@ -4943,9 +4943,10 @@ if (typeof window !== 'undefined') {
   } catch (_e) { /* ignore */ }
   window.__authFetchShim = true;
   const orig = window.fetch.bind(window);
-  const API_HOST  = 'cyberguard-pro-cloud.onrender.com';
-  const API_HTTP  = 'http://localhost:8080';
-  const API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
+  const API_ORIGIN = (typeof globalThis !== 'undefined' && globalThis.API) || (typeof window !== 'undefined' ? window.location.origin : '');
+  const API_HOST = (() => { try { return new URL(API_ORIGIN).host; } catch { return ''; } })();
+  const API_HTTP = (API_ORIGIN || '').replace(/^https:/, 'http:');
+  const API_HTTPS = API_ORIGIN || '';
 const PUBLIC_NOAUTH = [
     /\/__ping\b/,
     /\/__env\b/,
@@ -4993,7 +4994,7 @@ const PUBLIC_NOAUTH = [
           }
         });
       }
-      const base = 'https://cyberguard-pro-cloud.onrender.com';
+      const base = API_HTTPS || (typeof window !== 'undefined' ? window.location.origin : '');
       const ping   = await xhr('GET',  base + '/__ping');
       const status = await xhr('GET',  base + '/auth/dev-status');
       const login  = await xhr('POST', base + '/auth/dev-login');
@@ -5222,7 +5223,7 @@ const PUBLIC_NOAUTH = [
 })();
 try {
   // Global API constant for routes/components that pass `api={API}`
-  const __API_HTTPS = 'https://cyberguard-pro-cloud.onrender.com';
+  const __API_HTTPS = (typeof globalThis !== 'undefined' && globalThis.API) || (typeof window !== 'undefined' ? window.location.origin : '');
   if (typeof window !== 'undefined') {
     if (typeof globalThis.API === 'undefined') {
       globalThis.API = __API_HTTPS;
