@@ -2685,3 +2685,38 @@ app.post('/__dev_login_dbg', async (req, res) => {
 })();
 // === END BG poll guard ===
 
+
+// ===== Safari-safe dev-login patch =====
+app._router.stack = app._router.stack.filter(r => !(r.route && r.route.path === '/auth/dev-login'));
+
+app.post('/auth/dev-login', async (req, res) => {
+  const wantsHtml = req.headers['accept'] && req.headers['accept'].includes('text/html');
+
+  try { await ensureDb(); } catch (_e) {}
+
+  const tid = (req.query && req.query.tenant_id) ? String(req.query.tenant_id) : 'demo';
+  const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+
+  const demoUser = {
+    sub: `demo-admin@${tid}`,
+    email: `demo-admin@${tid}`,
+    tenant_id: tid,
+    role: 'admin',
+    is_super: true,
+  };
+
+  const tokenPayload = { ...demoUser, iat: Math.floor(Date.now()/1000), exp: Math.floor(Date.now()/1000) + 60*60 };
+  const token = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString('base64url') + "." +
+                Buffer.from(JSON.stringify(tokenPayload)).toString('base64url') + "." +
+                Buffer.from("sig").toString('base64url');
+
+  const cookieOpts = { httpOnly: true, secure: true, sameSite: 'None', maxAge: 1000 * 60 * 15 };
+  res.cookie('cg_access', token, cookieOpts);
+  res.cookie('cg_refresh', token, { ...cookieOpts, maxAge: 1000 * 60 * 60 * 24 * 30 });
+
+  if (wantsHtml) {
+    return res.redirect(302, '/');
+  } else {
+    return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
+  }
+});
