@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-<truncated__content/>userObj.role, is_super, isSuper: is_super },
         showAdmin: is_super,
 
         // normalized trial view for UI
