@@ -1905,11 +1905,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   app.post('/auth/dev-login', async (req, res) => {
     req._diag = 'dev-login-handler';
     try { res.setHeader('X-Diag', 'dev-login-handler'); } catch (_) {}
-    // Hardened, dependency-free dev login path.
-    // Notes:
-    //  - Does not require jsonwebtoken; falls back to built-in HS256 signer
-    //  - Auto-provisions a demo tenant/user (best-effort)
-    //  - Always sets cookies on success
+
     try {
       // Ensure DB is ready before any provisioning
       try { await ensureDb(); } catch (_e) {}
@@ -1924,106 +1920,28 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         email: `demo-admin@${tid}`,
         tenant_id: tid,
         role: 'admin',
-        is_super: true,
-        iat: Math.floor(Date.now() / 1000)
+        is_super: true
       };
 
-      // --- Auto-provision demo tenant & user for dev-login (idempotent) ---
-      try {
-        const nowEpoch = Math.floor(Date.now() / 1000);
-        const trialEnds = nowEpoch + (30 * 24 * 60 * 60); // 30 days
+      // Issue JWT using built-in HS256 signer
+      const token = simpleJwtSign(demoUser, jwtSecret);
 
-        // Ensure tenants table has a row for this tid
-        await q(
-          `
-            INSERT INTO tenants(tenant_id, name, plan, trial_status, trial_ends_at, created_at, updated_at)
-            VALUES($1, $2, 'pro_plus', 'active', $3, $4, $4)
-            ON CONFLICT (tenant_id) DO NOTHING
-          `,
-          [tid, `Demo (${tid})`, trialEnds, nowEpoch]
-        );
+      // Set cookies
+      _cgSetTokens(res, token, token);
 
-        // Ensure a demo admin user exists (email unique per tenant via index)
-        const demoEmail = `demo-admin@${tid}`;
-        try {
-          await q(
-            `
-              INSERT INTO users(id, tenant_id, email, role, created_at, updated_at)
-              VALUES($1, $2, $3, 'admin', $4, $4)
-            `,
-            ['u_' + String(Date.now()), tid, demoEmail, nowEpoch]
-          );
-        } catch(_ue) { /* ignore dup errors */ }
-      } catch(_provErr) {
-        try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch(_e) {}
-        // continue; provisioning is best-effort
-      }
-      // --- End auto-provision ---
-
-      // Try dynamic import of jsonwebtoken first; if it fails, use a local signer
-      let token = null;
-      let jwtMod = null;
-      try {
-        const mod = await import('jsonwebtoken');
-        jwtMod = (mod && (mod.default || mod));
-      } catch (_impErr) { jwtMod = null; }
-
-      if (jwtMod && typeof jwtMod.sign === 'function') {
-        try {
-          token = jwtMod.sign(demoUser, jwtSecret, { algorithm: 'HS256', expiresIn: '1h' });
-        } catch (_signErr) {
-          token = null;
-        }
+      // Safari fix: if this was a form-style POST (document navigation), redirect instead of JSON
+      const accept = String(req.headers.accept || '');
+      const sfm = String(req.headers['sec-fetch-mode'] || '');
+      if (accept.includes('text/html') || sfm === 'navigate') {
+        try { res.setHeader('X-Auth-Debug', 'dev_login_ok_html_redirect'); } catch (_) {}
+        return res.redirect('/');
       }
 
-      if (!token) {
-        // Dependency-free HS256 signer
-        const base64url = (buf) => Buffer.from(buf).toString('base64')
-  .replace(/=/g, '')
-  .replace(/\+/g, '-')
-  .replace(/\//g, '_');
-        const header = { alg: 'HS256', typ: 'JWT' };
-        const payload = Object.assign({}, demoUser, { exp: Math.floor(Date.now()/1000) + 3600 });
-        const h = base64url(JSON.stringify(header));
-        const p = base64url(JSON.stringify(payload));
-        const data = `${h}.${p}`;
-        const crypto = await import('crypto');
-        const sig = crypto.createHmac('sha256', jwtSecret).update(data).digest('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-        token = `${data}.${sig}`;
-      }
-
-      // Set cookies for both access & refresh (simple compat)
-      try {
-        const _cgSetTokens = (globalThis && globalThis.__cg_setTokens__) ? globalThis.__cg_setTokens__ : function _fallbackSetTokens(res, access, refresh) {
-          const base = { httpOnly: true, secure: true, sameSite: 'none', path: '/' };
-          try { res.cookie('cg_access', access,  { ...base, maxAge: 15 * 60 * 1000 }); } catch (_e) {
-            res.setHeader('Set-Cookie', [`cg_access=${encodeURIComponent(access)}; Max-Age=${15 * 60}; Path=/; Secure; HttpOnly; SameSite=None`]);
-          }
-          try { res.cookie('cg_refresh', refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_e) {
-            const prev = res.getHeader('Set-Cookie');
-            const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
-            next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; Secure; HttpOnly; SameSite=None`);
-            res.setHeader('Set-Cookie', next);
-          }
-        };
-        _cgSetTokens(res, token, token);
-      } catch (_cookieErr) { /* non-fatal */ }
-
-      try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
-      // If this was a browser form submit (document navigation), redirect home so Safari doesn't expect JSON
-const accept = String(req.headers.accept || '');
-const sfm = String(req.headers['sec-fetch-mode'] || '');
-if (accept.includes('text/html') || sfm === 'navigate') {
-  try { res.setHeader('X-Auth-Debug', 'dev_login_ok_html_redirect'); } catch (_) {}
-  return res.redirect('/');
-}
-
-// Default: JSON response for fetch/AJAX clients
-return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
-    } catch (e) {
-      try { await recordOpsRun('dev_login_error', { err: String(e?.message || e) }); } catch (_e) {}
-      try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
-      return res.status(500).json({ ok: false, error: 'internal_error' });
+      // Default JSON response for fetch/AJAX clients
+      return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
+    } catch (err) {
+      console.error('dev-login failed', err);
+      res.status(500).json({ ok: false, error: err.message });
     }
   });
 
