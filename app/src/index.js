@@ -140,7 +140,6 @@ app.use((req, res, next) => {
   } catch (_) {}
   if (req.method === 'OPTIONS') { return res.sendStatus(204); }
   return next();
-});
 
 // Global middleware
 const allowedOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [
@@ -194,7 +193,6 @@ app.use((req, res, next) => {
   }
 
   return res.sendStatus(204);
-});
 
 // JSON body parser (after Stripe webhook raw body setup later)
 app.use(express.json({ limit: '1mb' }));
@@ -251,7 +249,6 @@ if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined')
   } catch(e) {
     res.status(500).json({ ok:false, error: 'propose failed' });
   }
-});
 
 // --- POST /ai/approve ---
 app.post('/ai/approve', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
@@ -271,7 +268,6 @@ app.post('/ai/approve', authMiddleware, Guard.enforceActive, Guard.requireProPlu
   } catch(e) {
     res.status(500).json({ ok:false, error: 'approve failed' });
   }
-});
 
 // --- POST /ai/execute (internal trigger) ---
 app.post('/ai/execute', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
@@ -297,7 +293,6 @@ app.post('/ai/execute', authMiddleware, Guard.enforceActive, Guard.requireProPlu
   } catch(e) {
     res.status(500).json({ ok:false, error: 'execute failed' });
   }
-});
 
 // --- Interval loop: auto-execute approved actions for tenants with mode=auto ---
 setInterval(async ()=>{
@@ -641,7 +636,6 @@ try {
 // Report commit/version (Render exposes RENDER_GIT_COMMIT)
 app.get('/__version', (_req, res) => {
   res.json({ ok: true, commit: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || null, started_at: new Date().toISOString() });
-});
 
 // Minimal /me variant that always returns error detail to help diagnose
 app.get('/me_dbg', authMiddleware, async (req, res) => {
@@ -658,7 +652,6 @@ app.get('/me_dbg', authMiddleware, async (req, res) => {
     try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, dbg: true }); } catch (_e) {}
     return res.status(500).json({ error: 'me failed', detail: msg });
   }
-});
 
 // Route map (diagnostics): lists all registered routes and method stacks
 if (process.env.NODE_ENV !== 'production') {
@@ -727,7 +720,6 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
     console.error('checkout failed', e);
     return res.status(500).json({ ok:false, error: 'checkout failed' });
   }
-});
 
 // Stripe webhook endpoint for subscription events
 app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -861,7 +853,6 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
     try { await recordOpsRun('stripe_webhook_error', { error: String(e?.message||e), event_id: event?.id||null }); } catch(_e) {}
     return res.status(500).send('webhook error');
   }
-});
 
 // Billing portal (Stripe)
 app.get('/billing/portal', authMiddleware, async (req,res)=>{
@@ -883,7 +874,6 @@ app.get('/billing/portal', authMiddleware, async (req,res)=>{
     console.error('portal failed', e);
     return res.status(500).json({ ok:false, error: 'portal failed' });
   }
-});
 
 // Super Admin: backfill/sync billing state for the current tenant from Stripe
 app.post('/admin/billing/sync', authMiddleware, Guard.requireSuper, async (req, res) => {
@@ -916,7 +906,6 @@ app.post('/admin/billing/sync', authMiddleware, Guard.requireSuper, async (req, 
     console.error('admin billing sync failed', e);
     return res.status(500).json({ ok:false, error: 'sync failed' });
   }
-});
 
 // ---------- Admin: denormalize legacy alert JSON into flat columns ----------
 // Super-only: backfill flat columns from legacy event JSON if they are null
@@ -1107,7 +1096,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, Guard.requireSuper, as
     console.error('alerts/denormalize failed', e);
     return res.status(500).json({ ok: false, error: 'denormalize failed' });
   }
-});
 // ---------- Admin: prune blank alerts (subject/preview empty) ----------
 // POST /admin/ops/alerts/prune_blank?dry=1&days=7
 // - dry: if '1' or 'true', do not delete; just report count
@@ -1153,7 +1141,6 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, Guard.requireSuper, as
     console.error('alerts/prune_blank failed', e);
     return res.status(500).json({ ok: false, error: 'prune failed' });
   }
-});
 
 // ---------- Admin: reset connector (wipe tokens/state) ----------
 // Strong reset: dynamically null any token/secret/auth columns, clear health fields,
@@ -1376,7 +1363,6 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
     }
     return res.status(500).json({ ok:false, error: 'reset failed' });
   }
-});
 
 // ---------- Admin: trigger poll now (super only) ----------
 // POST /admin/ops/poll/now
@@ -1392,7 +1378,6 @@ app.post('/admin/ops/poll/now', authMiddleware, Guard.requireSuper, async (req, 
     console.error('admin/ops/poll/now failed', e);
     return res.status(500).json({ ok:false, error: 'poll failed' });
   }
-});
 
 // Helper: show current connector row (super only) to debug schema & values
 app.get('/admin/ops/connector/show', authMiddleware, Guard.requireSuper, async (req, res) => {
@@ -1405,7 +1390,6 @@ app.get('/admin/ops/connector/show', authMiddleware, Guard.requireSuper, async (
   } catch(e) {
     return res.status(500).json({ ok:false, error:'show failed', detail: String(e?.message||e) });
   }
-});
 
 // =====================
 // BACKGROUND POLLER (ESM-safe, no external scheduler)
@@ -1752,7 +1736,6 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
     console.error('alerts/export failed', msg);
     return res.status(500).json({ ok:false, error: 'export failed', detail: msg });
   }
-});
 
 // ---------- start ----------
 
@@ -1780,7 +1763,6 @@ app.use((req, res, next) => {
     }
   }
   return next();
-});
 // ===== END ULTRA-EARLY HEALTH HANDLERS =====
 // ===== ULTRA-EARLY DB ENSURE (local shim for diagnostics and early routes) =====
 const _ensureDbLocal = (typeof ensureDb === 'function')
@@ -1832,7 +1814,6 @@ app.post('/__db_diag', express.json({ limit: '256kb' }), async (req, res) => {
     try { console.error('[__db_diag] failed', e?.message || e); } catch (_){}
     return res.status(500).json({ ok:false, error:'diag_failed', detail:String(e?.message||e) });
   }
-});
 // ===== END ULTRA-EARLY DB DIAGNOSTIC ROUTE =====
 // ===== ULTRA-EARLY LOGIN PREFLIGHT (runs before unified CORS) =====
 // Guarantees ACAO reflection for /auth/login and /api/auth/login preflight with credentials=true.
@@ -1861,7 +1842,6 @@ app.use((req, res, next) => {
     return res.sendStatus(204);
   }
   return next();
-});
 // ===== END ULTRA-EARLY LOGIN PREFLIGHT =====
 // ---- Unified CORS (no wildcard when credentials=true) ----
 app.use((req, res, next) => {
@@ -1884,7 +1864,6 @@ app.use((req, res, next) => {
     return res.sendStatus(204);
   }
   return next();
-});
 // ---- End Unified CORS ----
 
 // ===== EARLY AUTH PRIMER (runs before routes) =====
@@ -1924,7 +1903,6 @@ app.use(async (req, _res, next) => {
     } catch (_e) { /* ignore */ }
   } catch (_e) { /* ignore */ }
   return next();
-});
 // ===== END EARLY AUTH PRIMER =====
 
 if (!globalThis.__cg_cookie_sessions__) {
@@ -2123,7 +2101,6 @@ app.post('/auth/login_dbg', async (req, res) => {
     try { console.error('[login_dbg] failed', e?.message || e, e?.stack || ''); } catch (_e) {}
     return res.status(500).json({ ok:false, error:'dbg_failed', detail: String(e?.message || e) });
   }
-});
 
 // GET /health/db — quick DB probe
 app.get('/health/db', async (_req, res) => {
@@ -2135,16 +2112,13 @@ app.get('/health/db', async (_req, res) => {
     try { console.error('[health/db] failed', e?.message || e, e?.stack || ''); } catch (_) {}
     return res.status(500).json({ ok:false, error:'db_failed', detail: String(e?.message || e) });
   }
-});
 // ===== END AUTH/DB DIAGNOSTICS =====
 // Sentry error handler (must be before any other error middleware)
 Sentry.setupExpressErrorHandler(app);
 // Minimal fallback error handler to avoid leaking internals
-});
 app.listen(Number(process.env.PORT) || 10000, () => {
   const name = process.env.BRAND || 'CyberGuard Pro';
   console.log(`${name} listening on :${process.env.PORT || 10000}`);
-});
 app.get('/__whoami', (req, res) => {
   try {
     const raw = req.headers.cookie || '';
@@ -2164,7 +2138,6 @@ app.get('/__whoami', (req, res) => {
   } catch (e) {
     return res.status(500).json({ ok:false, error:'whoami_failed', detail: String(e?.message || e) });
   }
-});
 // ---------- Super Admin DB diagnostics ----------
 app.get('/admin/db/diag', authMiddleware, Guard.requireSuper, async (_req,res)=>{
   try{
@@ -2175,7 +2148,6 @@ app.get('/admin/db/diag', authMiddleware, Guard.requireSuper, async (_req,res)=>
     console.error('db diag failed', e);
     return res.status(500).json({ ok:false, error: String(e.message||e) });
   }
-});
 
 // Convenience wrapper: force reset (super only). Mirrors /admin/ops/connector/reset but forces details NULL.
 app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper, async (req, res) => {
@@ -2260,7 +2232,6 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper,
 }
 return res.status(500).json({ ok:false, error:'force reset failed' });
   }
-});
 
 // ===== Express 5 catch-all route compatibility patch =====
 // All legacy catch-all routes have been replaced with the Express 5-compatible named parameter form (/:rest(.*)).
@@ -2612,7 +2583,6 @@ app.post('/__dev_login_dbg', async (req, res) => {
   } catch (e) {
     return res.status(500).json({ ok:false, error:'dbg_failed', detail:String(e?.message||e) });
   }
-});
 // === END DEBUG: dev-login probe ===
 
 
@@ -2716,7 +2686,6 @@ app.post('/auth/dev-login', async (req, res) => {
   } else {
     return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
   }
-});
 // ---- Safe error handler (final) ----
 app.use((err, req, res, _next) => {
   try {
@@ -2738,4 +2707,3 @@ app.use((err, req, res, _next) => {
       if (!res.headersSent) return res.status(500).json({ ok:false, error:"internal_error" });
     } catch (_) {}
   }
-});
