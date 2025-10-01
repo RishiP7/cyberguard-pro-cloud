@@ -2685,3 +2685,45 @@ app.post('/__dev_login_dbg', async (req, res) => {
 })();
 // === END BG poll guard ===
 
+
+// ===== Safari-safe dev-login override (append-only) =====
+try {
+  if (app && app._router && Array.isArray(app._router.stack)) {
+    app._router.stack = app._router.stack.filter(r => !(r.route && r.route.path === '/auth/dev-login'));
+  }
+} catch (_) {}
+
+app.post('/auth/dev-login', async (req, res) => {
+  const wantsHtml =
+    String(req.headers['accept'] || '').includes('text/html') ||
+    String(req.headers['sec-fetch-mode'] || '') === 'navigate';
+
+  try { if (typeof ensureDb === 'function') await ensureDb(); } catch (_) {}
+
+  const tid = (req.query && req.query.tenant_id) ? String(req.query.tenant_id) : 'demo';
+
+  const user = {
+    sub: `demo-admin@${tid}`,
+    email: `demo-admin@${tid}`,
+    tenant_id: tid,
+    role: 'admin',
+    is_super: true,
+    iat: Math.floor(Date.now()/1000),
+    exp: Math.floor(Date.now()/1000) + 60*60
+  };
+
+  // Minimal HS256 signer (no extra deps)
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify(user)).toString('base64url');
+  const secret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+  const crypto = await import('crypto');
+  const signature = crypto.createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
+  const token = `${header}.${payload}.${signature}`;
+
+  const cookieOpts = { httpOnly: true, secure: true, sameSite: 'none', maxAge: 1000*60*15, path: '/' };
+  res.cookie('cg_access', token, cookieOpts);
+  res.cookie('cg_refresh', token, { ...cookieOpts, maxAge: 1000*60*60*24*30 });
+
+  if (wantsHtml) return res.redirect(302, '/');   // Safari form submit → redirect after cookies
+  return res.json({ ok: true, token, user, tenant_id: tid }); // programmatic clients → JSON
+});
