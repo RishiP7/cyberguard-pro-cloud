@@ -2520,6 +2520,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 
       try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
       return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
+  });
     } catch (e) {
       try { await recordOpsRun('dev_login_error', { err: String(e?.message || e) }); } catch (_e) {}
       try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
@@ -2685,6 +2686,7 @@ app.post('/auth/dev-login', async (req, res) => {
     return res.redirect(302, '/');
   } else {
     return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
+  });
   }
 // ---- Safe error handler (final) ----
 app.use((err, req, res, _next) => {
