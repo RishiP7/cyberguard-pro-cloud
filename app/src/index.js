@@ -16,7 +16,7 @@ async function ensureDb() {
         ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
         max: 5,
         idleTimeoutMillis: 30000,
-      });
+      }
       if (!globalThis.__cg_pool__) globalThis.__cg_pool__ = pool;
       globalThis.q  = (text, params = []) => globalThis.__cg_pool__.query(text, params);
       globalThis.db = {
@@ -62,13 +62,13 @@ try {
     authMiddleware = (req, res, next) => {
       try {
         const token = _extractBearer(req);
-        if (!token) return res.status(401).json({ ok:false, error:'unauthorized' });
+        if (!token) return res.status(401).json({ ok:false, error:'unauthorized' }
         const secret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
         let payload;
         try {
           payload = jwt.verify(token, secret);
         } catch (_e) {
-          return res.status(401).json({ ok:false, error:'unauthorized' });
+          return res.status(401).json({ ok:false, error:'unauthorized' }
         }
         req.user = {
           sub: payload.sub || payload.email || null,
@@ -80,7 +80,7 @@ try {
         return next();
       } catch (err) {
         try { console.error('[auth-fallback]', err && (err.message || err)); } catch (_){}
-        return res.status(401).json({ ok:false, error:'unauthorized' });
+        return res.status(401).json({ ok:false, error:'unauthorized' }
       }
     };
   }
@@ -92,7 +92,7 @@ try {
 let stripe = null;
 const STRIPE_KEY = process.env.STRIPE_SECRET || "";
 if (STRIPE_KEY) {
-  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" });
+  stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-06-20" }
 } else {
   console.warn(
     "[billing] Stripe disabled: no secret key in env. Billing endpoints will return 501."
@@ -101,7 +101,7 @@ if (STRIPE_KEY) {
 
 // --- Initialize Sentry ---
 if (process.env.SENTRY_DSN) {
-  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 });
+  Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.0 }
 }
 
 
@@ -212,7 +212,7 @@ if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined')
       ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
       max: 5,
       idleTimeoutMillis: 30000
-    });
+    }
     // expose globally so future modules/patches can reuse
     globalThis.__cg_pool__ = pool;
     globalThis.q  = (text, params = []) => pool.query(text, params);
@@ -228,7 +228,7 @@ if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined')
   try {
     const context = req.body?.context || {};
     if (!(await withinRateLimit(req.user.tenant_id, 'propose'))) {
-      return res.status(429).json({ ok:false, error: 'rate limit' });
+      return res.status(429).json({ ok:false, error: 'rate limit' }
     }
     const actions = await proposeActions(req.user.tenant_id, context);
     // Record proposed actions in ai_actions
@@ -245,40 +245,40 @@ if (typeof globalThis.q === 'undefined' || typeof globalThis.db === 'undefined')
       `, [id, req.user.tenant_id, policy_id, a.action, a.params||{}, t]);
     }
     try { await recordOpsRun('ai_propose', { tenant_id: req.user.tenant_id, actions }); } catch(_e){}
-    res.json({ ok:true, actions, ids });
+    res.json({ ok:true, actions, ids }
   } catch(e) {
-    res.status(500).json({ ok:false, error: 'propose failed' });
+    res.status(500).json({ ok:false, error: 'propose failed' }
   }
 
 // --- POST /ai/approve ---
 app.post('/ai/approve', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
   try {
     const { action_id } = req.body || {};
-    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
+    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' }
     // Only allow approving own tenant's actions
     const { rows } = await q(`SELECT * FROM ai_actions WHERE id=$1 AND tenant_id=$2`, [action_id, req.user.tenant_id]);
-    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' });
+    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' }
     const t = now();
     await q(`
       UPDATE ai_actions
          SET status='approved', approved_by=$1, updated_at=$2
        WHERE id=$3
     `, [req.user.email||'user', t, action_id]);
-    res.json({ ok:true });
+    res.json({ ok:true }
   } catch(e) {
-    res.status(500).json({ ok:false, error: 'approve failed' });
+    res.status(500).json({ ok:false, error: 'approve failed' }
   }
 
 // --- POST /ai/execute (internal trigger) ---
 app.post('/ai/execute', authMiddleware, Guard.enforceActive, Guard.requireProPlus, async (req,res)=>{
   try {
     const { action_id } = req.body || {};
-    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' });
+    if (!action_id) return res.status(400).json({ ok:false, error:'missing action_id' }
     const { rows } = await q(`SELECT * FROM ai_actions WHERE id=$1 AND tenant_id=$2`, [action_id, req.user.tenant_id]);
-    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' });
+    if (!rows.length) return res.status(404).json({ ok:false, error:'not found' }
     const action = rows[0];
     if (action.status !== 'approved' && action.status !== 'auto_approved') {
-      return res.status(400).json({ ok:false, error:'not approved' });
+      return res.status(400).json({ ok:false, error:'not approved' }
     }
     // Execute
     const result = await executeAction(action);
@@ -289,9 +289,9 @@ app.post('/ai/execute', authMiddleware, Guard.enforceActive, Guard.requireProPlu
        WHERE id=$3
     `, [result, t, action_id]);
     try { await recordOpsRun('ai_execute', { tenant_id: req.user.tenant_id, action_id, result }); } catch(_e){}
-    res.json({ ok:true, result });
+    res.json({ ok:true, result }
   } catch(e) {
-    res.status(500).json({ ok:false, error: 'execute failed' });
+    res.status(500).json({ ok:false, error: 'execute failed' }
   }
 
 // --- Interval loop: auto-execute approved actions for tenants with mode=auto ---
@@ -419,7 +419,7 @@ if (!app._cg_cookie_bridge_early) {
       }
     } catch (_) { /* no-op */ }
     return next();
-  });
+  }
   app._cg_cookie_bridge_early = true;
 }
 /* ===== END EARLY COOKIE → AUTH BRIDGE ===== */
@@ -485,7 +485,7 @@ async function meRouteHandler(req, res) {
   // If still no user, respond 401 cleanly
   if (!req.user || !req.user.tenant_id) {
     try { res.setHeader('X-ME', 'unauthorized'); } catch(_) {}
-    return res.status(401).json({ ok: false, error: 'unauthorized' });
+    return res.status(401).json({ ok: false, error: 'unauthorized' }
   }
   // ---- End soft auth block ----
   await ensureDb();
@@ -501,7 +501,7 @@ async function meRouteHandler(req, res) {
       try { await recordOpsRun('me_stage', { s: 'after_select', n: rows.length, tid: req.user?.tenant_id || null }); } catch (_e) {}
       if (!rows.length) {
         res.setHeader('X-ME', 'notfound');
-        return res.status(404).json({ error: 'not found' });
+        return res.status(404).json({ error: 'not found' }
       }
       const t = rows[0];
       try { await recordOpsRun('me_stage', { s: 'have_row', plan: t?.plan || null, tid: req.user?.tenant_id || null }); } catch (_e) {}
@@ -599,7 +599,7 @@ async function meRouteHandler(req, res) {
       console.error('GET /me failed', stack || msg);
       try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, v: 'me_v4' }); } catch (_e) {}
       res.setHeader('X-ME', 'err');
-      return res.status(500).json({ error: 'me failed', detail: msg });
+      return res.status(500).json({ error: 'me failed', detail: msg }
     }
   }
 }
@@ -635,7 +635,7 @@ try {
 // ---------- debug & diagnostics ----------
 // Report commit/version (Render exposes RENDER_GIT_COMMIT)
 app.get('/__version', (_req, res) => {
-  res.json({ ok: true, commit: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || null, started_at: new Date().toISOString() });
+  res.json({ ok: true, commit: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || null, started_at: new Date().toISOString() }
 
 // Minimal /me variant that always returns error detail to help diagnose
 app.get('/me_dbg', authMiddleware, async (req, res) => {
@@ -643,14 +643,14 @@ app.get('/me_dbg', authMiddleware, async (req, res) => {
   try {
     const r = await q(`SELECT * FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
     const rows = Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
-    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    if (!rows.length) return res.status(404).json({ error: 'not found' }
     const t = rows[0];
-    return res.json({ ok: true, tenant: t });
+    return res.json({ ok: true, tenant: t }
   } catch (e) {
     const msg = e?.message || String(e);
     const stack = e?.stack || null;
     try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, dbg: true }); } catch (_e) {}
-    return res.status(500).json({ error: 'me failed', detail: msg });
+    return res.status(500).json({ error: 'me failed', detail: msg }
   }
 
 // Route map (diagnostics): lists all registered routes and method stacks
@@ -662,21 +662,21 @@ if (process.env.NODE_ENV !== 'production') {
       for (const layer of stack) {
         if (layer.route && layer.route.path) {
           const methods = Object.keys(layer.route.methods || {}).filter(m => layer.route.methods[m]);
-          routes.push({ path: layer.route.path, methods });
+          routes.push({ path: layer.route.path, methods }
         } else if (layer.name === 'router' && layer.handle && layer.handle.stack) {
           for (const l2 of layer.handle.stack) {
             if (l2.route && l2.route.path) {
               const methods = Object.keys(l2.route.methods || {}).filter(m => l2.route.methods[m]);
-              routes.push({ path: l2.route.path, methods });
+              routes.push({ path: l2.route.path, methods }
             }
           }
         }
       }
-      res.json({ ok: true, routes });
+      res.json({ ok: true, routes }
     } catch (e) {
-      res.status(500).json({ ok: false, error: String(e.message || e) });
+      res.status(500).json({ ok: false, error: String(e.message || e) }
     }
-  });
+  }
 }
 
 // ---------- Stripe Billing endpoints ----------
@@ -684,12 +684,12 @@ if (process.env.NODE_ENV !== 'production') {
 // Create Stripe Checkout session for subscription
 app.post('/billing/checkout', authMiddleware, async (req, res) => {
   if (!stripe) {
-    return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" });
+    return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" }
   }
   try{
     const planReq = normalizePlan(req.body?.plan || 'pro') || 'pro';
     const priceId = planReq === 'pro_plus' ? process.env.STRIPE_PRICE_PRO_PLUS : process.env.STRIPE_PRICE_PRO;
-    if(!priceId) return res.status(500).json({ ok:false, error: 'price not configured' });
+    if(!priceId) return res.status(500).json({ ok:false, error: 'price not configured' }
 
     // Ensure tenant has a Stripe customer
     const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
@@ -698,7 +698,7 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
       const c = await stripe.customers.create({
         name: req.user?.tenant_id || 'Tenant',
         metadata: { tenant_id: req.user.tenant_id }
-      });
+      }
       customer = c.id;
       await setTenantStripeCustomerId(req.user.tenant_id, customer);
     }
@@ -713,12 +713,12 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
       cancel_url: cancel || undefined,
       line_items: [{ price: priceId, quantity: 1 }],
       metadata: { tenant_id: req.user.tenant_id, plan: planReq }
-    });
+    }
 
-    return res.json({ ok:true, url: session.url });
+    return res.json({ ok:true, url: session.url }
   }catch(e){
     console.error('checkout failed', e);
-    return res.status(500).json({ ok:false, error: 'checkout failed' });
+    return res.status(500).json({ ok:false, error: 'checkout failed' }
   }
 
 // Stripe webhook endpoint for subscription events
@@ -745,7 +745,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
     switch (event.type) {
       case 'checkout.session.completed': {
         const sessId = event.data.object.id;
-        const sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ['line_items', 'subscription'] });
+        const sess = await stripe.checkout.sessions.retrieve(sessId, { expand: ['line_items', 'subscription'] }
         const tenantId = (sess.metadata && sess.metadata.tenant_id) ? sess.metadata.tenant_id : null;
         const customerId = sess.customer || (sess.customer_details && sess.customer_details.id) || null;
         if (tenantId && customerId) await setTenantStripeCustomerId(tenantId, customerId);
@@ -768,7 +768,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
             customer_id: customerId || null,
             tenant_id: tenantId || null,
             had_metadata: !!tenantId
-          });
+          }
         } catch(_e) {}
         break;
       }
@@ -820,7 +820,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
             event_id: event.id,
             customer_id: customerId || null,
             tenant_id: tenantId || null
-          });
+          }
         } catch(_e) {}
         break;
       }
@@ -837,7 +837,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
             event_id: event.id,
             customer_id: customerId || null,
             tenant_id: tenantId || null
-          });
+          }
         } catch(_e) {}
         break;
       }
@@ -847,7 +847,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
         try { await recordOpsRun('stripe_webhook', { type: event.type, event_id: event.id }); } catch(_e) {}
       }
     }
-    return res.json({ received: true });
+    return res.json({ received: true }
   } catch (e) {
     console.error('stripe webhook handler error', e);
     try { await recordOpsRun('stripe_webhook_error', { error: String(e?.message||e), event_id: event?.id||null }); } catch(_e) {}
@@ -857,22 +857,22 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
 // Billing portal (Stripe)
 app.get('/billing/portal', authMiddleware, async (req,res)=>{
   if (!stripe) {
-    return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" });
+    return res.status(501).json({ ok: false, error: "billing disabled (no stripe key)" }
   }
   try{
     // Ensure customer exists
     const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [req.user.tenant_id]);
     let customer = cur.rows && cur.rows[0] ? cur.rows[0].stripe_customer_id : null;
     if(!customer){
-      const c = await stripe.customers.create({ name: req.user?.tenant_id || 'Tenant', metadata: { tenant_id: req.user.tenant_id } });
+      const c = await stripe.customers.create({ name: req.user?.tenant_id || 'Tenant', metadata: { tenant_id: req.user.tenant_id } }
       customer = c.id;
       await setTenantStripeCustomerId(req.user.tenant_id, customer);
     }
-    const sess = await stripe.billingPortal.sessions.create({ customer, return_url: (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing' });
-    return res.json({ ok:true, url: sess.url });
+    const sess = await stripe.billingPortal.sessions.create({ customer, return_url: (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing' }
+    return res.json({ ok:true, url: sess.url }
   }catch(e){
     console.error('portal failed', e);
-    return res.status(500).json({ ok:false, error: 'portal failed' });
+    return res.status(500).json({ ok:false, error: 'portal failed' }
   }
 
 // Super Admin: backfill/sync billing state for the current tenant from Stripe
@@ -882,13 +882,13 @@ app.post('/admin/billing/sync', authMiddleware, Guard.requireSuper, async (req, 
     const cur = await q(`SELECT stripe_customer_id FROM tenants WHERE tenant_id=$1`, [tid]);
     const customer = cur.rows && cur.rows[0] ? cur.rows[0].stripe_customer_id : null;
     if (!customer) {
-      return res.status(400).json({ ok:false, error: 'no stripe_customer_id on tenant' });
+      return res.status(400).json({ ok:false, error: 'no stripe_customer_id on tenant' }
     }
     // Pull latest subscription for this customer
-    const subs = await stripe.subscriptions.list({ customer, status: 'all', limit: 1 });
+    const subs = await stripe.subscriptions.list({ customer, status: 'all', limit: 1 }
     if (!subs.data || subs.data.length === 0) {
       await setTenantBillingStatus(tid, null);
-      return res.json({ ok:true, updated: false, note: 'no subscriptions found' });
+      return res.json({ ok:true, updated: false, note: 'no subscriptions found' }
     }
     const sub = subs.data[0];
     const status = sub.status || null; // active, trialing, past_due, canceled, unpaid
@@ -901,10 +901,10 @@ app.post('/admin/billing/sync', authMiddleware, Guard.requireSuper, async (req, 
     try { await setTenantBillingStatus(tid, status); } catch(_e) {}
 
     try { await recordOpsRun('billing_sync', { tenant_id: tid, customer_id: customer, status, price_id: priceId, plan }); } catch(_e) {}
-    return res.json({ ok:true, plan: plan || null, billing_status: status || null });
+    return res.json({ ok:true, plan: plan || null, billing_status: status || null }
   } catch (e) {
     console.error('admin billing sync failed', e);
-    return res.status(500).json({ ok:false, error: 'sync failed' });
+    return res.status(500).json({ ok:false, error: 'sync failed' }
   }
 
 // ---------- Admin: denormalize legacy alert JSON into flat columns ----------
@@ -1091,10 +1091,10 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, Guard.requireSuper, as
     } catch (_e) {}
 
     try { await recordOpsRun('alerts_denormalize', { tenant_id: tid, ...stats }); } catch (_e) {}
-    return res.json({ ok: true, updated: stats });
+    return res.json({ ok: true, updated: stats }
   } catch (e) {
     console.error('alerts/denormalize failed', e);
-    return res.status(500).json({ ok: false, error: 'denormalize failed' });
+    return res.status(500).json({ ok: false, error: 'denormalize failed' }
   }
 // ---------- Admin: prune blank alerts (subject/preview empty) ----------
 // POST /admin/ops/alerts/prune_blank?dry=1&days=7
@@ -1128,7 +1128,7 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, Guard.requireSuper, as
 
     if (dry) {
       try { await recordOpsRun('alerts_prune_blank_dry', { tenant_id: tid, count: n, days: cutoff ? days : null }); } catch (_e) {}
-      return res.json({ ok: true, dry: true, would_delete: n, days: cutoff ? days : null });
+      return res.json({ ok: true, dry: true, would_delete: n, days: cutoff ? days : null }
     }
 
     // Delete
@@ -1136,10 +1136,10 @@ app.post('/admin/ops/alerts/prune_blank', authMiddleware, Guard.requireSuper, as
     const deleted = typeof del.rowCount === 'number' ? del.rowCount : (del.rows ? del.rows.length : 0);
 
     try { await recordOpsRun('alerts_prune_blank', { tenant_id: tid, deleted, days: cutoff ? days : null }); } catch (_e) {}
-    return res.json({ ok: true, deleted, days: cutoff ? days : null });
+    return res.json({ ok: true, deleted, days: cutoff ? days : null }
   } catch (e) {
     console.error('alerts/prune_blank failed', e);
-    return res.status(500).json({ ok: false, error: 'prune failed' });
+    return res.status(500).json({ ok: false, error: 'prune failed' }
   }
 
 // ---------- Admin: reset connector (wipe tokens/state) ----------
@@ -1149,7 +1149,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
   const dbg = (req.query && (req.query.debug === '1' || req.query.debug === 'true'));
   try {
     const { provider } = req.body || {};
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' }
     const tid = req.user.tenant_id;
 
     // Ensure baseline health columns exist (idempotent)
@@ -1179,7 +1179,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
     const clearCols = CRED_COLS.filter(has);
     if (clearCols.length === 0) {
       // guarantee we at least clear health
-      ['status','last_error','last_sync_at'].forEach(c => { if (!clearCols.includes(c)) clearCols.push(c); });
+      ['status','last_error','last_sync_at'].forEach(c => { if (!clearCols.includes(c)) clearCols.push(c); }
     }
 
     // Build dynamic UPDATE SET list
@@ -1212,9 +1212,9 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
       } catch (fallbackErr) {
         try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, step: 'clearCols+fallback', err: firstUpdateErr, fallback_err: String(fallbackErr?.message||fallbackErr) }); } catch(_e) {}
         if (req.query && (req.query.debug === '1' || req.query.debug === 'true')) {
-          return res.status(500).json({ ok:false, error: 'reset failed', step:'fallback', detail:firstUpdateErr, fallback_detail: String(fallbackErr?.message||fallbackErr) });
+          return res.status(500).json({ ok:false, error: 'reset failed', step:'fallback', detail:firstUpdateErr, fallback_detail: String(fallbackErr?.message||fallbackErr) }
         }
-        return res.status(500).json({ ok:false, error: 'reset failed' });
+        return res.status(500).json({ ok:false, error: 'reset failed' }
       }
     }
 
@@ -1351,17 +1351,17 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
         details_has_tokens,
         details_sample,
         first_update_error: firstUpdateErr || null
-      });
+      }
     }
 
-    return res.json({ ok:true });
+    return res.json({ ok:true }
   } catch (e) {
     console.error('connector/reset failed', e);
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch(_e) {}
     if (dbg) {
-      return res.status(500).json({ ok:false, error: 'reset failed', detail: String(e?.message || e) });
+      return res.status(500).json({ ok:false, error: 'reset failed', detail: String(e?.message || e) }
     }
-    return res.status(500).json({ ok:false, error: 'reset failed' });
+    return res.status(500).json({ ok:false, error: 'reset failed' }
   }
 
 // ---------- Admin: trigger poll now (super only) ----------
@@ -1371,24 +1371,24 @@ app.post('/admin/ops/poll/now', authMiddleware, Guard.requireSuper, async (req, 
   try { await ensureM365TokenFresh(req.user.tenant_id); } catch (_e) {}
   try {
     const { provider } = req.body || {};
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
-    await runPollForTenant(req.user.tenant_id, provider, { limit: 25 });
-    return res.json({ ok:true });
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' }
+    await runPollForTenant(req.user.tenant_id, provider, { limit: 25 }
+    return res.json({ ok:true }
   } catch (e) {
     console.error('admin/ops/poll/now failed', e);
-    return res.status(500).json({ ok:false, error: 'poll failed' });
+    return res.status(500).json({ ok:false, error: 'poll failed' }
   }
 
 // Helper: show current connector row (super only) to debug schema & values
 app.get('/admin/ops/connector/show', authMiddleware, Guard.requireSuper, async (req, res) => {
   try {
     const provider = String(req.query?.provider || '').trim();
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' }
     const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [req.user.tenant_id, provider]);
-    if (!r.rows || r.rows.length === 0) return res.json({ ok:true, found:false });
-    return res.json({ ok:true, found:true, row: r.rows[0] });
+    if (!r.rows || r.rows.length === 0) return res.json({ ok:true, found:false }
+    return res.json({ ok:true, found:true, row: r.rows[0] }
   } catch(e) {
-    return res.status(500).json({ ok:false, error:'show failed', detail: String(e?.message||e) });
+    return res.status(500).json({ ok:false, error:'show failed', detail: String(e?.message||e) }
   }
 
 // =====================
@@ -1416,7 +1416,7 @@ async function runBackgroundPoll() {
         if (c.provider === 'm365') {
           try { await ensureM365TokenFresh(c.tenant_id); } catch (_e) {}
         }
-        await runPollForTenant(c.tenant_id, c.provider, { limit: 25 });
+        await runPollForTenant(c.tenant_id, c.provider, { limit: 25 }
       } catch (err) {
         console.error(`[bg-poll] error polling ${c.tenant_id}:${c.provider}`, err?.message || err);
       }
@@ -1638,7 +1638,7 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
 
     // Optional debug: quickly inspect shape without running mapping
     if (String(req.query?.debug || '') === '1') {
-      return res.json({ ok: true, mode: fmt, rows: rows.length, sample_keys: rows[0] ? Object.keys(rows[0]) : null });
+      return res.json({ ok: true, mode: fmt, rows: rows.length, sample_keys: rows[0] ? Object.keys(rows[0]) : null }
     }
 
     if (fmt === 'csv') {
@@ -1734,7 +1734,7 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
   } catch (e) {
     const msg = e?.message || String(e);
     console.error('alerts/export failed', msg);
-    return res.status(500).json({ ok:false, error: 'export failed', detail: msg });
+    return res.status(500).json({ ok:false, error: 'export failed', detail: msg }
   }
 
 // ---------- start ----------
@@ -1779,7 +1779,7 @@ const _ensureDbLocal = (typeof ensureDb === 'function')
             ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
             max: 5,
             idleTimeoutMillis: 30000,
-          });
+          }
           if (!globalThis.__cg_pool__) globalThis.__cg_pool__ = pool;
           globalThis.q  = (text, params = []) => globalThis.__cg_pool__.query(text, params);
           globalThis.db = {
@@ -1789,7 +1789,7 @@ const _ensureDbLocal = (typeof ensureDb === 'function')
       } catch (e) {
         try { console.error('[__db_diag.ensureDbLocal] failed', e?.message || e); } catch (_){}
       }
-    });
+    }
 // Promote local ensureDb shim to global if missing (hoisted ensureDb already exists above)
 if (typeof globalThis.ensureDb !== 'function') {
   globalThis.ensureDb = _ensureDbLocal;
@@ -1809,10 +1809,10 @@ app.post('/__db_diag', express.json({ limit: '256kb' }), async (req, res) => {
         sample = (r.rows && r.rows[0]) ? r.rows[0].now : null;
       } catch(_e) { sample = null; }
     }
-    return res.json({ ok, body_seen: !!req.body, sample });
+    return res.json({ ok, body_seen: !!req.body, sample }
   } catch (e) {
     try { console.error('[__db_diag] failed', e?.message || e); } catch (_){}
-    return res.status(500).json({ ok:false, error:'diag_failed', detail:String(e?.message||e) });
+    return res.status(500).json({ ok:false, error:'diag_failed', detail:String(e?.message||e) }
   }
 // ===== END ULTRA-EARLY DB DIAGNOSTIC ROUTE =====
 // ===== ULTRA-EARLY LOGIN PREFLIGHT (runs before unified CORS) =====
@@ -1935,7 +1935,7 @@ if (!globalThis.__cg_cookie_sessions__) {
       // Render runs behind HTTPS + Cloudflare: Secure + SameSite=None is required for cross-site cookies
       const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
       try {
-        res.cookie("cg_access", access, { ...base, maxAge: 15 * 60 * 1000 });
+        res.cookie("cg_access", access, { ...base, maxAge: 15 * 60 * 1000 }
       } catch (_) {
         // fallback if res.cookie is unavailable
         res.setHeader("Set-Cookie", [
@@ -1943,7 +1943,7 @@ if (!globalThis.__cg_cookie_sessions__) {
         ]);
       }
       try {
-        res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 });
+        res.cookie("cg_refresh", refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }
       } catch (_) {
         // append (or set) header for refresh cookie
         const prev = res.getHeader("Set-Cookie");
@@ -1990,7 +1990,7 @@ if (!globalThis.__cg_cookie_sessions__) {
       }
 
       return next();
-    });
+    }
     app._cg_cookie_mw_attached = true;
   }
 
@@ -2002,15 +2002,15 @@ if (!globalThis.__cg_cookie_sessions__) {
         const cookies = req.cookies || cgParseCookiesFromHeader(cookieHeader);
         const refresh = cookies && cookies.cg_refresh;
         if (!refresh) {
-          return res.status(401).json({ ok: false, error: "no refresh" });
+          return res.status(401).json({ ok: false, error: "no refresh" }
         }
         // For now, reuse the refresh token as the new access token.
         cgSetTokens(res, refresh, refresh);
-        return res.json({ ok: true });
+        return res.json({ ok: true }
       } catch (e) {
-        return res.status(401).json({ ok: false, error: "invalid refresh" });
+        return res.status(401).json({ ok: false, error: "invalid refresh" }
       }
-    });
+    }
     app._cg_refresh_route = true;
   }
 
@@ -2019,32 +2019,32 @@ if (!globalThis.__cg_cookie_sessions__) {
     app.post("/auth/logout", (_req, res) => {
       const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
       try {
-        res.cookie("cg_access", "", { ...base, maxAge: 0 });
-        res.cookie("cg_refresh", "", { ...base, maxAge: 0 });
+        res.cookie("cg_access", "", { ...base, maxAge: 0 }
+        res.cookie("cg_refresh", "", { ...base, maxAge: 0 }
       } catch (_) {
         res.setHeader("Set-Cookie", [
           "cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None",
           "cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
         ]);
       }
-      return res.json({ ok: true });
-    });
+      return res.json({ ok: true }
+    }
     app._cg_logout_route = true;
   }
   if (!app._cg_logout_route_alias) {
     app.post("/logout", (_req, res) => {
       const base = { httpOnly: true, secure: true, sameSite: "none", path: "/" };
       try {
-        res.cookie("cg_access", "", { ...base, maxAge: 0 });
-        res.cookie("cg_refresh", "", { ...base, maxAge: 0 });
+        res.cookie("cg_access", "", { ...base, maxAge: 0 }
+        res.cookie("cg_refresh", "", { ...base, maxAge: 0 }
       } catch (_) {
         res.setHeader("Set-Cookie", [
           "cg_access=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None",
           "cg_refresh=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=None"
         ]);
       }
-      return res.json({ ok: true });
-    });
+      return res.json({ ok: true }
+    }
     app._cg_logout_route_alias = true;
   }
 }
@@ -2062,7 +2062,7 @@ if (!app._api_prefix_rewrite) {
       req.url = req.url.slice(4);
     }
     next();
-  });
+  }
 }
 // ===== AUTH/DB DIAGNOSTICS (temporary, safe to keep) =====
 // POST /auth/login_dbg  — does NOT sign in; inspects DB state for the given email
@@ -2070,7 +2070,7 @@ if (!app._api_prefix_rewrite) {
 app.post('/auth/login_dbg', async (req, res) => {
   await ensureDb();
   const email = String(req.body?.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ ok:false, error:'missing email' });
+  if (!email) return res.status(400).json({ ok:false, error:'missing email' }
   try {
     // Basic DB connectivity probe
     let db_ok = false; let now_val = null;
@@ -2096,10 +2096,10 @@ app.post('/auth/login_dbg', async (req, res) => {
       role: row && (row.role || null)
     };
 
-    return res.json({ ok:true, db_ok, now: now_val, found: !!row, columns: cols, has_password_hash, has_password, has_tenant, samples });
+    return res.json({ ok:true, db_ok, now: now_val, found: !!row, columns: cols, has_password_hash, has_password, has_tenant, samples }
   } catch (e) {
     try { console.error('[login_dbg] failed', e?.message || e, e?.stack || ''); } catch (_e) {}
-    return res.status(500).json({ ok:false, error:'dbg_failed', detail: String(e?.message || e) });
+    return res.status(500).json({ ok:false, error:'dbg_failed', detail: String(e?.message || e) }
   }
 
 // GET /health/db — quick DB probe
@@ -2107,10 +2107,10 @@ app.get('/health/db', async (_req, res) => {
   await ensureDb();
   try {
     const r = await q('SELECT 1 AS ok');
-    return res.json({ ok: true, db: r.rows?.[0]?.ok === 1 });
+    return res.json({ ok: true, db: r.rows?.[0]?.ok === 1 }
   } catch(e) {
     try { console.error('[health/db] failed', e?.message || e, e?.stack || ''); } catch (_) {}
-    return res.status(500).json({ ok:false, error:'db_failed', detail: String(e?.message || e) });
+    return res.status(500).json({ ok:false, error:'db_failed', detail: String(e?.message || e) }
   }
 // ===== END AUTH/DB DIAGNOSTICS =====
 // Sentry error handler (must be before any other error middleware)
@@ -2134,19 +2134,19 @@ app.get('/__whoami', (req, res) => {
       auth_header: req.headers.authorization || null,
       cookies,
       raw_cookie: raw || null
-    });
+    }
   } catch (e) {
-    return res.status(500).json({ ok:false, error:'whoami_failed', detail: String(e?.message || e) });
+    return res.status(500).json({ ok:false, error:'whoami_failed', detail: String(e?.message || e) }
   }
 // ---------- Super Admin DB diagnostics ----------
 app.get('/admin/db/diag', authMiddleware, Guard.requireSuper, async (_req,res)=>{
   try{
     const t = await q(`SELECT to_regclass('public.apikeys') IS NOT NULL AS apikeys_exists`);
     const c = await q(`SELECT COUNT(*)::int AS cnt FROM apikeys`);
-    return res.json({ ok:true, apikeys_table: t.rows[0]?.apikeys_exists===true, apikey_count: c.rows[0]?.cnt||0 });
+    return res.json({ ok:true, apikeys_table: t.rows[0]?.apikeys_exists===true, apikey_count: c.rows[0]?.cnt||0 }
   }catch(e){
     console.error('db diag failed', e);
-    return res.status(500).json({ ok:false, error: String(e.message||e) });
+    return res.status(500).json({ ok:false, error: String(e.message||e) }
   }
 
 // Convenience wrapper: force reset (super only). Mirrors /admin/ops/connector/reset but forces details NULL.
@@ -2155,10 +2155,10 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper,
   // proxy to the main handler by setting query flags, then re-running logic here
   try {
     // Synthesize query flags
-    req.query = Object.assign({}, req.query || {}, { force: '1', purge: (req.query?.purge ? req.query.purge : undefined) });
+    req.query = Object.assign({}, req.query || {}, { force: '1', purge: (req.query?.purge ? req.query.purge : undefined) }
     // Re-run the main logic by inlining a minimal call path:
     const provider = req.body?.provider;
-    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' });
+    if (!provider) return res.status(400).json({ ok:false, error:'missing provider' }
     // Invoke the same SQL path as /reset by calling the handler body again would be complex.
     // Instead, duplicate the minimal strong clear here.
     const tid = req.user.tenant_id;
@@ -2224,13 +2224,13 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper,
       rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null,
       status_after: statusAfter,
       details_is_null: detailsAfterNull
-    });
+    }
   } catch(e) {
     try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
     if (dbg) {
-  return res.status(500).json({ ok:false, error:'force reset failed', detail: String(e?.message || e) });
+  return res.status(500).json({ ok:false, error:'force reset failed', detail: String(e?.message || e) }
 }
-return res.status(500).json({ ok:false, error:'force reset failed' });
+return res.status(500).json({ ok:false, error:'force reset failed' }
   }
 
 // ===== Express 5 catch-all route compatibility patch =====
@@ -2247,16 +2247,16 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 // handler so malformed JSON cannot bubble a 500.
 (function attachLoginRoute(){
   // explicit, route-scoped JSON parser with safe error handling
-  const loginJson = express.json({ limit: '256kb', strict: true, type: ['application/json', 'application/*+json'] });
+  const loginJson = express.json({ limit: '256kb', strict: true, type: ['application/json', 'application/*+json'] }
 
   function loginJsonSafe(req, res, next) {
     loginJson(req, res, (err) => {
       if (err) {
         try { res.setHeader('X-Auth-Debug', 'bad_json'); } catch(_) {}
-        return res.status(400).json({ ok: false, error: 'bad_json' });
+        return res.status(400).json({ ok: false, error: 'bad_json' }
       }
       return next();
-    });
+    }
   }
 
   async function loginHandler(req, res) {
@@ -2270,7 +2270,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
       const password = String(req.body?.password || '');
       if (!email || !password) {
         try { res.setHeader('X-Auth-Debug', 'missing_credentials'); } catch(_) {}
-        return res.status(400).json({ ok: false, error: 'missing_credentials' });
+        return res.status(400).json({ ok: false, error: 'missing_credentials' }
       }
 
       dbg.step = 'select_user';
@@ -2280,11 +2280,11 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
         user = r.rows?.[0] || null;
       } catch (_e) {
         try { res.setHeader('X-Auth-Debug', 'select_failed'); } catch(_) {}
-        return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+        return res.status(401).json({ ok: false, error: 'invalid_credentials' }
       }
       if (!user) {
         try { res.setHeader('X-Auth-Debug', 'user_not_found'); } catch(_) {}
-        return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+        return res.status(401).json({ ok: false, error: 'invalid_credentials' }
       }
 
       dbg.step = 'password_compare';
@@ -2313,7 +2313,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
       }
       if (!matches) {
         try { res.setHeader('X-Auth-Debug', 'bad_password'); } catch(_) {}
-        return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+        return res.status(401).json({ ok: false, error: 'invalid_credentials' }
       }
 
       dbg.step = 'issue_jwt';
@@ -2325,7 +2325,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
       } catch (_) {
         try { res.setHeader('X-Auth-Debug', 'jwt_import_failed'); } catch(_) {}
         // Normalize to 401 so the client never sees a 500 during auth flow
-        return res.status(401).json({ ok:false, error:'invalid_credentials' });
+        return res.status(401).json({ ok:false, error:'invalid_credentials' }
       }
       const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
       const payload = {
@@ -2337,11 +2337,11 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
       };
       let token;
       try {
-        token = _jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
+        token = _jwt.sign(payload, jwtSecret, { expiresIn: '1h' }
       } catch (e) {
         try { res.setHeader('X-Auth-Debug', 'jwt_sign_failed'); } catch(_) {}
         // Normalize to 401 to avoid 500s surfacing to the UI
-        return res.status(401).json({ ok:false, error:'invalid_credentials' });
+        return res.status(401).json({ ok:false, error:'invalid_credentials' }
       }
 
       dbg.step = 'set_cookies';
@@ -2356,18 +2356,18 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
           next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30*24*60*60}; Path=/; Secure; HttpOnly; SameSite=None`);
           res.setHeader('Set-Cookie', next);
         }
-      });
+      }
       try {
         setTokens(res, token, token);
         try { res.setHeader('X-Auth-Tokens', 'set'); } catch(_) {}
       } catch (_) {}
 
       try { res.setHeader('X-Auth-Debug', 'ok'); } catch(_) {}
-      return res.json({ ok: true, token, user: payload, tenant_id: payload.tenant_id });
+      return res.json({ ok: true, token, user: payload, tenant_id: payload.tenant_id }
     } catch (e) {
       try { res.setHeader('X-Auth-Debug', `fail:${dbg.step}`); } catch(_) {}
       // Never leak internals; normalize to 401 so clients don't see 500s for auth flow
-      return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+      return res.status(401).json({ ok: false, error: 'invalid_credentials' }
     }
   }
 
@@ -2376,7 +2376,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
   app.post('/api/auth/login', loginJsonSafe, (req, res, next) => {
     // Delegate to the same handler (req.url already rewritten elsewhere, but keep explicit alias)
     return loginHandler(req, res, next);
-  });
+  }
 })();
 // ===== END AUTH: Hardened password login =====
 // ===== DEV LOGIN (safe, opt-in) =====
@@ -2479,7 +2479,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 
       if (jwtMod && typeof jwtMod.sign === 'function') {
         try {
-          token = jwtMod.sign(demoUser, jwtSecret, { algorithm: 'HS256', expiresIn: '1h' });
+          token = jwtMod.sign(demoUser, jwtSecret, { algorithm: 'HS256', expiresIn: '1h' }
         } catch (_signErr) {
           token = null;
         }
@@ -2492,7 +2492,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   .replace(/\+/g, '-')
   .replace(/\//g, '_');
         const header = { alg: 'HS256', typ: 'JWT' };
-        const payload = Object.assign({}, demoUser, { exp: Math.floor(Date.now()/1000) + 3600 });
+        const payload = Object.assign({}, demoUser, { exp: Math.floor(Date.now()/1000) + 3600 }
         const h = base64url(JSON.stringify(header));
         const p = base64url(JSON.stringify(payload));
         const data = `${h}.${p}`;
@@ -2519,25 +2519,25 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       } catch (_cookieErr) { /* non-fatal */ }
 
       try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
-      return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
+      return res.json({ ok: true, token, user: demoUser, tenant_id: tid }
   }
 }););
     } catch (e) {
       try { await recordOpsRun('dev_login_error', { err: String(e?.message || e) }); } catch (_e) {}
       try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
-      return res.status(500).json({ ok: false, error: 'internal_error' });
+      return res.status(500).json({ ok: false, error: 'internal_error' }
     }
-  });
+  }
 
   // GET /auth/dev-status — indicates if dev login is enabled
   app.get('/auth/dev-status', (_req, res) => {
-    return res.json({ ok: true, dev_login_enabled: true });
-  });
+    return res.json({ ok: true, dev_login_enabled: true }
+  }
 } else {
   // If disabled, expose dev-status as false so UI can hide the button
   app.get('/auth/dev-status', (_req, res) => {
-    return res.json({ ok: true, dev_login_enabled: false });
-  });
+    return res.json({ ok: true, dev_login_enabled: false }
+  }
 }
 // === DEBUG: dev-login probe (temporary) ===
 app.post('/__dev_login_dbg', async (req, res) => {
@@ -2581,9 +2581,9 @@ app.post('/__dev_login_dbg', async (req, res) => {
       steps: out.steps,
       token_from_jsonwebtoken: !!token1,
       token_from_local_signer: !!token2
-    });
+    }
   } catch (e) {
-    return res.status(500).json({ ok:false, error:'dbg_failed', detail:String(e?.message||e) });
+    return res.status(500).json({ ok:false, error:'dbg_failed', detail:String(e?.message||e) }
   }
 // === END DEBUG: dev-login probe ===
 
@@ -2681,13 +2681,13 @@ app.post('/auth/dev-login', async (req, res) => {
 
   const cookieOpts = { httpOnly: true, secure: true, sameSite: 'none', maxAge: 1000 * 60 * 15 };
   res.cookie('cg_access', token, cookieOpts);
-  res.cookie('cg_refresh', token, { ...cookieOpts, maxAge: 1000 * 60 * 60 * 24 * 30 });
+  res.cookie('cg_refresh', token, { ...cookieOpts, maxAge: 1000 * 60 * 60 * 24 * 30 }
 
   if (wantsHtml) {
     return res.redirect(302, '/');
   } else {
-    return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
-  });
+    return res.json({ ok: true, token, user: demoUser, tenant_id: tid }
+  }
 // ---- Safe error handler (final) ----
 app.use((err, req, res, _next) => {
   try {
@@ -2706,7 +2706,7 @@ app.use((err, req, res, _next) => {
     }
   } catch (_outer) {
     try {
-      if (!res.headersSent) return res.status(500).json({ ok:false, error:"internal_error" });
+      if (!res.headersSent) return res.status(500).json({ ok:false, error:"internal_error" }
     } catch (_) {}
   }
-});
+}
