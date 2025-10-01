@@ -2688,7 +2688,6 @@ app.post('/auth/dev-login', async (req, res) => {
   } else {
     return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
   });
-  }
 // ---- Safe error handler (final) ----
 app.use((err, req, res, _next) => {
   try {
