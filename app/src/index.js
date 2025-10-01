@@ -2717,6 +2717,20 @@ app.post('/auth/dev-login', async (req, res) => {
     return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
   }
 });
+
+    if (!res.headersSent) {
+      try { res.setHeader("X-Diag", step); } catch (_) {}
+      try { if (rid) res.setHeader("X-Req-Id", rid); } catch (_) {}
+      try { return res.status(500).json({ ok:false, error: "internal_error" }); } catch (_e) {}
+    }
+  } catch (_outer) {
+    try {
+      if (!res.headersSent) return res.status(500).json({ ok:false, error:"internal_error" });
+    } catch (_) {}
+  }
+});
+
+// ---- Safe error handler (final) ----
 app.use((err, req, res, _next) => {
   try {
     const step = (req && req._diag) ? String(req._diag) : "unknown";
