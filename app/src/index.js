@@ -2521,6 +2521,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
       return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
   });
+});
     } catch (e) {
       try { await recordOpsRun('dev_login_error', { err: String(e?.message || e) }); } catch (_e) {}
       try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
