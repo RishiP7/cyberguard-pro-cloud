@@ -1,35 +1,4 @@
-import express from 'express';
-import cors from 'cors';
-<truncated__content/>userObj.role, is_super, isSuper: is_super },
-        showAdmin: is_super,
-
-        // normalized trial view for UI
-        trial: {
-          active: trialActive,
-          days_left: trialActive ? Math.max(0, Math.floor((trialEndsNum - nowEpoch) / 86400)) : 0,
-          ends_at: trialEndsISO
-        }
-      };
-
-      try { await recordOpsRun('me_stage', { s: 'about_to_return', tid: req.user?.tenant_id || null }); } catch (_e) {}
-      res.setHeader('X-ME', 'ok');
-      return res.json(payload);
-    } catch (e) {
-      const msg = e?.message || String(e);
-      const stack = e?.stack || null;
-      console.error('GET /me failed', stack || msg);
-      try { await recordOpsRun('me_error', { tenant_id: req.user?.tenant_id || null, msg, stack, v: 'me_v4' }); } catch (_e) {}
-      res.setHeader('X-ME', 'err');
-      return res.status(500).json({ error: 'me failed', detail: msg });
-    }
-  }
-}
-
-// Register the handler on both legacy and /api paths
-app.get('/me', meRouteHandler);
-app.get('/api/me', meRouteHandler);
-
-// Remove any older duplicate /me routes so only this handler remains (but DO NOT remove /api/me)
+try {
 try {
   if (app && app._router && Array.isArray(app._router.stack)) {
     let seen = 0;
@@ -1995,3 +1964,6 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     }
   });
   // GET /auth/dev-status
+app.get('/auth/dev-status', (_req, res) => {
+  return res.json({ ok: true });
+});
