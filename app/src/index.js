@@ -1863,10 +1863,10 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     try { res.setHeader('X-Diag', 'dev-login'); } catch (_) {}
 
     try {
-      // Ensure DB connectivity; best-effort
+      // Best-effort DB ensure
       try { await ensureDb(); } catch (_e) {}
 
-      // Tenant and demo user
+      // Tenant + demo user
       const tid = String(req.query?.tenant_id || 'demo').trim();
       const email = `demo-admin@${tid}`;
       const demoUser = {
@@ -1878,11 +1878,10 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         iat: Math.floor(Date.now() / 1000)
       };
 
-      // --- Auto-provision demo tenant & user (idempotent, best-effort) ---
+      // Auto-provision tenant + user (idempotent)
       try {
         const nowEpoch = Math.floor(Date.now() / 1000);
-        const trialEnds = nowEpoch + (30 * 24 * 60 * 60); // 30d
-        // Ensure tenant row
+        const trialEnds = nowEpoch + (30 * 24 * 60 * 60);
         try {
           await q(
             `
@@ -1893,7 +1892,6 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
             [tid, `Demo (${tid})`, trialEnds, nowEpoch]
           );
         } catch(_e) {}
-        // Ensure demo admin user
         try {
           await q(
             `
@@ -1906,9 +1904,8 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       } catch(_provErr) {
         try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch(_e) {}
       }
-      // --- End auto-provision ---
 
-      // --- Issue JWT (prefer jsonwebtoken, fallback to HS256 manual) ---
+      // Issue JWT (jsonwebtoken preferred, fallback to manual HS256)
       const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
       let token = null;
       try {
@@ -1920,9 +1917,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       } catch (_impErr) {
         token = null;
       }
-
       if (!token) {
-        // Manual HS256
         const base64url = (buf) => Buffer
           .from(buf).toString('base64')
           .replace(/=/g, '')
@@ -1937,7 +1932,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         token = `${data}.${sig}`;
       }
 
-      // --- Set cookies (reuse helper if available) ---
+      // Cookie setter (reuse helper when available)
       const setTokens =
         (globalThis && globalThis.__cg_setTokens__)
           ? globalThis.__cg_setTokens__
@@ -1955,7 +1950,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
             };
       try { setTokens(res, token, token); } catch (_) {}
 
-      // --- Safari/HTML form submit handling ---
+      // Safari/HTML form submit handling
       const accept = String(req.headers.accept || '');
       const sfm = String(req.headers['sec-fetch-mode'] || '');
       if (accept.includes('text/html') || sfm === 'navigate') {
@@ -1963,7 +1958,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         return res.redirect(302, '/');
       }
 
-      // Programmatic clients (fetch/axios/curl)
+      // Programmatic clients
       try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
       return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
     } catch (err) {
@@ -1972,8 +1967,11 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       return res.status(500).json({ ok: false, error: 'internal_error' });
     }
   });
-  // GET /auth/dev-status
-app.get('/auth/dev-status', (_req, res) => {
-  return res.json({ ok: true });
-});
+
+  // Simple status probe so UIs can feature-flag the button
+  app.get('/auth/dev-status', (_req, res) => {
+    return res.json({ ok: true });
+  });
 }
+
+// ===== END DEV LOGIN =====
