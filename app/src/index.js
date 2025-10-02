@@ -1144,7 +1144,16 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
 
 // Trust Render/Cloudflare proxy so req.secure, cookies, CORS behave correctly
 // ===== DIAG: request tracer (adds X-Diag + X-Req-Id) =====
-import { randomUUID as __diag_uuid } from 'crypto';
+// DIAG UUID helper: CJS-safe (works whether ESM isn't enabled locally)
+let __diag_uuid = () => (Math.random().toString(36).slice(2) + Date.now().toString(36));
+try {
+  // If running under CommonJS, prefer crypto.randomUUID
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { randomUUID } = require('crypto');
+  if (typeof randomUUID === 'function') __diag_uuid = randomUUID;
+} catch (_e) {
+  // require may not exist under ESM; fallback stays in place
+}
 app.use((req, res, next) => {
   try {
     req._reqid = req.headers['x-req-id'] || __diag_uuid();
@@ -1967,3 +1976,4 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 app.get('/auth/dev-status', (_req, res) => {
   return res.json({ ok: true });
 });
+}
