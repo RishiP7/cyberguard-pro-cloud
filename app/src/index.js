@@ -1139,7 +1139,15 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
   }
 });
 
+
 // ---------- start ----------
+// --- boot diagnostics ---
+try { console.log('[boot] file loaded'); } catch (_) {}
+try {
+  process.on('uncaughtException', (e) => { try { console.error('[uncaught]', e && (e.stack || e)); } catch(_) {} });
+  process.on('unhandledRejection', (e) => { try { console.error('[unhandledRejection]', e && (e.stack || e)); } catch(_) {} });
+  process.on('exit', (code) => { try { console.log('[boot] process exit', code); } catch(_) {} });
+} catch (_e) { /* ignore */ }
 
 
 // Trust Render/Cloudflare proxy so req.secure, cookies, CORS behave correctly
@@ -1571,9 +1579,10 @@ app.use((err, req, res, _next) => {
   if (res.headersSent) return;
   res.status(500).json({ ok:false, error: "internal_error" });
 });
+console.log("[boot] about to app.listen", { port: Number(process.env.PORT) || 10000 });
 app.listen(Number(process.env.PORT) || 10000, () => {
   const name = process.env.BRAND || 'CyberGuard Pro';
-  console.log(`${name} listening on :${process.env.PORT || 10000}`);
+  console.log(`[boot] ${name} listening on :${Number(process.env.PORT) || 10000}`);
 });
 app.get('/__whoami', (req, res) => {
   try {
@@ -1961,7 +1970,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       // Programmatic clients
       try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
       return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
-} catch (err) {
+    } catch (err) {
       try { await recordOpsRun('dev_login_error', { err: String(err?.message || err) }); } catch (_e) {}
       try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
       return res.status(500).json({ ok: false, error: 'internal_error' });
@@ -1975,4 +1984,3 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 }
 
 // ===== END DEV LOGIN =====
-} catch(_e) {}
