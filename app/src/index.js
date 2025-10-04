@@ -1961,7 +1961,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       // Programmatic clients
       try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
       return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
-    } catch (err) {
+} catch (err) {
       try { await recordOpsRun('dev_login_error', { err: String(err?.message || err) }); } catch (_e) {}
       try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
       return res.status(500).json({ ok: false, error: 'internal_error' });
@@ -1975,4 +1975,4 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 }
 
 // ===== END DEV LOGIN =====
-}
+} catch(_e) {}
