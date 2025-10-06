@@ -344,6 +344,7 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, Guard.requireSuper, as
          WHERE a.id = src.id
         RETURNING a.id;
       `, [tid]);
+ `, [tid]);
       stats.from_addr = r1.rowCount || (r1.rows ? r1.rows.length : 0) || 0;
     } catch (_e) {}
 
