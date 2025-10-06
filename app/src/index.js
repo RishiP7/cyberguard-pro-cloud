@@ -1972,5 +1972,5 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     return res.json({ ok: true });
   });
 }
-// ===== END DEV LOGIN =====
+}// ===== END DEV LOGIN =====
 // ---------- Admin: prune blank alerts (subject/preview empty) ----------
