@@ -344,7 +344,6 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, Guard.requireSuper, as
          WHERE a.id = src.id
         RETURNING a.id;
       `, [tid]);
- `, [tid]);
       stats.from_addr = r1.rowCount || (r1.rows ? r1.rows.length : 0) || 0;
     } catch (_e) {}
 
@@ -1857,23 +1856,13 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
 })();
 // ===== END AUTH: Hardened password login =====
 // ===== DEV LOGIN (safe, opt-in) =====
-
-// --- Replace all other explicit Access-Control-Allow-Origin: '*' with reflection ---
-// (No explicit replacements found in the truncated content. If present elsewhere, replace with:)
-// const __origin = req.headers.origin;
-// if (__origin) {
-//   try { res.setHeader('Access-Control-Allow-Origin', __origin); } catch (_) {}
-//   try { res.setHeader('Vary', 'Origin'); } catch (_) {}
-// }
-// Enable a one-click login to a demo/super account for debugging environments.
-// Only active if ALLOW_DEV_LOGIN=1 is set. Never enable in production.
 if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   app.post('/auth/dev-login', async (req, res) => {
     req._diag = 'dev-login';
     try { res.setHeader('X-Diag', 'dev-login'); } catch (_) {}
 
     try {
-      // Best-effort DB ensure
+      // Ensure DB (best-effort)
       try { await ensureDb(); } catch (_e) {}
 
       // Tenant + demo user
@@ -1888,7 +1877,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         iat: Math.floor(Date.now() / 1000)
       };
 
-      // Auto-provision tenant + user (idempotent)
+      // Idempotent auto-provision
       try {
         const nowEpoch = Math.floor(Date.now() / 1000);
         const trialEnds = nowEpoch + (30 * 24 * 60 * 60);
@@ -1983,5 +1972,5 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
     return res.json({ ok: true });
   });
 }
-
 // ===== END DEV LOGIN =====
+// ---------- Admin: prune blank alerts (subject/preview empty) ----------
