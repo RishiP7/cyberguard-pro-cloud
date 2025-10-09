@@ -1902,6 +1902,10 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         } catch(_e) {}
       } catch(_provErr) {
         try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch(_e) {}
+          );
+        } catch(_e) {}
+      } catch(_provErr) {
+        try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch(_e) {}
       }
 
       // Issue JWT (jsonwebtoken preferred, fallback to manual HS256)
@@ -1971,7 +1975,6 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
   app.get('/auth/dev-status', (_req, res) => {
     return res.json({ ok: true });
   });
-}
 }
 // ===== END DEV LOGIN =====
 // ---------- Admin: prune blank alerts (subject/preview empty) ----------
