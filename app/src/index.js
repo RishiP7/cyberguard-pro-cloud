@@ -1982,3 +1982,10 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 ;
 // separator
 // ---------- Admin: prune blank alerts (subject/preview empty) ----------
+
+`
+// (autofix) closed stray template literal
+
+// (autofix) closing 1 dangling brace(s)
+}
+
