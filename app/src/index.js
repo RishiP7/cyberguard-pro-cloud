@@ -1881,6 +1881,8 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       try {
         const nowEpoch = Math.floor(Date.now() / 1000);
         const trialEnds = nowEpoch + (30 * 24 * 60 * 60);
+
+        // Ensure tenant row exists
         try {
           await q(
             `
@@ -1890,22 +1892,21 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
             `,
             [tid, `Demo (${tid})`, trialEnds, nowEpoch]
           );
-        } catch(_e) {}
+        } catch (_e) {}
+
+        // Ensure admin user exists
         try {
           await q(
             `
               INSERT INTO users(id, tenant_id, email, role, created_at, updated_at)
               VALUES($1, $2, $3, 'admin', $4, $4)
+              ON CONFLICT (email) DO NOTHING
             `,
             ['u_' + String(Date.now()), tid, email, nowEpoch]
           );
-        } catch(_e) {}
-      } catch(_provErr) {
-        try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch(_e) {}
-          ;
-        } catch(_e) {}
-      } catch(_provErr) {
-        try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch(_e) {}
+        } catch (_e) {}
+      } catch (_provErr) {
+        try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch (_e) {}
       }
 
       // Issue JWT (jsonwebtoken preferred, fallback to manual HS256)
