@@ -495,3 +495,14 @@ app.post('/admin/ops/alerts/denormalize', authMiddleware, Guard.requireSuper, as
 });
 
 `
+
+
+// --- minimal boot footer (recovered) ---
+try { console.log("[boot] file loaded"); } catch(_){}
+const __PORT = Number(process.env.PORT) || 10000;
+console.log("[boot] about to app.listen", { port: __PORT });
+app.listen(__PORT, () => {
+  const name = process.env.BRAND || 'CyberGuard Pro';
+  console.log(`[boot] ${name} listening on :${__PORT}`);
+});
+// --- end boot footer ---
