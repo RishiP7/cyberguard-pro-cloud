@@ -1980,3 +1980,7 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 // ===== END DEV LOGIN =====
  
 // ---------- Admin: prune blank alerts (subject/preview empty) ----------
+
+`
+}
+
