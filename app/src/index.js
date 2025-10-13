@@ -1885,4 +1885,98 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
         // Ensure tenant row exists
         try {
           await q(
+            `
+              INSERT INTO tenants(tenant_id, name, plan, trial_status, trial_ends_at, created_at, updated_at)
+              VALUES($1, $2, 'pro_plus', 'active', $3, $4, $4)
+              ON CONFLICT (tenant_id) DO NOTHING
+            `,
+            [tid, `Demo (${tid})`, trialEnds, nowEpoch]
+          );
+        } catch (_e) {}
 
+        // Ensure admin user exists
+        try {
+          await q(
+            `
+              INSERT INTO users(id, tenant_id, email, role, created_at, updated_at)
+              VALUES($1, $2, $3, 'admin', $4, $4)
+              ON CONFLICT (email) DO NOTHING
+            `,
+            ['u_' + String(Date.now()), tid, email, nowEpoch]
+          );
+        } catch (_e) {}
+      } catch (_provErr) {
+        try { await recordOpsRun('dev_login_provision_warn', { tenant_id: tid, err: String(_provErr?.message || _provErr) }); } catch (_e) {}
+      }
+
+      // Issue JWT (jsonwebtoken preferred, fallback to manual HS256)
+      const jwtSecret = process.env.JWT_SECRET || process.env.JWT_SIGNING_KEY || 'dev_secret_do_not_use_in_prod';
+      let token = null;
+      try {
+        const mod = await import('jsonwebtoken');
+        const jwt = (mod && (mod.default || mod));
+        if (jwt && typeof jwt.sign === 'function') {
+          token = jwt.sign(demoUser, jwtSecret, { algorithm: 'HS256', expiresIn: '1h' });
+        }
+      } catch (_impErr) {
+        token = null;
+      }
+      if (!token) {
+        const base64url = (buf) => Buffer
+          .from(buf).toString('base64')
+          .replace(/=/g, '')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_');
+        const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const payload = base64url(JSON.stringify({ ...demoUser, exp: Math.floor(Date.now()/1000) + 3600 }));
+        const data = `${header}.${payload}`;
+        const crypto = await import('crypto');
+        const sig = crypto.createHmac('sha256', jwtSecret).update(data).digest('base64')
+          .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+        token = `${data}.${sig}`;
+      }
+
+      // Cookie setter (reuse helper when available)
+      const setTokens =
+        (globalThis && globalThis.__cg_setTokens__)
+          ? globalThis.__cg_setTokens__
+          : function _fallbackSetTokens(res, access, refresh) {
+              const base = { httpOnly: true, secure: true, sameSite: 'none', path: '/' };
+              try { res.cookie('cg_access', access,  { ...base, maxAge: 15 * 60 * 1000 }); } catch (_) {
+                res.setHeader('Set-Cookie', [`cg_access=${encodeURIComponent(access)}; Max-Age=${15*60}; Path=/; Secure; HttpOnly; SameSite=None`]);
+              }
+              try { res.cookie('cg_refresh', refresh, { ...base, maxAge: 30 * 24 * 60 * 60 * 1000 }); } catch (_) {
+                const prev = res.getHeader('Set-Cookie');
+                const next = Array.isArray(prev) ? prev : prev ? [prev] : [];
+                next.push(`cg_refresh=${encodeURIComponent(refresh)}; Max-Age=${30*24*60*60}; Path=/; Secure; HttpOnly; SameSite=None`);
+                res.setHeader('Set-Cookie', next);
+              }
+            };
+      try { setTokens(res, token, token); } catch (_) {}
+
+      // Safari/HTML form submit handling
+      const accept = String(req.headers.accept || '');
+      const sfm = String(req.headers['sec-fetch-mode'] || '');
+      if (accept.includes('text/html') || sfm === 'navigate') {
+        try { res.setHeader('X-Auth-Debug', 'dev_login_ok_html_redirect'); } catch (_) {}
+        return res.redirect(302, '/');
+      }
+
+      // Programmatic clients
+      try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
+      return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
+    } catch (err) {
+      try { await recordOpsRun('dev_login_error', { err: String(err?.message || err) }); } catch (_e) {}
+      try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
+      return res.status(500).json({ ok: false, error: 'internal_error' });
+    }
+  });
+
+  // Simple status probe so UIs can feature-flag the button
+  app.get('/auth/dev-status', (_req, res) => {
+    return res.json({ ok: true });
+  });
+}
+// ===== END DEV LOGIN =====
+ 
+// ---------- Admin: prune blank alerts (subject/preview empty) ----------
