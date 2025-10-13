@@ -505,4 +505,5 @@ app.listen(__PORT, () => {
   const name = process.env.BRAND || 'CyberGuard Pro';
   console.log(`[boot] ${name} listening on :${__PORT}`);
 });
+});
 // --- end boot footer ---
