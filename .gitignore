@@ -22,3 +22,8 @@ web-ready/dist/
 app/src/index.js.bak
 app/src/index.js.prev
 app/src/index.js.bak.*
+app/src/index.js.*.bak
+*.eoffix.*
+*.eofpatch.*
+*.postcut.*
+*.tailfix.*

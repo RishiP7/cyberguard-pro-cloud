@@ -8,7 +8,8 @@
     "prebuild": "npm --prefix web-ready run prebuild",
     "build": "npm --prefix web-ready run build",
     "preview": "npm --prefix web-ready run preview",
-    "dev": "npm --prefix web-ready run dev"
+    "dev": "npm --prefix web-ready run dev",
+    "precommit": "node --check app/src/index.js"
   },
   "engines": {
     "node": ">=20"
