@@ -108,7 +108,7 @@ app.post('/billing/checkout', authMiddleware, async (req, res) => {
     });
 
     return res.json({ ok:true, url: session.url });
-  } catch (e){
+  }catch(e){
     console.error('checkout failed', e);
     return res.status(500).json({ ok:false, error: 'checkout failed' });
   }
@@ -125,14 +125,14 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
     const raw = req.rawBody || req.body; // raw body preserved by upstream
     event = stripe.webhooks.constructEvent(raw, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
-    try { await recordOpsRun('stripe_bad_sig', { error: String(err?.message||err) }); } catch (_e) {}
+    try { await recordOpsRun('stripe_bad_sig', { error: String(err?.message||err) }); } catch(_e) {}
     return res.status(400).send('bad signature');
   }
 
   try {
     // Helper to safely set billing status (ignores missing column silently)
     async function safeSetBilling(tenantId, status){
-      try { await setTenantBillingStatus(tenantId, status); } catch (_e) {}
+      try { await setTenantBillingStatus(tenantId, status); } catch(_e) {}
     }
 
     switch (event.type) {
@@ -149,7 +149,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
           await safeSetBilling(tenantId, paid ? 'active' : (sess.payment_status || 'pending'));
           // End trial if requested by business logic
           if (sess.payment_status === 'paid') {
-            try { await q(`UPDATE tenants SET trial_status='ended', trial_ends_at=$2 WHERE tenant_id=$1 AND (trial_status IS NULL OR trial_status <> 'ended')`, [tenantId, Math.floor(Date.now()/1000)]); } catch (_e) {}
+            try { await q(`UPDATE tenants SET trial_status='ended', trial_ends_at=$2 WHERE tenant_id=$1 AND (trial_status IS NULL OR trial_status <> 'ended')`, [tenantId, Math.floor(Date.now()/1000)]); } catch(_e) {}
           }
         }
         try {
@@ -162,7 +162,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
             tenant_id: tenantId || null,
             had_metadata: !!tenantId
           });
-        } catch (_e) {}
+        } catch(_e) {}
         break;
       }
 
@@ -176,17 +176,17 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
         const plan = planFromPriceId(priceId) || normalizePlan(sub.metadata?.plan);
         if (tenantId) {
           if (plan) {
-            try { await setTenantPlan(tenantId, plan); } catch (_e) {}
+            try { await setTenantPlan(tenantId, plan); } catch(_e) {}
           }
           if (status) {
             await safeSetBilling(tenantId, status);
             if (status === 'active' || status === 'trialing') {
               // ensure trial end sync
-              try { await q(`UPDATE tenants SET trial_status=CASE WHEN $2='trialing' THEN 'active' ELSE 'ended' END, trial_ends_at=COALESCE(trial_ends_at, $3) WHERE tenant_id=$1`, [tenantId, status, Math.floor(Date.now()/1000)]); } catch (_e) {}
+              try { await q(`UPDATE tenants SET trial_status=CASE WHEN $2='trialing' THEN 'active' ELSE 'ended' END, trial_ends_at=COALESCE(trial_ends_at, $3) WHERE tenant_id=$1`, [tenantId, status, Math.floor(Date.now()/1000)]); } catch(_e) {}
             }
           }
         }
-        try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'customer.subscription.updated', event_id: event.id, plan, tenant_id: tenantId }); } catch (_e) {}
+        try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'customer.subscription.updated', event_id: event.id, plan, tenant_id: tenantId }); } catch(_e) {}
         break;
       }
 
@@ -197,7 +197,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
           await safeSetBilling(tenantId, 'canceled');
           // optional: do not forcibly change plan; customers may retain old plan label until re-subscribe
         }
-        try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'customer.subscription.deleted', event_id: event.id, tenant_id: tenantId }); } catch (_e) {}
+        try { await recordOpsRun('stripe_webhook', { type: event.type, action: 'customer.subscription.deleted', event_id: event.id, tenant_id: tenantId }); } catch(_e) {}
         break;
       }
 
@@ -214,7 +214,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
             customer_id: customerId || null,
             tenant_id: tenantId || null
           });
-        } catch (_e) {}
+        } catch(_e) {}
         break;
       }
 
@@ -231,19 +231,19 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), async (r
             customer_id: customerId || null,
             tenant_id: tenantId || null
           });
-        } catch (_e) {}
+        } catch(_e) {}
         break;
       }
 
       default: {
         // benign: log and continue
-        try { await recordOpsRun('stripe_webhook', { type: event.type, event_id: event.id }); } catch (_e) {}
+        try { await recordOpsRun('stripe_webhook', { type: event.type, event_id: event.id }); } catch(_e) {}
       }
     }
     return res.json({ received: true });
   } catch (e) {
     console.error('stripe webhook handler error', e);
-    try { await recordOpsRun('stripe_webhook_error', { error: String(e?.message||e), event_id: event?.id||null }); } catch (_e) {}
+    try { await recordOpsRun('stripe_webhook_error', { error: String(e?.message||e), event_id: event?.id||null }); } catch(_e) {}
     return res.status(500).send('webhook error');
   }
 });
@@ -264,7 +264,7 @@ app.get('/billing/portal', authMiddleware, async (req,res)=>{
     }
     const sess = await stripe.billingPortal.sessions.create({ customer, return_url: (process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '') + '/billing' });
     return res.json({ ok:true, url: sess.url });
-  } catch (e){
+  }catch(e){
     console.error('portal failed', e);
     return res.status(500).json({ ok:false, error: 'portal failed' });
   }
@@ -291,11 +291,11 @@ app.post('/admin/billing/sync', authMiddleware, Guard.requireSuper, async (req, 
     const plan = planFromPriceId(priceId) || normalizePlan(sub.metadata?.plan);
 
     if (plan) {
-      try { await setTenantPlan(tid, plan); } catch (_e) {}
+      try { await setTenantPlan(tid, plan); } catch(_e) {}
     }
-    try { await setTenantBillingStatus(tid, status); } catch (_e) {}
+    try { await setTenantBillingStatus(tid, status); } catch(_e) {}
 
-    try { await recordOpsRun('billing_sync', { tenant_id: tid, customer_id: customer, status, price_id: priceId, plan }); } catch (_e) {}
+    try { await recordOpsRun('billing_sync', { tenant_id: tid, customer_id: customer, status, price_id: priceId, plan }); } catch(_e) {}
     return res.json({ ok:true, plan: plan || null, billing_status: status || null });
   } catch (e) {
     console.error('admin billing sync failed', e);
@@ -551,9 +551,9 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
     const tid = req.user.tenant_id;
 
     // Ensure baseline health columns exist (idempotent)
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch (_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
 
     // Discover actual columns on connectors
     let cols = [];
@@ -564,7 +564,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
          WHERE table_schema='public' AND table_name='connectors'
       `);
       cols = (r.rows || []).map(r => ({ name: String(r.column_name), type: String(r.data_type) }));
-    } catch (_e) { cols = []; }
+    } catch(_e) { cols = []; }
     const has = (c) => cols.some(x => x.name === c);
     const colType = (c) => (cols.find(x => x.name === c)?.type || '').toLowerCase();
 
@@ -606,9 +606,9 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
            WHERE tenant_id=$1 AND provider=$2
         `, [tid, provider]);
         firstUpdateOk = true;
-        try { await recordOpsRun('connector_reset_fallback', { tenant_id: tid, provider, note: 'broad clear applied', err: firstUpdateErr }); } catch (_e) {}
+        try { await recordOpsRun('connector_reset_fallback', { tenant_id: tid, provider, note: 'broad clear applied', err: firstUpdateErr }); } catch(_e) {}
       } catch (fallbackErr) {
-        try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, step: 'clearCols+fallback', err: firstUpdateErr, fallback_err: String(fallbackErr?.message||fallbackErr) }); } catch (_e) {}
+        try { await recordOpsRun('connector_reset_error', { tenant_id: tid, provider, step: 'clearCols+fallback', err: firstUpdateErr, fallback_err: String(fallbackErr?.message||fallbackErr) }); } catch(_e) {}
         if (req.query && (req.query.debug === '1' || req.query.debug === 'true')) {
           return res.status(500).json({ ok:false, error: 'reset failed', step:'fallback', detail:firstUpdateErr, fallback_detail: String(fallbackErr?.message||fallbackErr) });
         }
@@ -635,7 +635,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
                  )
                WHERE tenant_id=$1 AND provider=$2
             `, [tid, provider, k]);
-          } catch (_e) { /* ignore per-key issues */ }
+          } catch(_e) { /* ignore per-key issues */ }
         }
       }
     }
@@ -654,7 +654,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
              details::text ILIKE '%"tokens"%'
            )
       `, [tid, provider]);
-    } catch (_e) { /* best-effort */ }
+    } catch(_e) { /* best-effort */ }
 
     // Deep-clean nested secrets inside details (tokens) using JSONB when possible
     let detailsJsonbOk = false;
@@ -670,7 +670,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
          WHERE tenant_id=$1 AND provider=$2
       `, [tid, provider]);
       detailsJsonbOk = true;
-    } catch (_e) { /* jsonb path may fail if details is TEXT or invalid JSON */ }
+    } catch(_e) { /* jsonb path may fail if details is TEXT or invalid JSON */ }
 
     // Clear the M365 delta cursor path if JSONB worked
     if (detailsJsonbOk) {
@@ -690,7 +690,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
              )
            WHERE tenant_id=$1 AND provider=$2
         `, [tid, provider]);
-      } catch (_e) { /* ignore */ }
+      } catch(_e) { /* ignore */ }
     } else {
       // Fallback for TEXT/invalid JSON: if it still contains secrets or delta token, null it
       try {
@@ -707,7 +707,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
                details::text ILIKE '%/messages/delta%'
              )
         `, [tid, provider]);
-      } catch (_e) { /* best-effort */ }
+      } catch(_e) { /* best-effort */ }
     }
 
     // Optional hard clear of details when explicitly requested via ?force=1
@@ -715,18 +715,19 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
     if (force) {
       try {
         await q(`UPDATE connectors SET details=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]);
-        try { await recordOpsRun('connector_reset_force_details', { tenant_id: tid, provider }); } catch (_e) {}
-      } catch (_e) { /* non-fatal */ }
+        try { await recordOpsRun('connector_reset_force_details', { tenant_id: tid, provider }); } catch(_e) {}
+      } catch(_e) { /* non-fatal */ }
     }
 
     // 3) As a last resort, if there is a single row for this tenant/provider and it still has credentials,
     // offer an optional hard delete via query flag `?purge=1` (super only, explicit opt-in)
     const purge = (req.query && (req.query.purge === '1' || req.query.purge === 'true'));
     if (purge) {
-      try { await q(`DELETE FROM connectors WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch (_e) { /* best effort */ }
+      try { await q(`DELETE FROM connectors WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); }
+      catch(_e) { /* best effort */ }
     }
 
-    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch (_e) {}
+    try { await recordOpsRun('connector_reset', { tenant_id: tid, provider, cleared: clearCols, purge }); } catch(_e) {}
 
     if (dbg) {
       let after = null, details_has_tokens = null, details_sample = null;
@@ -738,7 +739,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
           details_has_tokens = /access_token|refresh_token|id_token|\"tokens\"/i.test(dtext);
           details_sample = dtext.slice(0, 200);
         }
-      } catch (_e) {}
+      } catch(_e) {}
       return res.json({
         ok: true,
         cleared: clearCols,
@@ -754,7 +755,7 @@ app.post('/admin/ops/connector/reset', authMiddleware, Guard.requireSuper, async
     return res.json({ ok:true });
   } catch (e) {
     console.error('connector/reset failed', e);
-    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch (_e) {}
+    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message || e) }); } catch(_e) {}
     if (dbg) {
       return res.status(500).json({ ok:false, error: 'reset failed', detail: String(e?.message || e) });
     }
@@ -786,7 +787,7 @@ app.get('/admin/ops/connector/show', authMiddleware, Guard.requireSuper, async (
     const r = await q(`SELECT * FROM connectors WHERE tenant_id=$1 AND provider=$2 LIMIT 1`, [req.user.tenant_id, provider]);
     if (!r.rows || r.rows.length === 0) return res.json({ ok:true, found:false });
     return res.json({ ok:true, found:true, row: r.rows[0] });
-  } catch (e) {
+  } catch(e) {
     return res.status(500).json({ ok:false, error:'show failed', detail: String(e?.message||e) });
   }
 });
@@ -930,7 +931,7 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
           FROM base
       `, [tid, since, limit]);
       rows = r0.rows;
-    } catch (_e0) { /* fall through to other probes */ }
+    } catch(_e0) { /* fall through to other probes */ }
     if (!rows || rows.length === 0) {
       // try #1: flat schema with a column named "from" (quoted because it's a keyword)
       try {
@@ -1107,7 +1108,7 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
     } catch (mapErr) {
       // Log details and attempt per-row conversion so one bad row doesn't kill the whole export
       console.error('alerts/export map failed', mapErr?.message || mapErr);
-      try { await recordOpsRun('alerts_export_map_error', { err: String(mapErr?.message || mapErr), sample_row: rows && rows[0] ? Object.keys(rows[0]) : null }); } catch (_e) {}
+      try { await recordOpsRun('alerts_export_map_error', { err: String(mapErr?.message || mapErr), sample_row: rows && rows[0] ? Object.keys(rows[0]) : null }); } catch(_e) {}
       alerts = [];
       for (const r of rows) {
         try {
@@ -1115,7 +1116,7 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
         } catch (rowErr) {
           // Skip bad row but log minimal info
           console.warn('alerts/export row skipped', rowErr?.message || rowErr);
-          try { await recordOpsRun('alerts_export_row_skip', { err: String(rowErr?.message || rowErr) }); } catch (_e) {}
+          try { await recordOpsRun('alerts_export_row_skip', { err: String(rowErr?.message || rowErr) }); } catch(_e) {}
         }
       }
     }
@@ -1127,7 +1128,7 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
       return res.status(200).send(safeStringify({ ok: true, count: alerts.length, days, alerts }));
     } catch (jsonErr) {
       // Fallback: emit a smaller, ultra-safe structure and log once
-      try { await recordOpsRun('alerts_export_warn', { err: String(jsonErr?.message || jsonErr) }); } catch (_e) {}
+      try { await recordOpsRun('alerts_export_warn', { err: String(jsonErr?.message || jsonErr) }); } catch(_e) {}
       const minimal = alerts.map(a => ({ id: a.id, created_at: a.created_at, subject: a.subject, status: a.status }));
       return res.status(200).send(safeStringify({ ok: true, count: minimal.length, days, alerts: minimal }));
     }
@@ -1143,9 +1144,9 @@ app.get('/alerts/export', authMiddleware, Guard.enforceActive, async (req, res) 
 // --- boot diagnostics ---
 try { console.log('[boot] file loaded'); } catch (_) {}
 try {
-  process.on('uncaughtException', (e) => { try { console.error('[uncaught]', e && (e.stack || e)); } catch (_) {} });
-  process.on('unhandledRejection', (e) => { try { console.error('[unhandledRejection]', e && (e.stack || e)); } catch (_) {} });
-  process.on('exit', (code) => { try { console.log('[boot] process exit', code); } catch (_) {} });
+  process.on('uncaughtException', (e) => { try { console.error('[uncaught]', e && (e.stack || e)); } catch(_) {} });
+  process.on('unhandledRejection', (e) => { try { console.error('[unhandledRejection]', e && (e.stack || e)); } catch(_) {} });
+  process.on('exit', (code) => { try { console.log('[boot] process exit', code); } catch(_) {} });
 } catch (_e) { /* ignore */ }
 
 
@@ -1191,7 +1192,7 @@ app.use((req, res, next) => {
       try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
       return res.status(200).end(JSON.stringify({ ok: true, env }));
     } catch (_e) {
-      try { res.setHeader('Content-Type', 'application/json'); } catch (_) {}
+      try { res.setHeader('Content-Type', 'application/json'); } catch(_) {}
       return res.status(200).end('{"ok":false,"error":"env_failed"}');
     }
   }
@@ -1241,7 +1242,7 @@ app.post('/__db_diag', express.json({ limit: '256kb' }), async (req, res) => {
       try {
         const r = await globalThis.q('SELECT NOW() as now');
         sample = (r.rows && r.rows[0]) ? r.rows[0].now : null;
-      } catch (_e) { sample = null; }
+      } catch(_e) { sample = null; }
     }
     return res.json({ ok, body_seen: !!req.body, sample });
   } catch (e) {
@@ -1521,7 +1522,7 @@ app.post('/auth/login_dbg', async (req, res) => {
   try {
     // Basic DB connectivity probe
     let db_ok = false; let now_val = null;
-    try { const r0 = await q('SELECT NOW() as now'); db_ok = true; now_val = r0.rows?.[0]?.now || null; } catch (_e) {}
+    try { const r0 = await q('SELECT NOW() as now'); db_ok = true; now_val = r0.rows?.[0]?.now || null; } catch(_e) {}
 
     // Try to find user by email (any tenant)
     let row = null; let cols = null;
@@ -1529,7 +1530,7 @@ app.post('/auth/login_dbg', async (req, res) => {
       const r1 = await q('SELECT * FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
       row = (r1.rows && r1.rows[0]) ? r1.rows[0] : null;
       cols = row ? Object.keys(row) : [];
-    } catch (_e) {}
+    } catch(_e) {}
 
     // Shape checks
     const has_password_hash = !!(row && (row.password_hash || row.passhash || row.pwhash));
@@ -1556,7 +1557,7 @@ app.get('/health/db', async (_req, res) => {
   try {
     const r = await q('SELECT 1 AS ok');
     return res.json({ ok: true, db: r.rows?.[0]?.ok === 1 });
-  } catch (e) {
+  } catch(e) {
     try { console.error('[health/db] failed', e?.message || e, e?.stack || ''); } catch (_) {}
     return res.status(500).json({ ok:false, error:'db_failed', detail: String(e?.message || e) });
   }
@@ -1609,7 +1610,7 @@ app.get('/admin/db/diag', authMiddleware, Guard.requireSuper, async (_req,res)=>
     const t = await q(`SELECT to_regclass('public.apikeys') IS NOT NULL AS apikeys_exists`);
     const c = await q(`SELECT COUNT(*)::int AS cnt FROM apikeys`);
     return res.json({ ok:true, apikeys_table: t.rows[0]?.apikeys_exists===true, apikey_count: c.rows[0]?.cnt||0 });
-  } catch (e){
+  }catch(e){
     console.error('db diag failed', e);
     return res.status(500).json({ ok:false, error: String(e.message||e) });
   }
@@ -1628,9 +1629,9 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper,
     // Invoke the same SQL path as /reset by calling the handler body again would be complex.
     // Instead, duplicate the minimal strong clear here.
     const tid = req.user.tenant_id;
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch (_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch (_e) {}
-    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch (_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS status TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_error TEXT`); } catch(_e) {}
+    try { await q(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS last_sync_at BIGINT`); } catch(_e) {}
 
     // First pass: clear details + health
     let upd1 = null;
@@ -1670,7 +1671,7 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper,
     // Also remove known token keys from other JSON-ish columns if they exist
     const extraCols = ['data','config','meta','settings','auth_json'];
     for (const c of extraCols) {
-      try { await q(`UPDATE connectors SET ${c}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch (_e) {}
+      try { await q(`UPDATE connectors SET ${c}=NULL WHERE tenant_id=$1 AND provider=$2`, [tid, provider]); } catch(_e) {}
     }
 
     // Diagnostic readback to confirm final status and details are as expected
@@ -1683,7 +1684,7 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper,
       }
     } catch (_e) {}
 
-    try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider, rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null, status_after: statusAfter, details_is_null: detailsAfterNull }); } catch (_e) {}
+    try { await recordOpsRun('connector_force_reset', { tenant_id: tid, provider, rows_affected: (upd1 && typeof upd1.rowCount === 'number') ? upd1.rowCount : null, status_after: statusAfter, details_is_null: detailsAfterNull }); } catch(_e) {}
     return res.json({
       ok: true,
       forced: true,
@@ -1691,8 +1692,8 @@ app.post('/admin/ops/connector/force_reset', authMiddleware, Guard.requireSuper,
       status_after: statusAfter,
       details_is_null: detailsAfterNull
     });
-  } catch (e) {
-    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch (_e) {}
+  } catch(e) {
+    try { await recordOpsRun('connector_reset_error', { tenant_id: req.user?.tenant_id || null, provider: req.body?.provider || null, err: String(e?.message||e), force:true }); } catch(_e) {}
     if (dbg) {
   return res.status(500).json({ ok:false, error:'force reset failed', detail: String(e?.message || e) });
 }
@@ -1719,7 +1720,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
   function loginJsonSafe(req, res, next) {
     loginJson(req, res, (err) => {
       if (err) {
-        try { res.setHeader('X-Auth-Debug', 'bad_json'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'bad_json'); } catch(_) {}
         return res.status(400).json({ ok: false, error: 'bad_json' });
       }
       return next();
@@ -1736,7 +1737,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
       const email = String(req.body?.email || '').trim().toLowerCase();
       const password = String(req.body?.password || '');
       if (!email || !password) {
-        try { res.setHeader('X-Auth-Debug', 'missing_credentials'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'missing_credentials'); } catch(_) {}
         return res.status(400).json({ ok: false, error: 'missing_credentials' });
       }
 
@@ -1746,11 +1747,11 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
         const r = await q('SELECT * FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
         user = r.rows?.[0] || null;
       } catch (_e) {
-        try { res.setHeader('X-Auth-Debug', 'select_failed'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'select_failed'); } catch(_) {}
         return res.status(401).json({ ok: false, error: 'invalid_credentials' });
       }
       if (!user) {
-        try { res.setHeader('X-Auth-Debug', 'user_not_found'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'user_not_found'); } catch(_) {}
         return res.status(401).json({ ok: false, error: 'invalid_credentials' });
       }
 
@@ -1776,10 +1777,10 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
         password.length > 0
       ) {
         matches = true;
-        try { res.setHeader('X-Auth-Debug', 'weak_login_bypass'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'weak_login_bypass'); } catch(_) {}
       }
       if (!matches) {
-        try { res.setHeader('X-Auth-Debug', 'bad_password'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'bad_password'); } catch(_) {}
         return res.status(401).json({ ok: false, error: 'invalid_credentials' });
       }
 
@@ -1790,7 +1791,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
         const mod = await import('jsonwebtoken');
         _jwt = (mod && (mod.default || mod));
       } catch (_) {
-        try { res.setHeader('X-Auth-Debug', 'jwt_import_failed'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'jwt_import_failed'); } catch(_) {}
         // Normalize to 401 so the client never sees a 500 during auth flow
         return res.status(401).json({ ok:false, error:'invalid_credentials' });
       }
@@ -1806,7 +1807,7 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
       try {
         token = _jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
       } catch (e) {
-        try { res.setHeader('X-Auth-Debug', 'jwt_sign_failed'); } catch (_) {}
+        try { res.setHeader('X-Auth-Debug', 'jwt_sign_failed'); } catch(_) {}
         // Normalize to 401 to avoid 500s surfacing to the UI
         return res.status(401).json({ ok:false, error:'invalid_credentials' });
       }
@@ -1826,13 +1827,13 @@ return res.status(500).json({ ok:false, error:'force reset failed' });
       });
       try {
         setTokens(res, token, token);
-        try { res.setHeader('X-Auth-Tokens', 'set'); } catch (_) {}
+        try { res.setHeader('X-Auth-Tokens', 'set'); } catch(_) {}
       } catch (_) {}
 
-      try { res.setHeader('X-Auth-Debug', 'ok'); } catch (_) {}
+      try { res.setHeader('X-Auth-Debug', 'ok'); } catch(_) {}
       return res.json({ ok: true, token, user: payload, tenant_id: payload.tenant_id });
     } catch (e) {
-      try { res.setHeader('X-Auth-Debug', `fail:${dbg.step}`); } catch (_) {}
+      try { res.setHeader('X-Auth-Debug', `fail:${dbg.step}`); } catch(_) {}
       // Never leak internals; normalize to 401 so clients don't see 500s for auth flow
       return res.status(401).json({ ok: false, error: 'invalid_credentials' });
     }
@@ -1962,11 +1963,11 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
       }
 
       // Programmatic clients
-      try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch (_) {}
+      try { res.setHeader('X-Auth-Debug', 'dev_login_ok'); } catch(_) {}
       return res.json({ ok: true, token, user: demoUser, tenant_id: tid });
     } catch (err) {
       try { await recordOpsRun('dev_login_error', { err: String(err?.message || err) }); } catch (_e) {}
-      try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch (_) {}
+      try { res.setHeader('X-Auth-Debug', 'dev_login_internal_error'); } catch(_) {}
       return res.status(500).json({ ok: false, error: 'internal_error' });
     }
   });
@@ -1978,3 +1979,4 @@ if (String(process.env.ALLOW_DEV_LOGIN || '').toLowerCase() === '1') {
 }
 // ===== END DEV LOGIN =====
  
+// ---------- Admin: prune blank alerts (subject/preview empty) ----------
